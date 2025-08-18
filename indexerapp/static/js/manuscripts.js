@@ -45,6 +45,37 @@ manuscripts_init = function()
         processFilters();
     });
 
+
+    // Mapping of quick filter checkboxes to menu checkboxes
+    const checkboxPairs = [
+        { quick: '#decoration_yes', menu: '#decoration_true' },
+        { quick: '#decoration_no', menu: '#decoration_false' },
+        { quick: '#music_yes', menu: '#music_notation_true' },
+        { quick: '#music_no', menu: '#music_notation_false' },
+        { quick: '#digitized_yes', menu: '#digitized_true' },
+        { quick: '#digitized_no', menu: '#digitized_false' }
+    ];
+
+    // Function to synchronize checkboxes
+    function syncCheckboxes(sourceId, targetId) {
+        $(targetId).prop('checked', $(sourceId).prop('checked'));
+        processFilters(); // Call existing processFilters function
+    }
+
+    // Add change event listeners for all checkboxes
+    checkboxPairs.forEach(pair => {
+        // Quick filter to menu sync
+        $(pair.quick).on('change', function() {
+            syncCheckboxes(pair.quick, pair.menu);
+        });
+        // Menu to quick filter sync
+        $(pair.menu).on('change', function() {
+            syncCheckboxes(pair.menu, pair.quick);
+        });
+    });
+
+
+
     //static resizer width:
     const leftColumn = document.getElementById("leftColumn");
     const rightColumn = document.getElementById("rightColumn");
