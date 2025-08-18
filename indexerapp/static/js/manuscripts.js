@@ -1078,7 +1078,7 @@ manuscripts_init = function()
                 if (!manuscriptsByLocation[key]) {
                     manuscriptsByLocation[key] = { lat, lon, name, manuscripts: [] };
                 }
-                manuscriptsByLocation[key].manuscripts.push({ id, name: item.name });
+                manuscriptsByLocation[key].manuscripts.push({ id, name: item.name, shelf_mark: item.shelf_mark });
             }
         });
 
@@ -1086,10 +1086,11 @@ manuscripts_init = function()
         Object.values(manuscriptsByLocation).forEach(location => {
             let popupContent = `<b>${location.name || 'Unknown'}</b><ul class="list-disc pl-4">`;
             location.manuscripts.forEach(ms => {
-                popupContent += `<li><a href="/static/page.html?p=manuscript&id=${ms.id}" class="text-blue-600 hover:underline">${ms.name || 'Manuscript ' + ms.id}</a></li>`;
+                const shelfMark = ms.shelf_mark || ''; // Fallback to empty string if shelf_mark is undefined
+                const displayName = shelfMark ? `${shelfMark}, ${ms.name || 'Manuscript ' + ms.id}` : ms.name || 'Manuscript ' + ms.id;
+                popupContent += `<li><a href="/static/page.html?p=manuscript&id=${ms.id}" class="text-blue-600 hover:underline">${displayName}</a></li>`;
             });
             popupContent += '</ul>';
-
             var marker = L.marker([location.lat, location.lon], {
                 icon: L.divIcon({
                     html: `<img src="/static/img/icons/marker_number.svg">${location.manuscripts.length > 1 ? '<div class="number">' + location.manuscripts.length + '</div>' : ''}`,
@@ -1097,7 +1098,6 @@ manuscripts_init = function()
                     iconSize: L.point(25, 41)
                 })
             });
-
             marker.manuscriptCount = location.manuscripts.length; // Store manuscript count for clustering
             marker.bindPopup(popupContent, { autoPan: true });
             allMarkers.push(marker);
