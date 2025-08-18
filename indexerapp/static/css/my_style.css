@@ -978,3 +978,30 @@ ul.decoration_comment {
     margin-left: 4px;
     font-size: 20px;
 }
+
+/* Dating (years) slider: */
+
+    .fast-filters {
+        width: 100%;
+        max-width: 500px; /* Adjust as needed for desired width */
+        margin: 0 auto; /* Center the container */
+    }
+    /* Slider styling */
+    #year-range-slider {
+        width: 100%; /* Full width of parent */
+        max-width: 400px; /* Slightly narrower than parent for padding */
+        margin: 0 auto; /* Center the slider */
+    }
+    .noUi-target {
+        height: 6px; /* Slimmer slider track */
+        background: #e0e0e0;
+        border: none;
+        box-shadow: none;
+    }
+    .noUi-connect {
+        background: rgb(153, 122, 98) !important; /* Selected range color */
+    }
+    .noUi-tooltip {
+        font-size: 12px; /* Smaller tooltip font */
+        padding: 2px 4px;
+    }

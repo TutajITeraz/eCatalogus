@@ -1019,20 +1019,20 @@
     </div>
 
     <!-- Dodany tekst "Fast filters:" -->
-    <div class="fast-filters young-serif text-[10px] sm:text-xs md:text-[8pt] text-center">Fast filters:</div>
+    <div class="fast-filters young-serif text-[10px] sm:text-xs md:text-[8pt] text-center">
+        <div id="year-range-slider" class="w-full mt-2"></div>
+    </div>
 
     <div class="sort-container flex items-center">
         <label for="sortField" class="young-serif text-[10px] sm:text-xs md:text-[8pt] mr-2">Sort by:</label>
         <span class="sort-arrow" data-direction="asc">▲</span>
         <span class="select2 sort-field-container">
         <select id="sortField" class="select2-selection select2-selection--single" role="combobox" aria-haspopup="true" aria-expanded="false" tabindex="0" aria-disabled="false" aria-labelledby="select2-sortField-container" aria-controls="select2-sortField-container">
-                <option value="dating__year_from" selected>Dating Year</option>
+                <option value="dating__year_from" selected>Dating</option>
                 <option value="name">Name</option>
                 <option value="binding_date__year_from">Binding date</option>
-                <option value="foreign_id">MSPL</option>
-                <option value="shelf_mark">Shelfmark</option>
-                <option value="how_many_quires">How many quires</option>
-                <option value="how_many_columns_mostly">How many columns mostly</option>
+                <option value="rism_id">RISM ID</option>
+
         </select>
         <span class="select2-selection__rendered" id="select2-sortField-container" role="textbox" aria-readonly="true" title="Name"></span>
         <span class="select2-selection__arrow" role="presentation"><b role="presentation"></b></span>

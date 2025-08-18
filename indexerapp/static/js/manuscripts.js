@@ -1,7 +1,49 @@
-
+const DATING_YEAR_MIN = 1000;
+const DATING_YEAR_MAX = 1400;
 
 manuscripts_init = function()
 {
+
+    //Slider:
+    // Initialize noUiSlider
+    const slider = document.getElementById('year-range-slider');
+    const minInput = document.getElementById('ms_dating_years_min');
+    const maxInput = document.getElementById('ms_dating_years_max');
+
+    noUiSlider.create(slider, {
+        start: [DATING_YEAR_MIN, DATING_YEAR_MAX], // Default to full range
+        connect: true,
+        range: {
+            'min': DATING_YEAR_MIN,
+            'max': DATING_YEAR_MAX
+        },
+        step: 1,
+        margin: 1, // Ensure min and max are not the same
+        behaviour: 'drag',
+        tooltips: [true, true], // Show tooltips for both handles
+        format: {
+            to: value => Math.round(value), // Round to integers
+            from: value => Number(value)
+        }
+    });
+
+    // Sync slider with number inputs
+    slider.noUiSlider.on('update', function(values, handle) {
+        const [min, max] = values;
+        // Clear inputs if slider is at full range (1000–1400)
+        if (min === DATING_YEAR_MIN && max === DATING_YEAR_MAX) {
+            minInput.value = '';
+            maxInput.value = '';
+        } else {
+            minInput.value = min;
+            maxInput.value = max;
+        }
+    });
+
+    // Trigger processFilters on slider change
+    slider.noUiSlider.on('change', function() {
+        processFilters();
+    });
 
     //static resizer width:
     const leftColumn = document.getElementById("leftColumn");
@@ -686,6 +728,18 @@ manuscripts_init = function()
         });
     });
 
+    $('#ms_dating_years_min, #ms_dating_years_max').on('change', function() {
+        const minVal = parseInt(minInput.value) || DATING_YEAR_MIN;
+        const maxVal = parseInt(maxInput.value) || DATING_YEAR_MAX;
+        // Update slider only if values are valid
+        if (minVal <= maxVal && minVal >= DATING_YEAR_MIN && maxVal <= DATING_YEAR_MAX) {
+            slider.noUiSlider.set([minVal, maxVal]);
+        } else if (!minInput.value && !maxInput.value) {
+            slider.noUiSlider.set([DATING_YEAR_MIN, DATING_YEAR_MAX]); // Reset to full range
+        }
+        processFilters();
+    });
+
     //$('#ms_how_many_columns_min').on( "change", processFilters );
     //$('#ms_how_many_columns_max').on( "change", processFilters );
     $('#ms_how_many_columns1').on( "change", processFilters );
@@ -703,8 +757,6 @@ manuscripts_init = function()
     $('#digitized_false').on( "change", processFilters );
     $('#ms_dating_min').on("change", processFilters);
     $('#ms_dating_max').on("change", processFilters);
-    $('#ms_dating_years_min').on("change", processFilters);
-    $('#ms_dating_years_max').on("change", processFilters);
     $('#clla_dating_min').on("change", processFilters);
     $('#clla_dating_max').on("change", processFilters);
     $('#clla_dating_years_min').on("change", processFilters);
@@ -853,8 +905,8 @@ manuscripts_init = function()
 
         d.dating_min = $('#ms_dating_min').val();
         d.dating_max = $('#ms_dating_max').val();
-        //d.dating_years_min = $('#ms_dating_years_min').val();
-        //d.dating_years_max = $('#ms_dating_years_max').val();
+        d.dating_years_min = $('#ms_dating_years_min').val();
+        d.dating_years_max = $('#ms_dating_years_max').val();
         //d.clla_dating_max = $('#clla_dating_max').val();
         //d.clla_dating_years_min = $('#clla_dating_years_min').val();
         //d.clla_dating_min = $('#clla_dating_min').val();
