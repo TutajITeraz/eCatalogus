@@ -270,7 +270,8 @@ function init_layouts_table() {
                         return fromText;
                     return fromText + ' - ' + toText;
                 },
-                "width": "10%"
+                "width": "10%",
+                "orderable":false,
             },
             { "data": "how_many_columns", "title": "how many columns", "width": "10%" },
             { "data": "lines_per_page_minimum", "title": "lines per page (min)", "visible": false },
@@ -383,7 +384,8 @@ function init_music_table() {
                     if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
                         return fromText;
                     return fromText + ' - ' + toText;
-                }, "width": "12%"
+                }, "width": "12%",
+                "orderable":false,
             },
             { "data": "dating", "title": "dating", "width": "15%" },
             { "data": "original", "title": "original", "width": "5%" },
@@ -419,7 +421,16 @@ function init_content_table(reinit=false) {
                 }
 
                 return processedData;
-            }
+            },
+            "data": function(d) {
+                if (d.order && d.order.length > 0) {
+                    var colIndex = d.order[0].column;
+                    var dir = d.order[0].dir;
+                    d.order_column = d.columns[colIndex].data;
+                    d.order_direction = dir;
+                }
+                return d;
+            },
         },
         "processing": false,
         "serverSide": true,
@@ -429,6 +440,7 @@ function init_content_table(reinit=false) {
         "bAutoWidth": false, 
         "columns": [
             { "data": "manuscript", "title": "manuscript id", "visible": false },
+            { "data": "sequence_in_ms", "title": "sequence in MS", "visible": false },
             { "data": "manuscript_name", "title": "manuscript", "visible": false },
             { "data": "where_in_ms_from", "title": "where in MS (from)", "visible": false },
             { "data": "where_in_ms_to", "title": "where in MS (to)", "visible": false },
@@ -452,7 +464,8 @@ function init_content_table(reinit=false) {
                         return fromText;
                     return fromText + ' - ' + toText;
                 },
-                "width": "10%" 
+                "width": "10%",
+                "orderable":false,
             },
             { "data": "rite_name_from_ms", "title": "rite name from MS", "width": "20%" },
             { "data": "subsection", "title": "subsection", "width": "20%"  },
@@ -465,28 +478,50 @@ function init_content_table(reinit=false) {
                 "name": "formula_standarized", 
                 "title": "Formula (standarized)", 
                 render: function(data, type, row, meta) {
-                    if (row.traditions && IDENTIFY_TRADITIONS) {
-                        let traditions = Array.isArray(row.traditions) 
-                            ? row.traditions 
-                            : row.traditions.split(',').map(t => t.trim()).filter(t => t);
 
-                        let dots = '';
-                        if (traditions.length === 0) {
-                            dots = `<span class="dot" style="background-color: ${traditionColors['Unattributed']};" title="Unattributed"></span>`;
-                        } else {
-                            traditions.forEach(trad => {
-                                if (!traditionColors[trad]) {
-                                    traditionColors[trad] = colorPalette[colorIndex % colorPalette.length];
-                                    traditionMap[trad] = trad;
-                                    colorIndex++;
-                                }
-                                dots += `<span class="dot" style="background-color: ${traditionColors[trad]};" title="${trad}"></span>`;
-                            });
+                        var rendered_html =  (row.formula_standarized || data);
+
+                        if (row.traditions && IDENTIFY_TRADITIONS) {
+                            let traditions = Array.isArray(row.traditions) 
+                                ? row.traditions 
+                                : row.traditions.split(',').map(t => t.trim()).filter(t => t);
+    
+                            let dots = '';
+                            if (traditions.length === 0) {
+                                dots = `<span class="dot" style="background-color: ${traditionColors['Unattributed']};" title="Unattributed"></span>`;
+                            } else {
+                                traditions.forEach(trad => {
+                                    if (!traditionColors[trad]) {
+                                        traditionColors[trad] = colorPalette[colorIndex % colorPalette.length];
+                                        traditionMap[trad] = trad;
+                                        colorIndex++;
+                                    }
+                                    dots += `<span class="dot" style="background-color: ${traditionColors[trad]};" title="${trad}"></span> `;
+                                });
+                            }
+                            rendered_html = dots + rendered_html;
                         }
-                        return dots + (row.formula_standarized || data);
-                    }
-                    return row.formula_standarized || data;
-                },
+                        if (row.translation && row.translation.length>1)
+                        {
+                            let translation = ` <span 
+                                title="${row.translation}" 
+                                style="
+                                    height: 12px;
+                                    width: 12px;
+                                    border-radius: 50%;
+                                    display: inline-block;
+                                    margin-right: 2px;
+                                    background-image: url('/static/img/eng_flag.png');
+                                    background-size: cover;
+                                    background-position: center;
+                                ">
+                            </span>`;
+
+                            rendered_html = rendered_html+ translation;
+                        }
+
+                        return rendered_html;
+                    },
                 "width": "40%"  
             },
             {
@@ -520,17 +555,21 @@ function init_content_table(reinit=false) {
             { "data": "quire", "title": "quire", "width": "5%"  },
 
             { "data": "music_notation", "title": "music notation", "visible": false },
-            { "data": "sequence_in_ms", "title": "sequence in MS", "visible": false },
             { "data": "original_or_added", "title": "original or added", "visible": false },
             { "data": "proper_texts", "title": "proper texts", "width": "5%"  },
+
+            { "data": "translation", "title": "Translation", "visible": false },
 
             { "data": "authors", "title": "authors", "visible": false },
             { "data": "data_contributor", "title": "data contributor", "visible": false },
             // Add more columns as needed
         ],
         "order": [
-            { "data": "sequence_in_ms", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
-            { "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
+
+            [1, "asc"]  // kolumna 1 to sequence_in_ms, rosnąco
+            //{ "data": "where_in_ms_from", "order": "asc" },      // Then sort by the "manuscript" column in descending order
+            //{ "data": "sequence_in_ms", "order": "asc" }  // Sort by the "manuscript_name" column in ascending order
+            //{ "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
         ],
         "createdRow": function (row, data, dataIndex) {
             if (data.original_or_added == "ORIGINAL") {
@@ -625,7 +664,8 @@ function init_quires_table() {
                         return fromText;
                     return fromText + ' - ' + toText;
                 },
-                "width": "15%"
+                "width": "15%",
+                "orderable":false,
             },
             { "data": "comment", "title": "comment", "width": "40%" },
             { "data": "authors", "title": "authors", "visible": false },
@@ -950,7 +990,8 @@ function init_decoration_table(table_info) {
                         return fromText;
                     return fromText + ' - ' + toText;
                 },
-                "width": '10%'
+                "width": '10%',
+                "orderable":false,
             },
             { "data": "location_on_the_page", "title": "location on the page", "width": '10%' },
             { "data": "size_characteristic", "title": "size characteristic", "visible": false },
@@ -1322,7 +1363,8 @@ function init_main_hands() {
                         return fromText;
                     return fromText + ' - ' + toText;
                 }, 
-                "width": "15%"
+                "width": "15%",
+                "orderable":false,
             },
             { "data": "is_medieval", "title": "is medieval?", "visible": false },
             { "data": "is_main_text", "name": "is_main_text", "title": "is main text?", "visible": false },
@@ -1406,7 +1448,8 @@ function init_additions_hands() {
                         return fromText;
                     return fromText + ' - ' + toText;
                 },
-                "width": "15%"
+                "width": "15%",
+                "orderable":false,
             },
             { "data": "is_medieval", "title": "is medieval?", "visible": false },
             { "data": "is_main_text", "name": "is_main_text", "title": "is main text?", "visible": false },

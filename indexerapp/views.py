@@ -402,9 +402,23 @@ class ContentGlobalFilter(DatatablesFilterSet):
 class ContentViewSet(viewsets.ModelViewSet):
     queryset = Content.objects.all().order_by('manuscript')
     serializer_class = ContentSerializer
-
     filter_backends = [CustomDatatablesFilterBackend]
     filterset_class = ContentGlobalFilter
+
+    def get_queryset(self):
+        queryset = Content.objects.filter(manuscript__display_as_main=True)
+        manuscript_id = self.request.GET.get('manuscript_id', None)
+        if manuscript_id:
+            queryset = queryset.filter(manuscript_id=manuscript_id)
+        
+        order_column_name = self.request.query_params.get('order_column', 'manuscript')
+        order_direction = self.request.query_params.get('order_direction', 'asc')
+        if order_direction == 'asc':
+            queryset = queryset.order_by(F(order_column_name).asc(nulls_last=True))
+        else:
+            queryset = queryset.order_by(F(order_column_name).desc(nulls_last=True))
+        
+        return queryset
 
     def count(self, request, queryset):
         return queryset.count()

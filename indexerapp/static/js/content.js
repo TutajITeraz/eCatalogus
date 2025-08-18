@@ -11,6 +11,7 @@ let traditionMap = {
 let IDENTIFY_TRADITIONS = false;
 let colorIndex = 0;
 
+
 function displayUniqueAuthorsAndContributors(dataTable, divToAppend) {
     var table = dataTable.table();
 
@@ -221,6 +222,7 @@ content_init = function()
             "bAutoWidth": false, 
             "columns": [
                 { "data": "manuscript", "title": "Manuscript ID", "visible": false },
+                { "data": "sequence_in_ms", "title": "sequence in MS", "visible": false },
                 { "data": "manuscript_name", "title": "Manuscript", "visible": false },
                 { "data": "where_in_ms_from", "title": "Where in MS (from)", "visible": false },
                 { "data": "where_in_ms_to", "title": "Where in MS (to)", "visible": false },
@@ -257,6 +259,9 @@ content_init = function()
                     "name": "formula_standarized", 
                     "title": "Formula (standarized)", 
                     render: function(data, type, row, meta) {
+
+                        var rendered_html =  (row.formula_standarized || data);
+
                         if (row.traditions && IDENTIFY_TRADITIONS) {
                             let traditions = Array.isArray(row.traditions) 
                                 ? row.traditions 
@@ -272,12 +277,31 @@ content_init = function()
                                         traditionMap[trad] = trad;
                                         colorIndex++;
                                     }
-                                    dots += `<span class="dot" style="background-color: ${traditionColors[trad]};" title="${trad}"></span>`;
+                                    dots += `<span class="dot" style="background-color: ${traditionColors[trad]};" title="${trad}"></span> `;
                                 });
                             }
-                            return dots + (row.formula_standarized || data);
+                            rendered_html = dots + rendered_html;
                         }
-                        return row.formula_standarized || data;
+                        if (row.translation && row.translation.length>1)
+                        {
+                            let translation = ` <span 
+                                title="${row.translation}" 
+                                style="
+                                    height: 12px;
+                                    width: 12px;
+                                    border-radius: 50%;
+                                    display: inline-block;
+                                    margin-right: 2px;
+                                    background-image: url('/static/img/eng_flag.png');
+                                    background-size: cover;
+                                    background-position: center;
+                                ">
+                            </span>`;
+
+                            rendered_html = rendered_html+ translation;
+                        }
+
+                        return rendered_html;
                     },
                     "width": "40%"  
                 },
@@ -317,6 +341,8 @@ content_init = function()
                 { "data": "original_or_added", "title": "Original or Added", "visible": false },
                 { "data": "proper_texts", "title": "Proper texts", "width": "5%"  },
 
+                { "data": "translation", "title": "Translation", "visible": false },
+
                 { "data": "authors", "title": "Authors", "visible": false },
                 { "data": "data_contributor", "title": "Data contributor", "visible": false },
                 // Add more columns as needed
@@ -346,8 +372,9 @@ content_init = function()
                 null,
             ],
             "order": [
-                { "data": "sequence_in_ms", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
-                { "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
+                [1, "asc"]  // kolumna 1 to sequence_in_ms, rosnąco
+                //{ "data": "sequence_in_ms", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
+                //{ "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
             ],
             "createdRow": function (row, data, dataIndex) {
                 if (data.original_or_added == "ORIGINAL") {
@@ -402,8 +429,8 @@ content_init = function()
             xhrFields: {
                 withCredentials: true
            }
-            // Additional AJAX parameters go here; see the end of this chapter for the full code of this example
-          }
+          },
+          allowClear: false // Prevent clearing the selection
     });
 
     $('.manuscript_filter').on('select2:select', function (e) {
@@ -418,6 +445,7 @@ content_init = function()
         content_table_init(true);//i want initComplete to be called again
 
     });
+
 
     $('#genreSelect').select2();
 
