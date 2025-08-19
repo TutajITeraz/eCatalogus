@@ -126,6 +126,21 @@ manuscripts_init = function()
     $('#ms_foreign_id_select').on('select2:select', processFilters);
 
 
+    $('#ms_liturgical_genre_select').select2({
+        ajax: {
+            url: pageRoot+'/liturgical-genres-autocomplete/',
+            dataType: 'json',
+            xhrFields: {
+                withCredentials: true
+           }
+            // Additional AJAX parameters go here; see the end of this chapter for the full code of this example
+          },
+          allowClear: true,
+          placeholder: '',
+    });
+    $('#ms_liturgical_genre_select').on('select2:select', processFilters);
+
+
     $('#ms_contemporary_repository_place_select').select2({
         ajax: {
             url: pageRoot+'/ms-contemporary-repository-place-autocomplete/',
@@ -912,6 +927,7 @@ manuscripts_init = function()
     {    
         d.name = $('#ms_name_select').select2('data').map(item => item.id).join(';');
         d.foreign_id = $('#ms_foreign_id_select').select2('data').map(item => item.id).join(';');
+        d.liturgical_genre = $('#ms_liturgical_genre_select').select2('data').map(item => item.id).join(';');
         d.contemporary_repository_place = $('#ms_contemporary_repository_place_select').select2('data').map(item => item.id).join(';');
         d.shelfmark = $('#ms_shelfmark_select').select2('data').map(item => item.id).join(';');
         //jd.dating = $('#ms_dating_select').select2('data').map(item => item.id).join(';');
@@ -1238,7 +1254,7 @@ manuscripts_init = function()
                 "fnCreatedCell": function (nTd, sData, oData, iRow, iCol) {
                     let html = "<h3 class='ms_name'><a href='/static/page.html?p=manuscript&id=" + oData.id + "' class='text-blue-600 hover:underline'>" + oData.rism_id + " " + (oData.name || '') + "</a></h3>"
                         + "<div class='left_script_content'>"
-                        + "<div class='ms_foreign_id'><span class='mspltext'> " + (oData.contemporary_repository_place_name || '') + ":</span> " + (oData.foreign_id || '') + "<span class='mspltext'> (" + foreign_id_name + ")</span>, " + (oData.shelf_mark || '') + "<span class='mspltext'> (Shelfmark)</span></div>"
+                        + "<div class='ms_foreign_id'><span class='mspltext'> " + (oData.contemporary_repository_place_name || '') + ":</span> "+ (oData.shelf_mark || '') + "<span class='mspltext'> (Shelfmark), </span><br /><span class='mspltext'>Manuscripta.pl: </span>" + (oData.foreign_id || '') + "</div>"
                         + "<div class='ms_dating'><b>Dating: </b>" + (oData.dating || '') + "</div>"
                         + "<div class='ms_place_of_origin'><b>Place of origin: </b>" + (oData.place_of_origin_name || '') + "</div>"
                         + "<div class='ms_place_of_origin'><b>Medieval provenance: </b>" + (oData.ms_provenance || '') + "</div>"

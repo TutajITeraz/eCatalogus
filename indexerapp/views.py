@@ -473,6 +473,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
 
         name = self.request.query_params.get('name')
         foreign_id = self.request.query_params.get('foreign_id')
+        liturgical_genre = self.request.query_params.get('liturgical_genre')
         contemporary_repository_place = self.request.query_params.get('contemporary_repository_place')
         shelfmark = self.request.query_params.get('shelfmark')
         dating = self.request.query_params.get('dating')
@@ -580,6 +581,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(id__in=name_ids)  # Przefiltruj wyniki, aby pasowały do identyfikatorów z listy
         if foreign_id:
             queryset = queryset.filter(foreign_id=foreign_id)
+        if liturgical_genre:
+            queryset = queryset.filter(ms_genres__genre__id=liturgical_genre)
         if contemporary_repository_place:
             contemporary_repository_place_ids = contemporary_repository_place.split(';')
             queryset = queryset.filter(contemporary_repository_place__in=contemporary_repository_place_ids)
