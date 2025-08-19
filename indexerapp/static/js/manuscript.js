@@ -501,10 +501,10 @@ function init_content_table(reinit=false) {
                             }
                             rendered_html = dots + rendered_html;
                         }
-                        if (row.translation && row.translation.length>1)
+                        if (row.translation_en && row.translation_en.length>1)
                         {
-                            let translation = ` <span 
-                                title="${row.translation}" 
+                            let translation_en = ` <span 
+                                title="${row.translation_en}" 
                                 style="
                                     height: 12px;
                                     width: 12px;
@@ -517,7 +517,7 @@ function init_content_table(reinit=false) {
                                 ">
                             </span>`;
 
-                            rendered_html = rendered_html+ translation;
+                            rendered_html = rendered_html+ translation_en;
                         }
 
                         return rendered_html;
@@ -558,7 +558,7 @@ function init_content_table(reinit=false) {
             { "data": "original_or_added", "title": "original or added", "visible": false },
             { "data": "proper_texts", "title": "proper texts", "width": "5%"  },
 
-            { "data": "translation", "title": "Translation", "visible": false },
+            { "data": "translation_en", "title": "Translation", "visible": false },
 
             { "data": "authors", "title": "authors", "visible": false },
             { "data": "data_contributor", "title": "data contributor", "visible": false },
@@ -1343,12 +1343,16 @@ function init_main_hands() {
             { "data": "sequence_in_ms", "title": "sequence in ms", "width": "15%" },
             { "data": "where_in_ms_from", "title": "where in MS (from)", "visible": false },
             { "data": "where_in_ms_to", "title": "where in MS (to)", "visible": false },
+            { "data": "is_range_interrupted", "title": "range interrupted", "visible": false },
             {
                 "data": "where",
                 "title": "where in MS",
                 "render": function (data, type, row, meta) {
                     //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
                     //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
+
+                    if(row.is_range_interrupted=="Yes" || row.is_range_interrupted=="yes" )
+                        return "";
 
                     let fromText = row.where_in_ms_from;
                     let toText = row.where_in_ms_to;
@@ -1428,12 +1432,16 @@ function init_additions_hands() {
             { "data": "sequence_in_ms", "title": "sequence in ms", "width": "15%" },
             { "data": "where_in_ms_from", "title": "where in MS (from)", "visible": false },
             { "data": "where_in_ms_to", "title": "where in MS (to)", "visible": false },
+            { "data": "is_range_interrupted", "title": "range interrupted", "visible": false },
             {
                 "data": "where",
                 "title": "where in MS",
                 "render": function (data, type, row, meta) {
                     //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
                     //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
+
+                    if(row.is_range_interrupted=="Yes" || row.is_range_interrupted=="yes" )
+                        return "";
 
                     let fromText = row.where_in_ms_from;
                     let toText = row.where_in_ms_to;
@@ -1447,7 +1455,7 @@ function init_additions_hands() {
                     if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
                         return fromText;
                     return fromText + ' - ' + toText;
-                },
+                }, 
                 "width": "15%",
                 "orderable":false,
             },

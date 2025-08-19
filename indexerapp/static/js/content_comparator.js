@@ -387,10 +387,10 @@ content_comparator_init = function()
                             }
                             rendered_html = dots + rendered_html;
                         }
-                        if (row.translation && row.translation.length>1)
+                        if (row.translation_en && row.translation_en.length>1)
                         {
-                            let translation = ` <span 
-                                title="${row.translation}" 
+                            let translation_en = ` <span 
+                                title="${row.translation_en}" 
                                 style="
                                     height: 12px;
                                     width: 12px;
@@ -403,7 +403,7 @@ content_comparator_init = function()
                                 ">
                             </span>`;
 
-                            rendered_html = rendered_html+ translation;
+                            rendered_html = rendered_html+ translation_en;
                         }
 
                         return rendered_html;
@@ -445,7 +445,7 @@ content_comparator_init = function()
                 { "data": "original_or_added", "title": "Original or Added", "visible": false },
                 { "data": "proper_texts", "title": "Proper texts", "width": "5%"  },
 
-                { "data": "translation", "title": "Translation", "visible": false },
+                { "data": "translation_en", "title": "Translation EN", "visible": false },
 
                 { "data": "authors", "title": "Authors", "visible": false },
                 { "data": "data_contributor", "title": "Data contributor", "visible": false },

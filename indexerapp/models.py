@@ -1237,6 +1237,7 @@ class ManuscriptHands(models.Model):
     sequence_in_ms = models.PositiveIntegerField()
     where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1, blank=True, null=True)
     where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1, blank=True, null=True)
+    is_range_interrupted = models.BooleanField(default=False)
     is_medieval = models.BooleanField(null=True)
     is_main_text = models.BooleanField(null=True)
     dating = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True)
@@ -1297,7 +1298,7 @@ class Formulas(models.Model):
     co_no = models.CharField(max_length=50)
     text = models.TextField(blank=True, null=True)
     tradition = models.ManyToManyField('Traditions', related_name='%(class)s_traditions', blank=True)
-    translation = models.TextField(blank=True, null=True)
+    translation_en = models.TextField(blank=True, null=True)
 
 
     class Meta:
