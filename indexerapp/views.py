@@ -558,7 +558,12 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
                 Q(foreign_id__icontains=search_value) |
                 Q(shelf_mark__icontains=search_value) |
                 Q(common_name__icontains=search_value) |
-                
+
+                Q(contemporary_repository_place__country_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place__region_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place__city_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place__repository_today_eng__icontains=search_value) |
+
                 Q(place_of_origin__country_today_eng__icontains=search_value) |
                 Q(place_of_origin__region_today_eng__icontains=search_value) |
                 Q(place_of_origin__city_today_eng__icontains=search_value) |
