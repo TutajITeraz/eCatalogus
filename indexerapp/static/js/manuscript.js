@@ -83,6 +83,7 @@ async function getMSInfoFiltered() {
             rism_id: info.rism_id,
             foreign_id: info.foreign_id,
             shelf_mark: info.shelf_mark,
+            liturgical_genres: info.ms_genres.join([separator = ', ']),
             liturgical_genre_comment: info.liturgical_genre_comment,
             dating: info.dating,
             dating_comment: info.dating_comment,

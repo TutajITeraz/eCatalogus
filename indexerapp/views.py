@@ -305,6 +305,14 @@ class MSInfoAjaxView(View):
         #authors_names = [str(author) for author in instance.authors.all()]
         #info['authors']=authors_names
 
+        print("This is MSInfoAjaxView")
+        #print("This is info ms_genres:", info.ms_genres)
+        print("This is instance ms_genres:", instance.ms_genres.all())
+
+        info['ms_genres'] = [str(genre.genre) for genre in instance.ms_genres.all()]
+
+
+
         # Manuscript comments (debate)
         debate = AttributeDebate.objects.filter(content_type__model='manuscripts', object_id=manuscript_id)
         debate_data = []
@@ -3280,9 +3288,9 @@ def get_obj_dictionary(obj, skip_fields):
                 info_strings[field_name] =foliation(field)
             elif field_name == 'form_of_an_item':
                 form_of_an_item_map = {key: value.lower() for key, value in obj._meta.get_field('form_of_an_item').choices}
-                info_strings[field_name] = form_of_an_item_map.get(field, field)  # Default to value if key not found            
+                info_strings[field_name] = form_of_an_item_map.get(field, field)  # Default to value if key not found     
             elif field_name == 'authors' and type(obj.authors) is not str:
-                info_strings[field_name] = [str(author) for author in obj.authors.all()]
+                info_strings[field_name] = [str(author) for author in obj.authors.all()]       
             else:
                 info_strings[field_name]=str(field)
 
