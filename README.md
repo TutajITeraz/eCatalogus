@@ -123,12 +123,6 @@ python manage.py collectstatic
 
 ```
 
-## To use dubo (SQL assistant):
-
-```
-export DUBO_API_KEY="pk.bb63cda35d47463fb858192bee22510f"
-```
-
 ## Run server:
 
 ```
@@ -144,3 +138,61 @@ python manage.py runserver 0.0.0.0:8080
 ### And finaly run the indexer django server:
 	python manage.py runserver 0.0.0.0:8080
 
+
+# Installation on a production server
+
+Copy all files to the ritus directory
+
+## Setup python WSGI app:
+
+```
+Python version: 3.11
+Application root: domains/YOUR-DOMMAIN-NAME.com/ritus
+Application URL: YOUR-DOMMAIN-NAME.com 
+Application startup file: passenger_wsgi.py
+Application Entry point: application
+```
+
+## Change content of the passenger_wsgi.py (it can be overwritten by the wsgi setup):
+
+```
+import os
+import sys
+
+# full path to the catalogue that includes manage.py
+PROJECT_DIR = "/home2/YOUR-HOSTING-USER/domains/YOUR-DOMMAIN-NAME.com/ritus"
+
+# insert to sys.path
+sys.path.insert(0, PROJECT_DIR)
+
+# ritus_indexer - name of a folder that includes settings.py
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ritus_indexer.settings")
+
+from django.core.wsgi import get_wsgi_application
+application = get_wsgi_application()
+```
+
+
+### In the settings.py set:
+
+DEBUG = False
+
+### and delete:
+
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+## Create symlinks for static and media directories:
+
+```
+cd /home2//YOUR-HOSTING-USER/domains/YOUR-DOMMAIN-NAME.com/public_html
+ln -s ../ritus/media media
+ln -s ../ritus/static_assets static
+```
+
+## Run:
+
+source /home2/YOUR-HOSTING-USER/virtualenv/domains/YOUR-DOMMAIN-NAME.com/ritus/3.11/bin/activate && cd /home2/YOUR-HOSTING-USER/domains/YOUR-DOMMAIN-NAME.com/ritus
+pip install -r requirements.txt
+python manage.py makemigrations
+python manage.py migrate
+python manage.py collectstatic
