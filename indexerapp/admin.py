@@ -485,8 +485,21 @@ class ManuscriptsAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-    search_fields = ['name__istartswith', 'shelf_mark__istartswith', 'foreign_id__istartswith', 'common_name__istartswith', 'rism_id__istartswith' ]##_startswith    
-
+    search_fields = [
+        'name__icontains',
+        'rism_id__icontains',
+        'foreign_id__icontains',
+        'shelf_mark__icontains',
+        'common_name__icontains',
+        'contemporary_repository_place__country_today_eng__icontains',
+        'contemporary_repository_place__region_today_eng__icontains',
+        'contemporary_repository_place__city_today_eng__icontains',
+        'contemporary_repository_place__repository_today_eng__icontains',
+        'place_of_origin__country_today_eng__icontains',
+        'place_of_origin__region_today_eng__icontains',
+        'place_of_origin__city_today_eng__icontains',
+        'place_of_origin__repository_today_eng__icontains',
+    ]
     #class Media:
     #    js = ('admin/js/vendor/jquery/jquery.min.js', 'admin/js/jquery.init.js',)  # Dołącz pliki JavaScript związane z obsługą popupów
 
