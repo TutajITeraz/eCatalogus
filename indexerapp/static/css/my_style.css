@@ -974,9 +974,10 @@ ul.decoration_comment {
 }
 .sort-arrow {
     cursor: pointer;
-    color: #d20000;
+    color: #795a42;
     margin-left: 4px;
-    font-size: 20px;
+    font-size: 16px;
+    font-family: Georgia, serif
 }
 
 /* Dating (years) slider: */

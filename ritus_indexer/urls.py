@@ -161,8 +161,10 @@ urlpatterns = [
     path('ms-shelf-mark-autocomplete/',views.MSShelfMarkAutocomplete.as_view(),name='ms-shelf-mark-autocomplete'),
     path('ms-dating-autocomplete/',views.MSDatingAutocomplete.as_view(),name='ms-dating-autocomplete'),
     path('ms-place-of-origins-autocomplete/',views.MSPlaceOfOriginsAutocomplete.as_view(),name='ms-place-of-origins-autocomplete'),
+    path('ms-provenance-autocomplete/',views.MSProvenanceAutocomplete.as_view(),name='ms-provenance-autocomplete'),
     path('ms-main-script-autocomplete/',views.MSMainScriptAutocomplete.as_view(),name='ms-main-script-autocomplete'),
     path('ms-binding-date-autocomplete/',views.MSBindingDateAutocomplete.as_view(),name='ms-binding-date-autocomplete'),
+
 
 
     path('colours-autocomplete/',views.ColoursAutocomplete.as_view(),name='colours-autocomplete'),

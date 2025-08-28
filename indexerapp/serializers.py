@@ -130,6 +130,7 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
             'dating',
             'place_of_origin',
             'main_script',
+            'form_of_an_item',
             'how_many_columns_mostly',
             'lines_per_page_usually',
             'how_many_quires',

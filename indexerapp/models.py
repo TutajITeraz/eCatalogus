@@ -758,7 +758,7 @@ class Manuscripts(models.Model):
     pdf_url = models.CharField(max_length=1024, blank=True, null=True)
 
     general_comment = models.TextField(blank=True, null=True)
-    form_of_an_item = models.CharField(max_length=2,choices=[("C", "CODEX"),("F", "FRAGMENT"),("P", "PALIMPSEST"),("L", "LOST")], blank=True, null=True)
+    form_of_an_item = models.CharField(max_length=2,choices=[("C", "CODEX"),("F", "FRAGMENT"),("P", "PALIMPSEST"),("L", "LOST ITEM")], blank=True, null=True)
 
     connected_ms = models.TextField(blank=True, null=True)
     where_in_connected_ms = models.TextField(blank=True, null=True)

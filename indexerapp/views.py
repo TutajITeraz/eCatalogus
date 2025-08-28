@@ -1008,6 +1008,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         damage_select = self.request.query_params.get('damage_select')
         provenance_place_select = self.request.query_params.get('provenance_place_select')
         provenance_place_countries_select = self.request.query_params.get('provenance_place_countries_select')
+        form_of_an_item_select = self.request.query_params.get('form_of_an_item_select')
         title_select = self.request.query_params.get('title_select')
         author_select = self.request.query_params.get('author_select')
 
@@ -1093,6 +1094,10 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             provenance_place_countries_select_ids = provenance_place_countries_select.split(';')
             for q in provenance_place_countries_select_ids:
                 queryset = queryset.filter(ms_provenance__place__country_today_eng=q)
+        if form_of_an_item_select: 
+            form_of_an_item_select_ids = form_of_an_item_select.split(';')
+            queryset = queryset.filter(form_of_an_item__in=form_of_an_item_select_ids)
+
         if title_select: 
             title_select_ids = title_select.split(';')
             for q in title_select_ids:
@@ -1648,52 +1653,54 @@ class BibliographyPrintView(View):
         }
 
         return JsonResponse(data)
-
 class ProvenanceAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = [ 'manuscript']  # Add any other fields to skip
-        info_queryset = ms_instance.ms_provenance.all()
+        skip_fields = ['manuscript']  # Add any other fields to skip
+        
+        # Sort the queryset by timeline_sequence
+        info_queryset = ms_instance.ms_provenance.all().order_by('timeline_sequence')
+        
+        # Convert to dict
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
+        # Create markers list in the same order
         markers = []
         for p in info_queryset:
-
             name = '-'
             if p.place:
                 name = p.place.repository_today_eng
-                if (not name) or (name and  len(name)<3):
+                if not name or len(name) < 3:
                     name = p.place.repository_today_local_language
-            
-                markers.append({
-                    'name':name,
-                    'lon':p.place.longitude,
-                    'lat':p.place.latitude,
-                    })
 
+                markers.append({
+                    'name': name,
+                    'lon': p.place.longitude,
+                    'lat': p.place.latitude,
+                })
+
+        # Handle debates
         debate = []
         for instance in info_queryset:
-            debate_query = AttributeDebate.objects.filter(content_type__model='provenance', object_id=instance.id)
+            debate_query = AttributeDebate.objects.filter(
+                content_type__model='provenance', object_id=instance.id
+            )
             for d in debate_query:
                 bibliography = Bibliography.objects.get(id=d.bibliography_id)
-                # Create a dictionary with debate details
                 debate_dict = {
                     'id': d.id,
                     'instance_id': instance.id,
                     'field_name': d.field_name,
                     'text': d.text,
-                    'bibliography': str(bibliography),  # String representation of the Bibliography name
-                    'bibliography_id': d.bibliography_id 
+                    'bibliography': str(bibliography),
+                    'bibliography_id': d.bibliography_id
                 }
-                
-                # Append the dictionary to the debate_data list
                 debate.append(debate_dict)
 
-        # Create the response dictionary
         data = {
             'data': info_dict,
-            'markers':markers,
+            'markers': markers,
             'debate': debate
         }
 
@@ -1886,39 +1893,39 @@ class MSShelfMarkAutocomplete(autocomplete.Select2QuerySetView):
 
 class MSContemporaryRepositoryPlaceAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        # Pobierz wszystkie unikalne contemporary_repository_place
-        qs = Places.objects.exclude(manuscripts__contemporary_repository_place=None)
+        qs = Places.objects.filter(
+            manuscripts__contemporary_repository_place__isnull=False,
+            manuscripts__display_as_main=True
+        ).distinct()
 
-        # Filtrowanie wyników na podstawie wprowadzonego zapytania (self.q)
         if self.q:
-            # Tworzymy listę warunków dla filtrowania po dowolnym polu
             filters = Q()
             for field in Places._meta.fields:
-                if field.get_internal_type() == 'CharField':  # Możemy dodać dodatkowe warunki dla innych typów pól
-                    filters |= Q(**{field.name + '__icontains': self.q})  # Tworzymy warunek dla pola typu CharField
-
-            # Zastosowanie filtrowania na podstawie dowolnego pola
+                if field.get_internal_type() == 'CharField':
+                    filters |= Q(**{field.name + '__icontains': self.q})
             qs = qs.filter(filters)
 
         return qs
 
     def get_result_label(self, item):
-        # Zwróć etykietę wyniku jako str() z obiektu Places
         return str(item)
+
 
 
 class MSDatingAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        # Pobierz wszystkie unikalne contemporary_repository_place
-        qs = TimeReference.objects.exclude(manuscripts_dating__dating=None).distinct()
-        # Filtrowanie wyników na podstawie wprowadzonego zapytania (self.q)
+        qs = TimeReference.objects.exclude(
+            manuscripts_dating__dating=None
+        ).filter(
+            manuscripts_dating__display_as_main=True
+        ).distinct()
+
         if self.q:
-            # Tworzymy listę warunków dla filtrowania po polu 'time_description'
             filters = Q(time_description__icontains=self.q)
-            # Zastosujemy filtrowanie na podstawie pola 'time_description'
             qs = qs.filter(filters)
 
         return qs
+
 
     def get_result_label(self, item):
         # Zwróć etykietę wyniku jako str() z obiektu Places
@@ -1926,17 +1933,35 @@ class MSDatingAutocomplete(autocomplete.Select2QuerySetView):
 
 class MSPlaceOfOriginsAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        # Pobierz wszystkie unikalne contemporary_repository_place
-        qs = Places.objects.exclude(manuscripts_origin__place_of_origin=None).distinct()
-        # Filtrowanie wyników na podstawie wprowadzonego zapytania (self.q)
+        qs = Places.objects.exclude(
+            manuscripts_origin__place_of_origin=None
+        ).filter(
+            manuscripts_origin__display_as_main=True
+        ).distinct()
+
         if self.q:
-            # Tworzymy listę warunków dla filtrowania po dowolnym polu
             filters = Q()
             for field in Places._meta.fields:
-                if field.get_internal_type() == 'CharField':  # Możemy dodać dodatkowe warunki dla innych typów pól
-                    filters |= Q(**{field.name + '__icontains': self.q})  # Tworzymy warunek dla pola typu CharField
+                if field.get_internal_type() == 'CharField':
+                    filters |= Q(**{field.name + '__icontains': self.q})
+            qs = qs.filter(filters)
 
-            # Zastosowanie filtrowania na podstawie dowolnego pola
+        return qs
+
+class MSProvenanceAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        # Pobieramy miejsca powiązane z Provenance, tylko te, które mają przypisany place
+        qs = Places.objects.filter(
+            provenance__manuscript__display_as_main=True,
+            provenance__place__isnull=False
+        ).distinct()
+
+        # Filtrowanie po polach tekstowych na podstawie zapytania użytkownika
+        if self.q:
+            filters = Q()
+            for field in Places._meta.fields:
+                if field.get_internal_type() == 'CharField':
+                    filters |= Q(**{field.name + '__icontains': self.q})
             qs = qs.filter(filters)
 
         return qs
@@ -1966,16 +1991,18 @@ class MSPlaceOfOriginsAutocomplete(autocomplete.Select2QuerySetView):
 
 class MSMainScriptAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        # Pobierz wszystkie unikalne contemporary_repository_place
-        qs = ScriptNames.objects.exclude(manuscripts__main_script=None).distinct()
-        # Filtrowanie wyników na podstawie wprowadzonego zapytania (self.q)
+        qs = ScriptNames.objects.exclude(
+            manuscripts__main_script=None
+        ).filter(
+            manuscripts__display_as_main=True
+        ).distinct()
+
         if self.q:
-            # Tworzymy listę warunków dla filtrowania po polu 'name'
             filters = Q(name__icontains=self.q)
-            # Zastosujemy filtrowanie na podstawie pola 'name'
             qs = qs.filter(filters)
 
         return qs
+
 
     def get_result_label(self, item):
         # Zwróć etykietę wyniku jako str() z obiektu Places
@@ -1983,16 +2010,18 @@ class MSMainScriptAutocomplete(autocomplete.Select2QuerySetView):
 
 class MSBindingDateAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        # Pobierz wszystkie unikalne contemporary_repository_place
-        qs = TimeReference.objects.exclude(manuscripts_binding_date__binding_date=None).distinct()
-        # Filtrowanie wyników na podstawie wprowadzonego zapytania (self.q)
+        qs = TimeReference.objects.exclude(
+            manuscripts_binding_date__binding_date=None
+        ).filter(
+            manuscripts_binding_date__display_as_main=True
+        ).distinct()
+
         if self.q:
-            # Tworzymy listę warunków dla filtrowania po polu 'time_description'
             filters = Q(time_description__icontains=self.q)
-            # Zastosujemy filtrowanie na podstawie pola 'time_description'
             qs = qs.filter(filters)
 
         return qs
+
 
     def get_result_label(self, item):
         # Zwróć etykietę wyniku jako str() z obiektu Places

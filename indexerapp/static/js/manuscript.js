@@ -505,7 +505,7 @@ function init_content_table(reinit=false) {
                         if (row.translation_en && row.translation_en.length>1)
                         {
                             let translation_en = ` <span 
-                                title="${row.translation_en}" 
+                                title="Automatic AI translation:\n${row.translation_en}" 
                                 style="
                                     height: 12px;
                                     width: 12px;
@@ -518,7 +518,7 @@ function init_content_table(reinit=false) {
                                 ">
                             </span>`;
 
-                            rendered_html = rendered_html+ translation_en;
+                            rendered_html =  translation_en + rendered_html;
                         }
 
                         return rendered_html;
@@ -2410,6 +2410,9 @@ async function map_init() {
     {
         //var marker = L.marker([markers[m].lat , markers[m].lon ]).addTo(map);
 
+        if( !markers[m].lat  || !markers[m].lon || markers[m].lat < 0.001 || markers[m].lon < 0.001 )
+            continue;
+
         var marker = new L.Marker(new L.LatLng(markers[m].lat, markers[m].lon ), {
             icon:	new L.NumberedDivIcon({number: Number(m)+1}),
             autoPanOnFocus: false
@@ -2426,6 +2429,10 @@ async function map_init() {
         let next_m = parseInt(m)+1
         if(next_m < markers.length)
         {
+            if(markers[next_m].lat < 0.01 || markers[next_m].lon < 0.01 || ! markers[next_m].lat || !markers[next_m].lon)
+                continue;
+
+
             var myVector = L.polyline([
                 (new L.LatLng(markers[m].lat, markers[m].lon )),
                 (new L.LatLng(markers[next_m].lat, markers[next_m].lon ))

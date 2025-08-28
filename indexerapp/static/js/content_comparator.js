@@ -390,7 +390,7 @@ content_comparator_init = function()
                         if (row.translation_en && row.translation_en.length>1)
                         {
                             let translation_en = ` <span 
-                                title="${row.translation_en}" 
+                                title="Automatic AI translation:\n${row.translation_en}" 
                                 style="
                                     height: 12px;
                                     width: 12px;
@@ -403,7 +403,7 @@ content_comparator_init = function()
                                 ">
                             </span>`;
 
-                            rendered_html = rendered_html+ translation_en;
+                            rendered_html =  translation_en + rendered_html;
                         }
 
                         return rendered_html;

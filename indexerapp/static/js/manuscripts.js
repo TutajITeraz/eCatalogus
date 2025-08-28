@@ -439,7 +439,7 @@ manuscripts_init = function()
 
     $('#provenance_place_select').select2({
         ajax: {
-            url: pageRoot+'/places-autocomplete/',
+            url: pageRoot+'/ms-provenance-autocomplete/',
             dataType: 'json',
             xhrFields: {
                 withCredentials: true
@@ -463,6 +463,11 @@ manuscripts_init = function()
           placeholder: '',
     });
     //$('#provenance_place_select').on('select2:select', processFilters);
+
+    $('#form_of_an_item_select').select2({
+          allowClear: true,
+          placeholder: '',
+    });
 
 
     $('#title_select').select2({
@@ -861,6 +866,7 @@ manuscripts_init = function()
     $('#conservation_true').on("change", processFilters);
     $('#provenance_place_select').on("change", processFilters);
     $('#provenance_place_countries_select').on("change", processFilters);
+    $('#form_of_an_item_select').on("change", processFilters);
     $('#title_select').on("change", processFilters);
     $('#author_select').on("change", processFilters);
     $('#clla_liturgical_genre_select').on("change", processFilters);
@@ -1043,6 +1049,8 @@ manuscripts_init = function()
         d.damage_select = $('#damage_select').select2('data').map(item => item.id).join(';');
         d.provenance_place_select = $('#provenance_place_select').select2('data').map(item => item.id).join(';');
         d.provenance_place_countries_select = $('#provenance_place_countries_select').select2('data').map(item => item.id).join(';');
+        d.form_of_an_item_select = $('#form_of_an_item_select').select2('data').map(item => item.id).join(';');
+
         d.title_select = $('#title_select').select2('data').map(item => item.id).join(';');
         //Special case (authors does not have .id)
         d.author_select = $('#author_select').select2('data').map(item => item.text).join(';');
@@ -1098,7 +1106,7 @@ manuscripts_init = function()
     var map_bounds;
     var savedPageLength = 25;
     var currentView = 'table';
-    var currentPlaceType = 'place_of_origin';
+    var currentPlaceType = 'contemporary_repository_place';
 
     function initMap() {
         if (map) {

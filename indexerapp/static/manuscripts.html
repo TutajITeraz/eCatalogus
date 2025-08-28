@@ -78,6 +78,17 @@
                                 <h2 class="w-1/2 flex items-center">Provenance countries</h2>
                                 <select class="manuscript_filter w-1/2" id="provenance_place_countries_select" multiple style="width: 50% !important;"></select>
                             </div>
+
+                            <div class="flex mx-3 mt-1 mb-2">
+                                <h2 class="w-1/2 flex items-center">Form of an item</h2>
+                                <select class="manuscript_filter w-1/2" id="form_of_an_item_select" multiple style="width: 50% !important;">
+                                    <option value="C">Codices</option>
+                                    <option value="F">Fragments</option>
+                                    <option value="P">Palimpsests</option>
+                                    <option value="L">Lost items</option>
+                                </select>
+                            </div>
+
                             <div class="flex mx-3 my-1">
                                 <h2 class="w-1/2 flex items-center">Dating by centirues</h2>
                                 <div class="flex w-1/2">
@@ -1074,7 +1085,7 @@
 
     <!-- Dodany tekst "Fast filters:" -->
     <div class="fast-filters young-serif text-[10px] sm:text-xs md:text-[8pt] text-center">
-        <div id="year-range-slider" class="w-full mt-2"></div>
+        <span>Dating:</span><div id="year-range-slider" class="w-full mt-2"></div>
     </div>
 
     <div class="sort-container flex items-center">
@@ -1101,7 +1112,7 @@
         <div id="tableContainer">
         <table id="manuscripts" class="table table-striped table-bordered table-hover overflow-x-auto" style="width:100%"></table>
         </div>
-        <div id="manuscripts_map" style="display: none; height: 600px;"></div>
+        <div id="manuscripts_map" style="display: none; height: calc(100vh - 600px); min-height: 500px;"></div>
     </div>
     </div>
 
