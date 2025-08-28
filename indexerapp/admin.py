@@ -286,6 +286,8 @@ class ManuscriptBindingComponentsInline(admin.TabularInline):
         models.TextField: {'widget': Textarea(attrs={'rows':3, 'cols':40})},
     }
 
+    
+
 class ManuscriptGenresInline(admin.TabularInline):
     model = ManuscriptGenres
     extra = 0
@@ -590,11 +592,15 @@ class LiturgicalGenresNamesAdmin(admin.ModelAdmin):
 class ManuscriptGenresAdmin(CustomDebateableAdmin):
     list_display=  ['id','manuscript','genre']
 
+    list_filter = [ManuscriptsFilter]
+
 
 class CodicologyAdmin(CustomDebateableAdmin):
     list_display=  [field.name for field in Codicology._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+    
+    list_filter = [ManuscriptsFilter]
 
 class QuiresForm(forms.ModelForm):
     where_in_ms_from = FolioPaginationField()
@@ -615,6 +621,8 @@ class QuiresAdmin(CustomDebateableAdmin):
     list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
     list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
+    list_filter = [ManuscriptsFilter]
+
 
 class WatermarksAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Watermarks._meta.fields
@@ -623,6 +631,8 @@ class WatermarksAdmin(admin.ModelAdmin):
 
 class ManuscriptWatermarksAdmin(CustomDebateableAdmin):
     list_display=  ['id','manuscript','watermark','where_in_manuscript']
+
+    list_filter = [ManuscriptsFilter]
 
 class MusicNotationNamesAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in MusicNotationNames._meta.fields
@@ -649,6 +659,8 @@ class ManuscriptMusicNotationsAdmin(CustomDebateableAdmin):
     list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
     list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
+    list_filter = [ManuscriptsFilter]
+
 
 class ManuscriptHandsForm(forms.ModelForm):
     where_in_ms_from = FolioPaginationField()
@@ -665,6 +677,8 @@ class ManuscriptHandsAdmin(CustomDebateableAdmin):
 
     list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
     list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+
+    list_filter = [ManuscriptsFilter]
 
 
 class HandsAdmin(admin.ModelAdmin):
@@ -690,8 +704,12 @@ class ContributorsAdmin(admin.ModelAdmin):
 class OriginsAdmin(CustomDebateableAdmin):
     list_display=  ['manuscript','origins_date','origins_place', 'data_contributor']
 
+    list_filter = [ManuscriptsFilter]
+
 class ProvenanceAdmin(CustomDebateableAdmin):
     list_display=  ['manuscript','date_from','date_to','place','timeline_sequence','data_contributor']
+
+    list_filter = [ManuscriptsFilter]
 
 
 #BindingTypes
@@ -716,6 +734,8 @@ class BindingMaterialsAdmin(admin.ModelAdmin):
 class ManuscriptBindingMaterialsAdmin(CustomDebateableAdmin):
     list_display=  ['id','manuscript','material']
 
+    list_filter = [ManuscriptsFilter]
+
 
 #BindingComponents
 class BindingComponentsAdmin(admin.ModelAdmin):
@@ -729,6 +749,8 @@ class ManuscriptBindingComponentsAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    list_filter = [ManuscriptsFilter]
+
 #BindingDecorationTypes
 class BindingDecorationTypesAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in BindingDecorationTypes._meta.fields
@@ -739,11 +761,15 @@ class BindingDecorationTypesAdmin(admin.ModelAdmin):
 class ManuscriptBindingDecorationsAdmin(admin.ModelAdmin):
     list_display=  ['id','manuscript','decoration']
 
+    list_filter = [ManuscriptsFilter]
+
 #Binding
 class BindingAdmin((CustomDebateableAdmin)):
     list_display=  [field.name for field in Binding._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+    
+    list_filter = [ManuscriptsFilter]
 
 class RiteNamesAdmin(CustomDebateableAdmin):
     list_display=  [field.name for field in RiteNames._meta.fields
@@ -755,6 +781,8 @@ class ConditionAdmin(CustomDebateableAdmin):
     list_display=  ['manuscript']+[field.name for field in Condition._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+
+    list_filter = [ManuscriptsFilter]
 
 
 class BibliographyAdmin(admin.ModelAdmin):
@@ -785,6 +813,8 @@ class LayoutsAdmin(CustomDebateableAdmin):
 
     list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
     list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+
+    list_filter = [ManuscriptsFilter]
 
 #Calendar
 #Decoration #[ ] TODO Zmienić z admin.ModelAdmin na CustomDebateableAdmin
@@ -891,6 +921,8 @@ class DecorationAdmin(CustomDebateableAdmin):
     list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
     list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
+    list_filter = [ManuscriptsFilter]
+
 
 class DecorationSubjectsAdmin(CustomDebateableAdmin):
 
@@ -920,6 +952,8 @@ class ManuscriptBibliographyAdmin(CustomDebateableAdmin):
     list_display=  [field.name for field in ManuscriptBibliography._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+    
+    list_filter = [ManuscriptsFilter]
 
 class UserOpenAIAPIKeyAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in UserOpenAIAPIKey._meta.fields
