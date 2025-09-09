@@ -727,7 +727,34 @@ function init_content_table(reinit = false) {
 
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
-      // Add more columns as needed
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: function (data, type) {
+          if (type === "display") {
+            return `
+              <a href="/admin/indexerapp/content/${data}/change/?_to_field=id&_popup=1"
+                 class="edit_widget related-widget-wrapper-link change-related"
+                 data-popup="yes"
+                 title="Change content"
+                 onclick="window.openDataTablePopup(this.href, window.content_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+              </a>
+              <a href="/admin/indexerapp/content/${data}/delete/?_to_field=id&_popup=1"
+                 class="delete_widget related-widget-wrapper-link delete-related"
+                 data-popup="yes"
+                 title="Delete content"
+                 onclick="window.openDataTablePopup(this.href, window.content_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+              </a>
+            `;
+          }
+          return data;
+        },
+      },
     ],
     order: [
       [1, "asc"], // kolumna 1 to sequence_in_ms, rosnąco
@@ -1339,6 +1366,39 @@ function init_decoration_table(table_info) {
 
       { data: "technique", title: "technique", width: "15%" },
       { data: "date_of_the_addition", title: "addition date" },
+
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: (data, type) =>
+          type === "display"
+            ? `
+          <a href="/admin/indexerapp/decoration/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change decoration"
+             onclick="window.openDataTablePopup(this.href, ${table_info.tableSelector.replace(
+               "#",
+               "decoration_tables_"
+             )}.table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/decoration/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete decoration"
+             onclick="window.openDataTablePopup(this.href, ${table_info.tableSelector.replace(
+               "#",
+               "decoration_tables_"
+             )}.table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+          </a>
+        `
+            : data,
+      },
       //{ "data": "comments", "title": "Comments" },
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
@@ -1500,7 +1560,7 @@ function init_origins_table() {
       { data: "id", title: "id", visible: false },
       { data: "origins_date", title: "origins date", width: "10%" },
       { data: "origins_place", title: "origins place", width: "30%" },
-      { data: "origins_comment", title: "origins comment", width: "60%" },
+      { data: "origins_comment", title: "origins comment", width: "50%" },
       {
         data: "provenance_comments",
         title: "provenance comments",
@@ -1508,6 +1568,34 @@ function init_origins_table() {
       },
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: function (data, type) {
+          if (type === "display") {
+            return `
+              <a href="/admin/indexerapp/origins/${data}/change/?_to_field=id&_popup=1"
+                 class="edit_widget related-widget-wrapper-link change-related"
+                 data-popup="yes"
+                 title="Change origin"
+                 onclick="window.openDataTablePopup(this.href, window.origins_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+              </a>
+              <a href="/admin/indexerapp/origins/${data}/delete/?_to_field=id&_popup=1"
+                 class="delete_widget related-widget-wrapper-link delete-related"
+                 data-popup="yes"
+                 title="Delete origin"
+                 onclick="window.openDataTablePopup(this.href, window.origins_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+              </a>
+            `;
+          }
+          return data;
+        },
+      },
     ],
     initComplete: function () {
       displayDebate(origins_table, "#origins");
@@ -1878,9 +1966,37 @@ function init_provenance_table() {
       },
       { data: "place", title: "place", width: "30%" },
       { data: "timeline_sequence", title: "timeline_sequence", visible: false },
-      { data: "comment", title: "comment", width: "60%" },
+      { data: "comment", title: "comment", width: "50%" },
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: function (data, type) {
+          if (type === "display") {
+            return `
+              <a href="/admin/indexerapp/provenance/${data}/change/?_to_field=id&_popup=1"
+                 class="edit_widget related-widget-wrapper-link change-related"
+                 data-popup="yes"
+                 title="Change provenance"
+                 onclick="window.openDataTablePopup(this.href, window.provenance_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+              </a>
+              <a href="/admin/indexerapp/provenance/${data}/delete/?_to_field=id&_popup=1"
+                 class="delete_widget related-widget-wrapper-link delete-related"
+                 data-popup="yes"
+                 title="Delete provenance"
+                 onclick="window.openDataTablePopup(this.href, window.provenance_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+              </a>
+            `;
+          }
+          return data;
+        },
+      },
     ],
     order: [
       { data: "timeline_sequence", order: "asc" }, // Sort by the "manuscript_name" column in ascending order
@@ -1892,6 +2008,7 @@ function init_provenance_table() {
   });
 }
 
+//Bibliography----------------------------------------------------------------
 //Bibliography----------------------------------------------------------------
 var bibliography_table;
 
@@ -1913,9 +2030,37 @@ function init_bibliography_table() {
     pageLength: 10,
     bAutoWidth: false,
     columns: [
-      { data: "title", title: "title", width: "70%" },
+      { data: "title", title: "title", width: "60%" },
       { data: "author", title: "author", width: "20%" },
       { data: "year", title: "year", width: "10%" },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: function (data, type) {
+          if (type === "display") {
+            return `
+              <a href="/admin/indexerapp/manuscriptbibliography/${data}/change/?_to_field=id&_popup=1"
+                 class="edit_widget related-widget-wrapper-link change-related"
+                 data-popup="yes"
+                 title="Change bibliography"
+                 onclick="window.openDataTablePopup(this.href, window.bibliography_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+              </a>
+              <a href="/admin/indexerapp/manuscriptbibliography/${data}/delete/?_to_field=id&_popup=1"
+                 class="delete_widget related-widget-wrapper-link delete-related"
+                 data-popup="yes"
+                 title="Delete bibliography"
+                 onclick="window.openDataTablePopup(this.href, window.bibliography_table); return false;">
+                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+              </a>
+            `;
+          }
+          return data;
+        },
+      },
     ],
   });
 }

@@ -1590,21 +1590,16 @@ class BibliographyAjaxView(View):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
 
-        #Zotero:
+        # Get ManuscriptBibliography objects
         bibliography = ms_instance.ms_bibliography.all()
 
-        bibliography_full = [b.bibliography for b in bibliography]
-
-        #zot = zotero.Zotero(ZOTERO_library_id, ZOTERO_library_type, ZOTERO_api_key)
-        #allItems = zot.items()
-
-        #info_dict = []
-        #for b in bibliography:
-        #    item = zot.item(b.bibliography.zotero_id, limit=50, content='html', style='acm-siggraph', linkwrap='1')
-        #    info_dict.append(item[0])
-
-        skip_fields = ['id', 'manuscript']
-        info_dict = [get_obj_dictionary(entry, skip_fields) for entry in bibliography_full]
+        # Serialize ManuscriptBibliography with Bibliography fields
+        info_dict = []
+        skip_fields = ['manuscript', 'bibliography']  # Exclude foreign key objects
+        for entry in bibliography:
+            bib_dict = get_obj_dictionary(entry.bibliography, skip_fields=['zotero_id'])  # Get Bibliography fields
+            bib_dict['id'] = entry.id  # Use ManuscriptBibliography id
+            info_dict.append(bib_dict)
 
         # Create the response dictionary
         data = {

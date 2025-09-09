@@ -270,7 +270,7 @@
                                             data-id-source="getMSInfo"
                                             href="/admin/indexerapp/quires/add/?_to_field=id&_popup=1"
                                             @click.prevent="openUniversalPopup($event)"
-                                            title="Add watermark"
+                                            title="Add quire"
                                         >
                                             <img src="/static/admin/img/icon-addlink.svg" alt="Add">
                                         </span>
@@ -298,7 +298,7 @@
                                             data-id-source="getMSInfo"
                                             href="/admin/indexerapp/layouts/add/?_to_field=id&_popup=1"
                                             @click.prevent="openUniversalPopup($event)"
-                                            title="Add watermark"
+                                            title="Add layout"
                                         >
                                             <img src="/static/admin/img/icon-addlink.svg" alt="Add">
                                         </span>
@@ -328,7 +328,7 @@
                                                 data-id-source="getMSInfo"
                                                 href="/admin/indexerapp/manuscripthands/add/?_to_field=id&_popup=1"
                                                 @click.prevent="openUniversalPopup($event)"
-                                                title="Add watermark"
+                                                title="Add hand"
                                             >
                                                 <img src="/static/admin/img/icon-addlink.svg" alt="Add">
                                             </span>
@@ -364,7 +364,7 @@
                                                 data-id-source="getMSInfo"
                                                 href="/admin/indexerapp/manuscripthands/add/?_to_field=id&_popup=1"
                                                 @click.prevent="openUniversalPopup($event)"
-                                                title="Add watermark"
+                                                title="Add hand"
                                             >
                                                 <img src="/static/admin/img/icon-addlink.svg" alt="Add">
                                             </span>
@@ -394,7 +394,7 @@
                                                 data-id-source="getMSInfo"
                                                 href="/admin/indexerapp/manuscriptmusicnotations/add/?_to_field=id&_popup=1"
                                                 @click.prevent="openUniversalPopup($event)"
-                                                title="Add watermark"
+                                                title="Add music notation"
                                             >
                                                 <img src="/static/admin/img/icon-addlink.svg" alt="Add">
                                             </span>
@@ -565,6 +565,21 @@
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Initials</span></button>
                                 
                                 <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+
+                                    <span
+                                        x-show="DISPLAY_EDIT_OPTIONS"
+                                        class="add_widget"
+                                        data-popup="yes"
+                                        data-param="manuscript"
+                                        data-id-source="getMSInfo"
+                                        href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                                        @click.prevent="openUniversalPopup($event)"
+                                        title="Add initials"
+                                    >
+                                        <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                    </span>
+                                    <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#initials').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
                                     <table  x-init="init_initials_table" id="initials" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                 </div>
                             </div>
@@ -574,6 +589,20 @@
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Miniatures</span></button>
                             
                             <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                <span
+                                x-show="DISPLAY_EDIT_OPTIONS"
+                                class="add_widget"
+                                data-popup="yes"
+                                data-param="manuscript"
+                                data-id-source="getMSInfo"
+                                href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                                @click.prevent="openUniversalPopup($event)"
+                                title="Add miniatures"
+                            >
+                                <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                            </span>
+                            <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#miniatures').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
                                 <table  x-init="init_miniatures_table" id="miniatures" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             </div>
                         </div>
@@ -583,6 +612,23 @@
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Borders / Others</span></button>
                             
                             <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                            
+                                <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                    <span
+                                    x-show="DISPLAY_EDIT_OPTIONS"
+                                    class="add_widget"
+                                    data-popup="yes"
+                                    data-param="manuscript"
+                                    data-id-source="getMSInfo"
+                                    href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                                    @click.prevent="openUniversalPopup($event)"
+                                    title="Add borders"
+                                >
+                                    <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                </span>
+                                <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#borders_others').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+    
+
                                 <table  x-init="init_borders_others_table" id="borders_others" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             </div>
                         </div>
@@ -653,6 +699,21 @@
                 
                 <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
 
+                    <span
+                        x-show="DISPLAY_EDIT_OPTIONS"
+                        class="add_widget"
+                        data-popup="yes"
+                        data-param="manuscript"
+                        data-id-source="getMSInfo"
+                        href="/admin/indexerapp/content/add/?_to_field=id&_popup=1"
+                        @click.prevent="openUniversalPopup($event)"
+                        title="Add content"
+                    >
+                        <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                    </span>
+                    <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#content').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
+
                     <div>
                         <label class="ml-2" for="genreSelect">Genre:</label>
                         <select id="genreSelect" style="width: 200px;">
@@ -697,6 +758,24 @@
                                 <span class="printIt title">Origins and dating</span></button>
                             
                             <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                
+                                <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                    <span
+                                    x-show="DISPLAY_EDIT_OPTIONS"
+                                    class="add_widget"
+                                    data-popup="yes"
+                                    data-param="manuscript"
+                                    data-id-source="getMSInfo"
+                                    href="/admin/indexerapp/origins/add/?_to_field=id&_popup=1"
+                                    @click.prevent="openUniversalPopup($event)"
+                                    title="Add origins"
+                                >
+                                    <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                </span>
+                                <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#origins').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+    
+                                
+                                
                                 <table  x-init="init_origins_table" id="origins" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             </div>
                         </div>
@@ -708,6 +787,23 @@
                                 
                                 <div class="open-inside" x-show="open2" x-on:transitionstart="map_refresh()" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                                     <div>
+
+
+                                        <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                            <span
+                                            x-show="DISPLAY_EDIT_OPTIONS"
+                                            class="add_widget"
+                                            data-popup="yes"
+                                            data-param="manuscript"
+                                            data-id-source="getMSInfo"
+                                            href="/admin/indexerapp/provenance/add/?_to_field=id&_popup=1"
+                                            @click.prevent="openUniversalPopup($event)"
+                                            title="Add provenance"
+                                        >
+                                            <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                        </span>
+                                        <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#provenance').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+            
 
                                         <table x-init="init_provenance_table" id="provenance" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                         <!--
@@ -777,11 +873,21 @@
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                         
-                        <!--    
-                        <div class="verticalTable" x-html="(await getBooksHTML())">
-                            Loading...<div class="loading-spinner"></div>
-                        </div>
-                        -->
+                        <span
+                            x-show="DISPLAY_EDIT_OPTIONS"
+                            class="add_widget"
+                            data-popup="yes"
+                            data-param="manuscript"
+                            data-id-source="getMSInfo"
+                            href="/admin/indexerapp/manuscriptbibliography/add/?_to_field=id&_popup=1"
+                            @click.prevent="openUniversalPopup($event)"
+                            title="Add bibliography"
+                        >
+                            <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                        </span>
+                        <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#bibliography').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
+
                         <div>
                             <table  x-init="init_bibliography_table" id="bibliography" class="table table-striped  table-bordered table-hover" style="width:100%"></table>
                             <a class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5" x-bind:href="'/bibliography_export/?ms='+(await getMSInfo()).manuscript.id" x-bind:download="(await getMSInfo()).manuscript.name+' bibliography.bib'">Save all to Zotero compatible BibTeX .bib file</a>    
