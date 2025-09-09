@@ -8,7 +8,7 @@ let foreign_id_name='MSPL';
 
 if(loc == "https://eclla.hostline.net.pl")
 {
-  pageRoot="https://indexer.rebold.hostline.net.pl";
+  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
   projectId=1;//eCLLA
 }
 else if(loc == "http://127.0.0.1")
@@ -16,29 +16,29 @@ else if(loc == "http://127.0.0.1")
   pageRoot="http://127.0.0.1:8000";
   projectId=2;//LP
 }
-else if(loc == "https://indexer.rebold.hostline.net.pl")
+else if(loc == "https://monumenta-poloniae-liturgica.ispan.pl")
 {
-  pageRoot="https://indexer.rebold.hostline.net.pl";
+  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
   projectId=2;//All
 }
 else if(loc == "https://lp.hostline.net.pl")
 {
-  pageRoot="https://indexer.rebold.hostline.net.pl";
+  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
   projectId=2;//LP
 }
 else if(loc == "http://lp.hostline.net.pl")
 {
-  pageRoot="https://indexer.rebold.hostline.net.pl";
+  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
   projectId=2;//LP
 }
 else if(loc == "https://liturgicapoloniae.hostline.net.pl")
     {
-      pageRoot="https://indexer.rebold.hostline.net.pl";
+      pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
       projectId=2;//LP
     }
     else if(loc == "http://liturgicapoloniae.hostline.net.pl")
     {
-      pageRoot="https://indexer.rebold.hostline.net.pl";
+      pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
       projectId=2;//LP
     }
     
@@ -273,3 +273,15 @@ function getCookie(name) {
     }
     return cookieValue;
 }
+
+
+var DISPLAY_EDIT_OPTIONS = null;
+const request = new XMLHttpRequest();
+request.open("GET", pageRoot+`/main_info/`, false); // `false` makes the request synchronous
+request.send(null);
+
+if (request.status === 200) {
+  console.log(request.responseText);
+  DISPLAY_EDIT_OPTIONS = JSON.parse(request.responseText).edit_mode;
+}
+console.log(DISPLAY_EDIT_OPTIONS);

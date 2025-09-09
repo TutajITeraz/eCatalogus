@@ -264,6 +264,10 @@ class MainInfoAjaxView(View):
         is_superuser = request.user.is_superuser
         is_staff = request.user.is_staff
 
+        edit_mode = False
+        if hasattr(request.user, "profile"):
+            edit_mode = request.user.profile.edit_mode
+
         # Define the list of permissions to check
         permissions_to_check = [
             'add_manuscripts',
@@ -288,7 +292,8 @@ class MainInfoAjaxView(View):
             'groups': groups,
             'is_superuser': is_superuser,
             'is_staff': is_staff,
-            'import_permissions': import_permissions
+            'import_permissions': import_permissions,
+            'edit_mode': edit_mode
         }
         return JsonResponse(data)
 
@@ -1284,7 +1289,7 @@ class LayoutsAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
+        skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_layouts.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1357,7 +1362,7 @@ class QuiresAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
+        skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_quires.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1372,7 +1377,7 @@ class ConditionAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
+        skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_condition.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1436,7 +1441,7 @@ class BindingAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
+        skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_binding.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1504,7 +1509,7 @@ class MusicNotationAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
+        skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_music_notation.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1563,23 +1568,21 @@ class WatermarksAjaxView(View):
     def get(self, request, *args, **kwargs):
         pk = self.request.GET.get('ms')
         ms_instance = get_object_or_404(Manuscripts, id=pk)
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
-        info_queryset = ms_instance.ms_watermarks.all()
-        info_dict_original = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
+        info_queryset = ms_instance.ms_watermarks.all()  # ManuscriptWatermarks objects
+        
+        # Create a list of dictionaries for ManuscriptWatermarks, keeping id
+        skip_fields = ['manuscript', 'watermark']  # Skip ForeignKey fields
+        info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
-
-        watermarks_full = [w.watermark for w in info_queryset]
-
-        info_dict = [get_obj_dictionary(entry, skip_fields) for entry in watermarks_full]
-
-        for idx, obj in enumerate(info_dict):
-            obj['where_in_manuscript'] = info_dict_original[idx]['where_in_manuscript']
+        # Merge all Watermark fields into the ManuscriptWatermarks dictionary, excluding Watermark id
+        for idx, entry in enumerate(info_queryset):
+            watermark_dict = get_obj_dictionary(entry.watermark, skip_fields=['id'])  # Skip Watermark id
+            info_dict[idx].update(watermark_dict)
 
         # Create the response dictionary
         data = {
-            'data': info_dict,
+            'data': info_dict
         }
-
         return JsonResponse(data)
 
 class BibliographyAjaxView(View):
@@ -3378,13 +3381,19 @@ class MSContentView(View):
         return render(request, self.template_name, {'obj_dict': obj_dict})
 """
 
+"""
 class MSMusicNotationView(View):
     template_name = 'music_notation.html'
 
     def get(self, request, pk):
-        skip_fields = ['id', 'manuscript']
+        skip_fields = [ 'manuscript']
         instance = get_object_or_404(Manuscripts, id=pk)
         music_notation_objects = instance.ms_music_notation.all()
+
+        print('music_notation_objects')
+        print(music_notation_objects)
+
+
         music_notation = [get_obj_dictionary(entry, skip_fields) for entry in music_notation_objects]
 
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -3395,7 +3404,7 @@ class MSMusicNotationView(View):
             return JsonResponse(data)
 
         return render(request, self.template_name, {'music_notation': music_notation})
-
+"""
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ManuscriptDetail(LoginRequiredMixin, View):

@@ -1144,3 +1144,50 @@ ul.decoration_comment {
         margin-bottom: 0;
     }
 }
+
+
+.add_widget{
+    display: inline;
+    cursor:pointer;
+}
+.add_widget img{
+    display: inline;
+}
+.add_widget:hover {
+    text-decoration: underline;
+}
+
+.edit_widget {
+    display: inline;
+    cursor:pointer;
+}
+.edit_widget img {
+    display: inline;
+}
+.edit_widget:hover {
+    text-decoration: underline;
+}
+
+
+.delete_widget {
+    display: inline;
+    cursor:pointer;
+}
+.delete_widget img {
+    display: inline;
+}
+.delete_widget:hover {
+    text-decoration: underline;
+}
+
+
+.refresh_widget {
+    display: inline;
+    cursor:pointer;
+}
+.refresh_widget img {
+    display: inline;
+}
+.refresh_widget:hover {
+    text-decoration: underline;
+}

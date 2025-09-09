@@ -25,6 +25,11 @@ import modelclone
 from django.db.models import Q
 
 
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import User
+
+
+
 
 ########################  FolioPaginationWidget  ###################################
 
@@ -973,6 +978,14 @@ class UserOpenAIAPIKeyAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+class ProfileInline(admin.StackedInline):
+    model = Profile
+    can_delete = False
+
+# Define a new User admin
+class UserAdmin(BaseUserAdmin):
+    inlines = (ProfileInline,)
+
 class ImproveOurDataEntryAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in ImproveOurDataEntry._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -983,6 +996,9 @@ class TraditionsAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+# Re-register UserAdmin
+admin.site.unregister(User)
+admin.site.register(User, UserAdmin)
 admin.site.register(Content,ContentAdmin)
 admin.site.register(Manuscripts,ManuscriptsAdmin)
 admin.site.register(Clla,CllaAdmin)

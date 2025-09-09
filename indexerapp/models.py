@@ -441,6 +441,10 @@ class UserOpenAIAPIKey(models.Model):
         db_table = 'user_openai_api_key'
         verbose_name_plural = 'Users OpenAI API Keys'
 
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    edit_mode = models.BooleanField(default=False)
+
 class Content(models.Model):
 
     def calc_last_sequence():
@@ -1299,6 +1303,7 @@ class Formulas(models.Model):
     text = models.TextField(blank=True, null=True)
     tradition = models.ManyToManyField('Traditions', related_name='%(class)s_traditions', blank=True)
     translation_en = models.TextField(blank=True, null=True)
+    translation_pl = models.TextField(blank=True, null=True)
 
 
     class Meta:

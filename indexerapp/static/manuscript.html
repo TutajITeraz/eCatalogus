@@ -43,9 +43,16 @@
         
         <div class="right_column pr-1 md:pr-2 overflow-x-auto overflow-y-scroll" id="rightColumn">
             <div class="open-lvl-0" x-data="{ open: false }">
-                <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/info.svg"></img><span class="printIt title">Main info</span></button>
+                <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open">
+                    <img class="button-icon" src="/static/img/icons/info.svg"></img>
+                    <span class="printIt title">Main info</span>
+                </button>
                 
                 <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                    
+                    <a x-show="DISPLAY_EDIT_OPTIONS" class="add_widget" data-popup="yes" href="/admin/indexerapp/manuscripts/add/?_to_field=id&_popup=1" title="Add manuscript"><img src="/static/admin/img/icon-addlink.svg" alt="Add"></a>
+                    <a x-show="DISPLAY_EDIT_OPTIONS" class="edit_widget" data-href-template="/admin/indexerapp/manuscripts/__fk__/change/?_to_field=id&_popup=1" data-popup="yes" title="Change selected manuscripts" x-bind:href="'/admin/indexerapp/manuscripts/'+(await getMSInfo()).manuscript.id+'/change/?_to_field=id&amp;_popup=1'"><img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20"></a> 
+                    
                     <table class="printIt verticalTable">
                         <template x-for="(fvalue, fname) in (await getMSInfoFiltered()).manuscript">
                             <tr x-data="getPrintableValues(fname, fvalue)">
@@ -92,11 +99,13 @@
                 </div>
             </div>
 
+
             <template x-if="(await getCLLAInfo()).data?.length && projectId==1">
                 <div class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/books.svg"></img><span class="printIt title">CLLA</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                        
                         <div>
                             <table class="printIt verticalTable">
                                 <template x-for="(fvalue, fname) in ((await getCLLAInfo()).data[0])">
@@ -119,12 +128,44 @@
 
             <br />
 
+            <span
+                x-show="DISPLAY_EDIT_OPTIONS && !((await getCodicologyInfo()).info)"
+                class="add_widget"
+                data-popup="yes"
+                data-param="manuscript"
+                data-id-source="getMSInfo"
+                href="/admin/indexerapp/codicology/add/?_to_field=id&_popup=1"
+                @click.prevent="openUniversalPopup($event)"
+                title="Add codicology and paleography"
+            >
+                <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add codicology and paleography
+            </span>
+
             <template x-if="(await getCodicologyInfo()).info">
                 <div class="open-lvl-0" x-data="{ open: false }">
-                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/codicology.svg"></img><span class="printIt title">Codicology and paleography</span></button>
+                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open">
+                        <img class="button-icon" src="/static/img/icons/codicology.svg"></img>
+                        <span class="printIt title">Codicology and paleography</span>
+                    </button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+
+
                         <div>
+
+
+                            <a x-show="DISPLAY_EDIT_OPTIONS" 
+                                class="edit_widget" 
+                                data-href-template="/admin/indexerapp/codicology/__fk__/change/?_to_field=id&_popup=1" 
+                                data-popup="yes" 
+                                title="Change codicology and paleography" 
+                                target="_blank"
+                                x-bind:href="'/admin/indexerapp/codicology/'+(await getCodicologyInfo()).info.id+'/change/?_to_field=id&amp;_popup=1'"
+                            >
+                                <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
+                            </a> 
+
+
                             <table class="printIt table-hover stripe verticalTable">
 
                                 <tr>
@@ -186,12 +227,29 @@
 
                             <template x-if="(await getWatermarksInfo()).data?.length">
                                 <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                                    <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Watermarks</span></button>
+                                    <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                        <span class="printIt title">Watermarks</span>
+                                    </button>
                                     
                                     <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+
+                                        <span
+                                            x-show="DISPLAY_EDIT_OPTIONS"
+                                            class="add_widget"
+                                            data-popup="yes"
+                                            data-param="manuscript"
+                                            data-id-source="getMSInfo"
+                                            href="/admin/indexerapp/manuscriptwatermarks/add/?_to_field=id&_popup=1"
+                                            @click.prevent="openUniversalPopup($event)"
+                                            title="Add watermark"
+                                        >
+                                        <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                        </span>
+                                        <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#watermarks').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+                                            
+                                            
                                         <div>
-                                            <table x-init="init_watermarks_table" id="watermarks" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
-                
+                                            <table x-init="async () => await init_watermarks_table()" id="watermarks" class="table printIt table-striped table-bordered table-hover" style="width:100%"></table>
                                         </div>
                                     </div>
                                 </div>
@@ -199,9 +257,26 @@
 
                             <template x-if="(await getQuiresInfo()).data?.length">
                                 <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                                    <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Quires</span></button>
+                                    <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                        <span class="printIt title">Quires</span></button>
                                     
                                     <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                    
+                                        <span
+                                            x-show="DISPLAY_EDIT_OPTIONS"
+                                            class="add_widget"
+                                            data-popup="yes"
+                                            data-param="manuscript"
+                                            data-id-source="getMSInfo"
+                                            href="/admin/indexerapp/quires/add/?_to_field=id&_popup=1"
+                                            @click.prevent="openUniversalPopup($event)"
+                                            title="Add watermark"
+                                        >
+                                            <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                        </span>
+                                        <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#quires').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
+                                    
                                         <table x-init="init_quires_table()" id="quires" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                     </div>
                                 </div>
@@ -210,22 +285,56 @@
 
 
                             <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                                <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Layouts</span></button>
+                                <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                    <span class="printIt title">Layouts</span></button>
                                 
                                 <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                
+                                        <span
+                                            x-show="DISPLAY_EDIT_OPTIONS"
+                                            class="add_widget"
+                                            data-popup="yes"
+                                            data-param="manuscript"
+                                            data-id-source="getMSInfo"
+                                            href="/admin/indexerapp/layouts/add/?_to_field=id&_popup=1"
+                                            @click.prevent="openUniversalPopup($event)"
+                                            title="Add watermark"
+                                        >
+                                            <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                        </span>
+                                        <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#layouts').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+                                
                                     <table x-init="init_layouts_table" id="layouts" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                 </div>
                             </div>
 
                             <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                                <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Scripts</span></button>
+                                <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                    <span class="printIt title">Scripts</span></button>
                                 
                                 <div class="open-inside" x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                                     
                                     <div class="openbox open-lvl-2" x-data="{ open3: false }">
-                                        <button @click="open3 = ! open3" class="w-full py-2 bg-[#b9987f] hover:bg-[#b99f8b] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open3"><span class="printIt title">Main Hands</span></button>
+                                        <button @click="open3 = ! open3" class="w-full py-2 bg-[#b9987f] hover:bg-[#b99f8b] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open3">
+                                            <span class="printIt title">Main Hands</span></button>
                                         
                                         <div class="open-inside"  x-show="open3" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                            
+                                            <span
+                                                x-show="DISPLAY_EDIT_OPTIONS"
+                                                class="add_widget"
+                                                data-popup="yes"
+                                                data-param="manuscript"
+                                                data-id-source="getMSInfo"
+                                                href="/admin/indexerapp/manuscripthands/add/?_to_field=id&_popup=1"
+                                                @click.prevent="openUniversalPopup($event)"
+                                                title="Add watermark"
+                                            >
+                                                <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                            </span>
+                                            <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#main_hands').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
+                                            
                                             <table x-init="init_main_hands()" id="main_hands" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>      
                                         
                                             <!--
@@ -242,9 +351,26 @@
                                     </div>
                                 
                                     <div class="openbox open-lvl-2" x-data="{ open3: false }">
-                                        <button @click="open3 = ! open3" class="w-full py-2 bg-[#b9987f] hover:bg-[#b99f8b] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open3"><span class="printIt title">Hands of the additions</span></button>
+                                        <button @click="open3 = ! open3" class="w-full py-2 bg-[#b9987f] hover:bg-[#b99f8b] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open3">
+                                            <span class="printIt title">Hands of the additions</span></button>
                                         
                                         <div class="open-inside"  x-show="open3" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                                            
+                                            <span
+                                                x-show="DISPLAY_EDIT_OPTIONS"
+                                                class="add_widget"
+                                                data-popup="yes"
+                                                data-param="manuscript"
+                                                data-id-source="getMSInfo"
+                                                href="/admin/indexerapp/manuscripthands/add/?_to_field=id&_popup=1"
+                                                @click.prevent="openUniversalPopup($event)"
+                                                title="Add watermark"
+                                            >
+                                                <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                            </span>
+                                            <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#additions_hands').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
+                                            
                                             <table x-init="init_additions_hands" id="additions_hands" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>   
                                         </div>
                                     </div>
@@ -254,10 +380,28 @@
 
                             <template x-if="(await getMusicNotationInfo()).data">
                                 <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                                    <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Music Notation</span></button>
+                                    <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                        <span class="printIt title">Music Notation</span></button>
                                     
                                     <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                                         <div>
+
+                                            <span
+                                                x-show="DISPLAY_EDIT_OPTIONS"
+                                                class="add_widget"
+                                                data-popup="yes"
+                                                data-param="manuscript"
+                                                data-id-source="getMSInfo"
+                                                href="/admin/indexerapp/manuscriptmusicnotations/add/?_to_field=id&_popup=1"
+                                                @click.prevent="openUniversalPopup($event)"
+                                                title="Add watermark"
+                                            >
+                                                <img src="/static/admin/img/icon-addlink.svg" alt="Add">
+                                            </span>
+                                            <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#music_notation').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
+
+                                            
+
                                             <p class="m-3 indent-8" x-text="(await getMSInfo()).manuscript.music_notation_comments"></p>
 
                                             <table x-init="init_music_table" id="music_notation" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
@@ -272,12 +416,38 @@
                 </div>
             </template>
 
+            <span
+                x-show="DISPLAY_EDIT_OPTIONS && !((await getBindingInfo()).info)"
+                class="add_widget"
+                data-popup="yes"
+                data-param="manuscript"
+                data-id-source="getMSInfo"
+                href="/admin/indexerapp/binding/add/?_to_field=id&_popup=1"
+                @click.prevent="openUniversalPopup($event)"
+                title="Add binding"
+            >
+                <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add binding
+            </span>
+
             <template x-if="(await getBindingInfo()).info">
                 <div class="open-lvl-0" x-data="{ open: false }">
-                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/binding.svg"></img><span class="printIt title">Binding</span></button>
+                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/binding.svg"></img>
+                        <span class="printIt title">Binding</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                         <div>
+
+                            <a x-show="DISPLAY_EDIT_OPTIONS" 
+                                class="edit_widget" 
+                                data-href-template="/admin/indexerapp/binding/__fk__/change/?_to_field=id&_popup=1" 
+                                data-popup="yes" 
+                                title="Change binding" 
+                                target="_blank"
+                                x-bind:href="'/admin/indexerapp/binding/'+(await getBindingInfo()).info.id+'/change/?_to_field=id&amp;_popup=1'"
+                            >
+                                <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
+                            </a> 
+
                             <!--<table id="binding" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>-->
                             
                             <!--
@@ -362,6 +532,19 @@
                 </div>
             </template>
 
+            <span
+                x-show="DISPLAY_EDIT_OPTIONS && !((await getDecorationInfo()).data?.length > 0)"
+                class="add_widget"
+                data-popup="yes"
+                data-param="manuscript"
+                data-id-source="getMSInfo"
+                href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                @click.prevent="openUniversalPopup($event)"
+                title="Add decoration"
+            >
+                <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add decoration
+            </span>
+
             
             <template x-if="(await getDecorationInfo()).data?.length">
                 <div class="open-lvl-0" x-data="{ open: false }">
@@ -370,6 +553,8 @@
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                         <div>
                             
+                            <a x-show="DISPLAY_EDIT_OPTIONS" target="_blank" class="edit_widget" data-href-template="/admin/indexerapp/manuscripts/__fk__/change/?_to_field=id&_popup=1" data-popup="yes" title="Edit decoration comments in MS" x-bind:href="'/admin/indexerapp/manuscripts/'+(await getMSInfo()).manuscript.id+'/change/?_to_field=id&amp;_popup=1'"><img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20"></a> 
+
                             <p class="printIt indent-8 m-3" x-text="(await getMSInfo()).manuscript.decoration_comments"></p>
                     
                             <!--
@@ -409,15 +594,43 @@
                 </div>
             </template>
 
+            <span
+                x-show="DISPLAY_EDIT_OPTIONS && !((await getConditionInfo()).data?.length > 0)"
+                class="add_widget"
+                data-popup="yes"
+                data-param="manuscript"
+                data-id-source="getMSInfo"
+                href="/admin/indexerapp/condition/add/?_to_field=id&_popup=1"
+                @click.prevent="openUniversalPopup($event)"
+                title="Add condition"
+            >
+                <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add condition
+            </span>
+
             <template x-if="(await getConditionInfo()).data?.length">
                 <div class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/condition.svg"></img><span class="printIt title">Condition</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                        
+
+
+                            <a x-show="DISPLAY_EDIT_OPTIONS" 
+                                class="edit_widget" 
+                                data-href-template="/admin/indexerapp/condition/__fk__/change/?_to_field=id&_popup=1" 
+                                data-popup="yes" 
+                                title="Change condition" 
+                                target="_blank"
+                                x-bind:href="'/admin/indexerapp/condition/'+(await getConditionInfo()).data[0].id+'/change/?_to_field=id&amp;_popup=1'"
+                            >
+                                <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
+                            </a> 
+                        
                         <div>
                             <table class="printIt verticalTable">
                                 <template x-for="(fvalue, fname) in ((await getConditionInfo()).data[0])">
-                                    <tr x-data="getPrintableValues(fname, fvalue)">
+
+                                    <tr x-show="fname != 'id'" x-data="getPrintableValues(fname, fvalue)">
 
                                         <th>
                                             <div class="field-name"><span x-text="name"></span></div>
@@ -435,7 +648,8 @@
 
 
             <div class="open-lvl-0" x-data="{ open: false }">
-                <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/content.svg"></img><span class="printIt title">Content</span></button>
+                <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/content.svg"></img>
+                    <span class="printIt title">Content</span></button>
                 
                 <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
 
@@ -456,16 +670,31 @@
                 </div>
             </div>
 
+            <span
+                x-show="DISPLAY_EDIT_OPTIONS && !((await getOriginsInfo()).data?.length > 0)"
+                class="add_widget"
+                data-popup="yes"
+                data-param="manuscript"
+                data-id-source="getMSInfo"
+                href="/admin/indexerapp/origins/add/?_to_field=id&_popup=1"
+                @click.prevent="openUniversalPopup($event)"
+                title="Add origins"
+            >
+                <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add origins
+            </span>
+
 
             <template x-if="(await getOriginsInfo()).data?.length">
                 <div class="open-lvl-0" x-data="{ open: false }">
-                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/history.svg"></img><span class="printIt title">History of the manuscript</span></button>
+                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/history.svg"></img>
+                        <span class="printIt title">History of the manuscript</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
 
 
                         <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                            <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Origins and dating</span></button>
+                            <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                <span class="printIt title">Origins and dating</span></button>
                             
                             <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                                 <table  x-init="init_origins_table" id="origins" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
@@ -474,7 +703,8 @@
 
                         <template x-if="(await getProvenanceInfo()).data?.length">
                             <div class="openbox open-lvl-1" x-data="{ open2: false }">
-                                <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Provenance History</span></button>
+                                <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
+                                    <span class="printIt title">Provenance History</span></button>
                                 
                                 <div class="open-inside" x-show="open2" x-on:transitionstart="map_refresh()" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                                     <div>
@@ -526,9 +756,24 @@
                 </div>
             </template>
 
+
+            <span
+                x-show="DISPLAY_EDIT_OPTIONS && !((await getBibliographyInfo()).data?.length > 0)"
+                class="add_widget"
+                data-popup="yes"
+                data-param="manuscript"
+                data-id-source="getMSInfo"
+                href="/admin/indexerapp/manuscriptbibliography/add/?_to_field=id&_popup=1"
+                @click.prevent="openUniversalPopup($event)"
+                title="Add bibliography"
+            >
+                <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add bibliography
+            </span>
+
             <template x-if="(await getBibliographyInfo()).data?.length">
                 <div class="open-lvl-0" x-data="{ open: false }">
-                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/bibliography.svg"></img><span class="printIt title">Bibliography</span></button>
+                    <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/bibliography.svg"></img>
+                        <span class="printIt title">Bibliography</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                         

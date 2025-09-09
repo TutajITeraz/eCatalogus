@@ -244,7 +244,7 @@ urlpatterns = [
     path('manuscript_tei/', views.ManuscriptTEI.as_view(), name='manuscript_tei_xml'),
 
 
-    path('ms_music_notation/<int:pk>/', views.MSMusicNotationView.as_view(), name='ms_music_notation'),
+    #path('ms_music_notation/<int:pk>/', views.MSMusicNotationView.as_view(), name='ms_music_notation'),
     #path('ms_content/<int:pk>/', views.MSContentView.as_view(), name='ms_content_view'),
     path('api/', include(router.urls)),
 

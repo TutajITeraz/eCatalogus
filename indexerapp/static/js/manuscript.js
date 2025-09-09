@@ -3,7 +3,6 @@ let manuscriptId = null;
 var map = null;
 var map_bounds = null;
 
-
 const colorPalette = [
     '#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
     '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4',
@@ -52,13 +51,75 @@ $(document).ready(function() {
     setTimeout(function() {
         setTableHeight();
     }, 700);  // A small delay ensures elements are fully rendered
-});
+})
 
 
 // Adjust height on window resize
 $(window).resize(function() {
     setTableHeight();
 });
+
+
+window.openUniversalPopup = async function(event) {
+  try {
+    // Pobierz nazwę parametru z atrybutu data-param (domyślnie brak dodatkowego parametru)
+    const paramName = event.currentTarget.getAttribute('data-param') || null;
+    // Pobierz źródło ID z atrybutu data-id-source lub użyj statycznego ID
+    const idSource = event.currentTarget.getAttribute('data-id-source') || 'static';
+    let idValue;
+    
+    if (idSource === 'getMSInfo') {
+      const msInfo = await window.getMSInfo();
+      idValue = msInfo?.manuscript?.id;
+    } else if (idSource === 'static') {
+      idValue = event.currentTarget.getAttribute('data-id');
+    } else if (window[idSource] && typeof window[idSource] === 'function') {
+      const result = await window[idSource]();
+      idValue = result?.id;
+    } else {
+      throw new Error(`Nieznane źródło ID: ${idSource}`);
+    }
+
+    if (!idValue) {
+      throw new Error('ID not found');
+    }
+
+    // Pobierz bazowy URL z href linku
+    let popupUrl = event.currentTarget.getAttribute('href');
+    if (paramName) {
+      popupUrl = `${popupUrl}&${paramName}=${idValue}`;
+    } else {
+      popupUrl = popupUrl.replace('__fk__', idValue);
+    }
+
+    // Otwórz popup
+    const popup = window.open(
+      popupUrl,
+      'popup',
+      'width=800,height=600,resizable=yes,scrollbars=yes'
+    );
+
+  } catch (error) {
+    console.error('Błąd podczas otwierania popupu:', error);
+    alert('Błąd: Nie udało się załadować informacji.');
+  }
+};
+
+// Nowy helper do otwierania popupów dla DataTable
+window.openDataTablePopup = (url, tableToRefresh = null) => {
+  const popup = window.open(url, 'popup', 'width=800,height=600,resizable=yes,scrollbars=yes');
+  const checkPopupClosed = setInterval(() => {
+    if (popup.closed) {
+      clearInterval(checkPopupClosed);
+      if (tableToRefresh) {
+        tableToRefresh.ajax.reload();
+      }
+    }
+  }, 500);
+};
+
+
+
 
 async function getMSInfo() {
     return fetchOnce(pageRoot + `/ms_info/?pk=${manuscriptId}`);
@@ -69,6 +130,7 @@ async function getTEIUrl() {
 
     return pageRoot + '/manuscript_tei/?ms=' + (await getMSInfo()).manuscript.id;
 }
+
 
 async function getMSInfoFiltered() {
     var info = (await getMSInfo()).manuscript;
@@ -222,100 +284,103 @@ async function getBibliographyPrintableInfo() {
 
 
 // LAYOUTS
+// LAYOUTS
 var layouts_table;
-
 function init_layouts_table() {
-    layouts_table = $('#layouts').DataTable({
-        "ajax": {
-            "url": pageRoot + '/layouts_info/?ms=' + manuscriptId,
-            "dataSrc": function (data) {
-                return data.data;
-            }
+  layouts_table = $('#layouts').DataTable({
+    ajax: {
+      url: pageRoot + '/layouts_info/?ms=' + manuscriptId,
+      dataSrc: data => data.data
+    },
+    processing: false,
+    serverSide: true,
+    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+    pagingType: "full_numbers",
+    pageLength: 25,
+    bAutoWidth: false,
+    columns: [
+      {
+        data: "graph_img",
+        name: "graph_img",
+        title: "image",
+        /*render: renderImg,*/
+        visible: false
+      },
+      { data: "name", title: "name", width: "5%" },
+      { data: "where_in_ms_from", title: "where in MS from", visible: false },
+      { data: "where_in_ms_to", title: "where in MS to", visible: false },
+      {
+        data: "where",
+        title: "where in MS",
+        render: (data, type, row) => {
+          //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
+          //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
+          let fromText = row.where_in_ms_from;
+          let toText = row.where_in_ms_to;
+          //if(fromIndex)
+          fromText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_from}')">${row.where_in_ms_from}</a></b>`;
+          //if(toIndex)
+          toText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_to}')">${row.where_in_ms_to}</a></b>`;
+          return row.where_in_ms_from === row.where_in_ms_to || row.where_in_ms_to === '-' ? fromText : `${fromText} - ${toText}`;
         },
-        "processing": false,
-        "serverSide": true,
-        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
-        "pagingType": "full_numbers",
-        "pageLength": 25,
-        "bAutoWidth": false, 
-        "columns": [
-            {
-                "data": "graph_img",
-                "name": "graph_img",
-                "title": "image",
-                /*"render": function (data, type, row, meta) {
-                    return renderImg(data, type, row, meta);
-                }*/
-                "visible": false,
-            },
-            { "data": "name", "title": "name", "width": "5%" },
-            { "data": "where_in_ms_from", "title": "where in MS from", "visible": false },
-            { "data": "where_in_ms_to", "title": "where in MS to", "visible": false },
-            {
-                "data": "where",
-                "title": "where in MS",
-                "render": function (data, type, row, meta) {
-                    //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
-                    //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
-
-                    let fromText = row.where_in_ms_from;
-                    let toText = row.where_in_ms_to;
-
-                    //if(fromIndex)
-                    fromText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_from + '\')">' + row.where_in_ms_from + '</a></b>';
-
-                    //if(toIndex)
-                    toText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_to + '\')">' + row.where_in_ms_to + '</a></b>';
-
-                    if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
-                        return fromText;
-                    return fromText + ' - ' + toText;
-                },
-                "width": "10%",
-                "orderable":false,
-            },
-            { "data": "how_many_columns", "title": "how many columns", "width": "10%" },
-            { "data": "lines_per_page_minimum", "title": "lines per page (min)", "visible": false },
-            { "data": "lines_per_page_maximum", "title": "lines per page (max)", "visible": false },
-            {
-                "data": "lines_per_page_minimum",
-                "title": "lines per Page",
-                "render": function (data, type, row, meta) {
-                    if (row.lines_per_page_minimum === row.lines_per_page_maximum) {
-                        return row.lines_per_page_minimum;
-                    } else {
-                        return row.lines_per_page_minimum + " - " + row.lines_per_page_maximum;
-                    }
-                },
-                "width": "10%"
-            },
-            { "data": "written_space_height_max", "title": "written space height (max)", "visible": false },
-            { "data": "written_space_width_max", "title": "written space width (max)", "visible": false },
-            {
-                "data": "written_space",
-                "title": "writtern Space max.",
-                "render": function (data, type, row, meta) {
-                    return row.written_space_height_max + " mm x " + row.written_space_width_max + " mm";
-                }, 
-                "width": "10%"
-            },
-            { "data": "ruling_method", "title": "ruling method", "width": "10%" },
-            { "data": "distance_between_horizontal_ruling", "title": "distance between horizontal ruling", "width": "5%" },
-            { "data": "distance_between_vertical_ruling", "title": "distance between vertical ruling", "width": "5%" },
-
-            { "data": "written_above_the_top_line", "title": "written above the top line", "width": "10%" },
-            { "data": "pricking", "title": "pricking", "width": "5%" },
-            { "data": "comments", "title": "comments", "width": "15%" },
-            { "data": "authors", "title": "authors", "visible": false },
-            { "data": "data_contributor", "title": "data contributor", "visible": false },
-        ],
-        "order": [[1, 'asc']], // Sort by the 'name' column in ascending order
-        "initComplete": function () {
-            displayUniqueAuthorsAndContributors(layouts_table, "#layouts");
-            displayUniqueLayouts(layouts_table, "#layouts");
-
-        }
-    });
+        width: "10%",
+        orderable: false
+      },
+      { data: "how_many_columns", title: "how many columns", width: "10%" },
+      { data: "lines_per_page_minimum", title: "lines per page (min)", visible: false },
+      { data: "lines_per_page_maximum", title: "lines per page (max)", visible: false },
+      {
+        data: "lines_per_page_minimum",
+        title: "lines per Page",
+        render: (data, type, row) => row.lines_per_page_minimum === row.lines_per_page_maximum ? row.lines_per_page_minimum : `${row.lines_per_page_minimum} - ${row.lines_per_page_maximum}`,
+        width: "10%"
+      },
+      { data: "written_space_height_max", title: "written space height (max)", visible: false },
+      { data: "written_space_width_max", title: "written space width (max)", visible: false },
+      {
+        data: "written_space",
+        title: "writtern Space max.",
+        render: (data, type, row) => `${row.written_space_height_max} mm x ${row.written_space_width_max} mm`,
+        width: "10%"
+      },
+      { data: "ruling_method", title: "ruling method", width: "10%" },
+      { data: "distance_between_horizontal_ruling", title: "distance between horizontal ruling", width: "5%" },
+      { data: "distance_between_vertical_ruling", title: "distance between vertical ruling", width: "5%" },
+      { data: "written_above_the_top_line", title: "written above the top line", width: "10%" },
+      { data: "pricking", title: "pricking", width: "5%" },
+      { data: "comments", title: "comments", width: "10%" },
+      { data: "authors", title: "authors", visible: false },
+      { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "5%",
+        render: (data, type) => type === 'display' ? `
+          <a href="/admin/indexerapp/layouts/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change layout"
+             onclick="window.openDataTablePopup(this.href, window.layouts_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/layouts/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete layout"
+             onclick="window.openDataTablePopup(this.href, window.layouts_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+          </a>
+        ` : data
+      }
+    ],
+    order: [[1, 'asc']],
+    initComplete: () => {
+      displayUniqueAuthorsAndContributors(layouts_table, "#layouts");
+      displayUniqueLayouts(layouts_table, "#layouts");
+    }
+  });
 }
 
 function displayUniqueLayouts(dataTable, targetSelector) {
@@ -349,60 +414,68 @@ function displayUniqueLayouts(dataTable, targetSelector) {
     // Prepend the unique layouts div above the table
     $(targetSelector).closest('#layouts_wrapper').before(uniqueLayoutsDiv);
 }
-
-// MUSIC NOTATNION
+// MUSIC NOTATION
 var music_table;
 function init_music_table() {
-    music_table = $('#music_notation').DataTable({
-        "ajax": {
-            "url": pageRoot + '/music_notation_info/?ms=' + manuscriptId,
-            "dataSrc": function (data) {
-                return data.data;
-            }
+  music_table = $('#music_notation').DataTable({
+    ajax: {
+      url: pageRoot + '/music_notation_info/?ms=' + manuscriptId,
+      dataSrc: data => data.data
+    },
+    bAutoWidth: false,
+    columns: [
+      { data: "music_notation_name", title: "music notation name", width: "13%" },
+      { data: "sequence_in_ms", title: "sequence in MS", width: "5%" },
+      { data: "where_in_ms_from", title: "where in MS from", visible: false },
+      { data: "where_in_ms_to", title: "where in MS to", visible: false },
+      {
+        data: "where",
+        title: "where in MS",
+        render: (data, type, row) => {
+          let fromText = row.where_in_ms_from;
+          let toText = row.where_in_ms_to;
+          fromText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_from}')">${row.where_in_ms_from}</a></b>`;
+          toText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_to}')">${row.where_in_ms_to}</a></b>`;
+          return row.where_in_ms_from === row.where_in_ms_to || row.where_in_ms_to === '-' ? fromText : `${fromText} - ${toText}`;
         },
-        "bAutoWidth": false, 
-        "columns": [
-            { "data": "music_notation_name", "title": "music notation name", "width": "13%" },
-            { "data": "sequence_in_ms", "title": "sequence in MS", "width": "5%" },
-            { "data": "where_in_ms_from", "title": "where in MS from", "visible": false },
-            { "data": "where_in_ms_to", "title": "where in MS to", "visible": false },
-            {
-                "data": "where",
-                "title": "where in MS",
-                "render": function (data, type, row, meta) {
-                    //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
-                    //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
-
-                    let fromText = row.where_in_ms_from;
-                    let toText = row.where_in_ms_to;
-
-                    //if(fromIndex)
-                    fromText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_from + '\')">' + row.where_in_ms_from + '</a></b>';
-
-                    //if(toIndex)
-                    toText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_to + '\')">' + row.where_in_ms_to + '</a></b>';
-
-                    if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
-                        return fromText;
-                    return fromText + ' - ' + toText;
-                }, "width": "12%",
-                "orderable":false,
-            },
-            { "data": "dating", "title": "dating", "width": "15%" },
-            { "data": "original", "title": "original", "width": "5%" },
-            { "data": "on_lines", "title": "on Lines", "width": "5%" },
-            { "data": "music_custos", "title": "music custos", "width": "5%" },
-            { "data": "number_of_lines", "title": "number of lines", "width": "5%" },
-            { "data": "comment", "title": "comment", "width": "40%" },
-            { "data": "authors", "title": "authors", "visible": false },
-            { "data": "data_contributor", "title": "data contributor", "visible": false },
-        ],
-        "initComplete": function () {
-            displayUniqueAuthorsAndContributors(music_table, "#music_notation");
-        }
-    });
+        width: "12%",
+        orderable: false
+      },
+      { data: "dating", title: "dating", width: "15%" },
+      { data: "original", title: "original", width: "5%" },
+      { data: "on_lines", title: "on Lines", width: "5%" },
+      { data: "music_custos", title: "music custos", width: "5%" },
+      { data: "number_of_lines", title: "number of lines", width: "5%" },
+      { data: "comment", title: "comment", width: "30%" },
+      { data: "authors", title: "authors", visible: false },
+      { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: (data, type) => type === 'display' ? `
+          <a href="/admin/indexerapp/manuscriptmusicnotations/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change music notation"
+             onclick="window.openDataTablePopup(this.href, window.music_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/manuscriptmusicnotations/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete music notation"
+             onclick="window.openDataTablePopup(this.href, window.music_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+          </a>
+        ` : data
+      }
+    ],
+    initComplete: () => displayUniqueAuthorsAndContributors(music_table, "#music_notation")
+  });
 }
-
 
 var content_table
 
@@ -615,71 +688,83 @@ function init_content_table(reinit=false) {
     content_table.columns(0).search(manuscriptId).draw()
 }
 
-//Quires----------------------------------------------------------------
-var quires_table
+
+// Quires----------------------------------------------------------------
+var quires_table;
 function init_quires_table() {
-    quires_table = $('#quires').DataTable({
-        "ajax": {
-            "url": pageRoot + '/quires_info/?ms=' + manuscriptId,
-            "dataSrc": function (data) {
-                return data.data;
-            }
+  quires_table = $('#quires').DataTable({
+    ajax: {
+      url: pageRoot + '/quires_info/?ms=' + manuscriptId,
+      dataSrc: data => data.data
+    },
+    processing: false,
+    serverSide: true,
+    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+    pagingType: "full_numbers",
+    pageLength: 25,
+    bAutoWidth: false,
+    columns: [
+      {
+        data: "graph_img",
+        name: "graph_img",
+        title: "image",
+        render: renderImg,
+        width: "20%"
+      },
+      { data: "type_of_the_quire", title: "quire type", width: "15%" },
+      { data: "sequence_of_the_quire", title: "sequence in MS", width: "10%" },
+      { data: "where_in_ms_from", title: "where in MS (from)", visible: false },
+      { data: "where_in_ms_to", title: "where in MS (to)", visible: false },
+      {
+        data: "where",
+        title: "where in MS",
+        render: (data, type, row) => {
+          //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
+          //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
+          let fromText = row.where_in_ms_from;
+          let toText = row.where_in_ms_to;
+          //if(fromIndex)
+          fromText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_from}')">${row.where_in_ms_from}</a></b>`;
+          //if(toIndex)
+          toText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_to}')">${row.where_in_ms_to}</a></b>`;
+          return row.where_in_ms_from === row.where_in_ms_to || row.where_in_ms_to === '-' ? fromText : `${fromText} - ${toText}`;
         },
-        "processing": false,
-        "serverSide": true,
-        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
-        "pagingType": "full_numbers",
-        "pageLength": 25,
-        "bAutoWidth": false, 
-        "columns": [
-            {
-                "data": "graph_img",
-                "name": "graph_img",
-                "title": "image",
-                "render": function (data, type, row, meta) {
-                    return renderImg(data, type, row, meta);
-                }, 
-                "width": "20%"
-            },
-            { "data": "type_of_the_quire", "title": "quire type", "width": "15%" },
-            { "data": "sequence_of_the_quire", "title": "sequence in MS", "width": "10%" },
-            { "data": "where_in_ms_from", "title": "where in MS (from)", "visible": false },
-            { "data": "where_in_ms_to", "title": "where in MS (to)", "visible": false },
-            {
-                "data": "where",
-                "title": "where in MS",
-                "render": function (data, type, row, meta) {
-                    //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
-                    //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
-
-                    let fromText = row.where_in_ms_from;
-                    let toText = row.where_in_ms_to;
-
-                    //if(fromIndex)
-                    fromText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_from + '\')">' + row.where_in_ms_from + '</a></b>';
-
-                    //if(toIndex)
-                    toText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_to + '\')">' + row.where_in_ms_to + '</a></b>';
-
-                    if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
-                        return fromText;
-                    return fromText + ' - ' + toText;
-                },
-                "width": "15%",
-                "orderable":false,
-            },
-            { "data": "comment", "title": "comment", "width": "40%" },
-            { "data": "authors", "title": "authors", "visible": false },
-            { "data": "data_contributor", "title": "data contributor", "visible": false }
-        ],
-        "order": [
-            { "data": "sequence_of_the_quire", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
-            { "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
-        ],
-        "initComplete": function () {
-            displayUniqueAuthorsAndContributors(quires_table, "#quires");
-        }
-    });
+        width: "15%",
+        orderable: false
+      },
+      { data: "comment", title: "comment", width: "30%" },
+      { data: "authors", title: "authors", visible: false },
+      { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: (data, type) => type === 'display' ? `
+          <a href="/admin/indexerapp/quires/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change quire"
+             onclick="window.openDataTablePopup(this.href, window.quires_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/quires/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete quire"
+             onclick="window.openDataTablePopup(this.href, window.quires_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+          </a>
+        ` : data
+      }
+    ],
+    order: [
+      { data: "sequence_of_the_quire", order: "asc" },
+      { data: "where_in_ms_from", order: "asc" }
+    ],
+    initComplete: () => displayUniqueAuthorsAndContributors(quires_table, "#quires")
+  });
 }
 
 //Decoration----------------------------------------------------------------
@@ -888,9 +973,7 @@ function init_decoration_table() {
 }
 */
 //TODO Dla pozostałych tabel
-
 var initials_table;
-
 var decoration_tables_initials = {
     table: null,
     tableSelector: '#initials',
@@ -924,11 +1007,9 @@ function init_borders_others_table(){
     init_decoration_table(decoration_tables_borders_others);
 }
 
-function init_miniatures_table(){
-    init_decoration_table(decoration_tables_miniatures);
+function init_miniatures_table() {
+  init_decoration_table(decoration_tables_miniatures);
 }
-
-
 
 function init_decoration_table(table_info) {
     var decoration_groupColumn = 2;
@@ -1306,220 +1387,235 @@ function init_binding_materials_table() {
     });
 }
 
-//Hands----------------------------------------------------------------
+// Hands----------------------------------------------------------------
 var main_hands;
 function init_main_hands() {
-    main_hands = $('#main_hands').DataTable({
-        "ajax": {
-            //"url": pageRoot+"/api/hands/?format=datatables", // Add your URL here
-            "url": pageRoot+"/hands_info/",
-            "type": 'GET',
-            "data": function (d) {
-                d.is_main_text = true;
-                d.ms = manuscriptId;
-            },
-            "dataSrc": function (data) {
-                var processedData = []
-
-                for (var c in data.data) {
-                    processedData[c] = {}
-                    for (var f in data.data[c]) {
-                        processedData[c][f] = getPrintableValues(f, data.data[c][f]).value;
-                    }
-                }
-
-                return processedData;
-            }
-        },
-        "processing": false,
-        //"serverSide": true,
-        "serverSide": false,
-        "lengthMenu": [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
-        "pagingType": "full_numbers",
-        "pageLength": 25,
-        "bAutoWidth": false, 
-        "columns": [
-            { "data": "hand", "title": "hand", "width": "15%" },
-            { "data": "script_name", "title": "script name", "width": "15%" },
-            { "data": "sequence_in_ms", "title": "sequence in ms", "width": "15%" },
-            { "data": "where_in_ms_from", "title": "where in MS (from)", "visible": false },
-            { "data": "where_in_ms_to", "title": "where in MS (to)", "visible": false },
-            { "data": "is_range_interrupted", "title": "range interrupted", "visible": false },
-            {
-                "data": "where",
-                "title": "where in MS",
-                "render": function (data, type, row, meta) {
-                    //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
-                    //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
-
-                    if(row.is_range_interrupted=="Yes" || row.is_range_interrupted=="yes" )
-                        return "";
-
-                    let fromText = row.where_in_ms_from;
-                    let toText = row.where_in_ms_to;
-
-                    //if(fromIndex)
-                    fromText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_from + '\')">' + row.where_in_ms_from + '</a></b>';
-
-                    //if(toIndex)
-                    toText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_to + '\')">' + row.where_in_ms_to + '</a></b>';
-
-                    if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
-                        return fromText;
-                    return fromText + ' - ' + toText;
-                }, 
-                "width": "15%",
-                "orderable":false,
-            },
-            { "data": "is_medieval", "title": "is medieval?", "visible": false },
-            { "data": "is_main_text", "name": "is_main_text", "title": "is main text?", "visible": false },
-            { "data": "comment", "title": "comment", "width": "40%" },
-            { "data": "authors", "title": "authors", "visible": false },
-            { "data": "data_contributor", "title": "data contributor", "visible": false },
-        ],
-        "order": [
-            { "data": "sequence_in_ms", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
-            { "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
-        ],
-        "createdRow": function (row, data, dataIndex) {
-            if (data.is_medieval == true || data.is_medieval == "true" || data.is_medieval == "yes" || data.is_medieval == "Yes") {
-                $(row).addClass('medieval-row');
-            } else {
-                $(row).addClass('non-medieval-row');
-            }
-        },
-        "initComplete": function() {
-            displayDebate(main_hands,"#main_hands");
-
-            displayUniqueAuthorsAndContributors(main_hands,"#main_hands");
-            displayScriptsLegend(main_hands,"#main_hands");
+  main_hands = $('#main_hands').DataTable({
+    ajax: {
+      url: pageRoot + "/hands_info/",
+      type: 'GET',
+      data: d => ({ is_main_text: true, ms: manuscriptId }),
+      dataSrc: data => {
+        const processedData = [];
+        for (const c in data.data) {
+          processedData[c] = {};
+          for (const f in data.data[c]) {
+            processedData[c][f] = getPrintableValues(f, data.data[c][f]).value;
+          }
         }
-    });
+        return processedData;
+      }
+    },
+    processing: false,
+    serverSide: false,
+    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+    pagingType: "full_numbers",
+    pageLength: 25,
+    bAutoWidth: false,
+    columns: [
+      { data: "hand", title: "hand", width: "15%" },
+      { data: "script_name", title: "script name", width: "15%" },
+      { data: "sequence_in_ms", title: "sequence in ms", width: "15%" },
+      { data: "where_in_ms_from", title: "where in MS (from)", visible: false },
+      { data: "where_in_ms_to", title: "where in MS (to)", visible: false },
+      { data: "is_range_interrupted", title: "range interrupted", visible: false },
+      {
+        data: "where",
+        title: "where in MS",
+        render: (data, type, row) => {
+          if (row.is_range_interrupted === "Yes" || row.is_range_interrupted === "yes") return "";
+          let fromText = row.where_in_ms_from;
+          let toText = row.where_in_ms_to;
+          fromText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_from}')">${row.where_in_ms_from}</a></b>`;
+          toText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_to}')">${row.where_in_ms_to}</a></b>`;
+          return row.where_in_ms_from === row.where_in_ms_to || row.where_in_ms_to === '-' ? fromText : `${fromText} - ${toText}`;
+        },
+        width: "15%",
+        orderable: false
+      },
+      { data: "is_medieval", title: "is medieval?", visible: false },
+      { data: "is_main_text", name: "is_main_text", title: "is main text?", visible: false },
+      { data: "comment", title: "comment", width: "30%" },
+      { data: "authors", title: "authors", visible: false },
+      { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: (data, type) => type === 'display' ? `
+          <a href="/admin/indexerapp/manuscripthands/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change hand"
+             onclick="window.openDataTablePopup(this.href, window.main_hands); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/manuscripthands/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete hand"
+             onclick="window.openDataTablePopup(this.href, window.main_hands); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+          </a>
+        ` : data
+      }
+    ],
+    order: [
+      { data: "sequence_in_ms", order: "asc" },
+      { data: "where_in_ms_from", order: "asc" }
+    ],
+    createdRow: (row, data) => {
+      $(row).addClass(data.is_medieval === true || data.is_medieval === "true" || data.is_medieval === "yes" || data.is_medieval === "Yes" ? 'medieval-row' : 'non-medieval-row');
+    },
+    initComplete: () => {
+      displayDebate(main_hands, "#main_hands");
+      displayUniqueAuthorsAndContributors(main_hands, "#main_hands");
+      displayScriptsLegend(main_hands, "#main_hands");
+    }
+  });
 }
 
 var additions_hands;
 function init_additions_hands() {
-    additions_hands = $('#additions_hands').DataTable({
-        "ajax": {
-            //"url": pageRoot+"/api/hands/?format=datatables", // Add your URL here
-            "url": pageRoot+"/hands_info/",
-            "type": 'GET',
-            "data": function (d) {
-                d.is_main_text = false;
-                d.ms = manuscriptId;
-            },
-            "dataSrc": function (data) {
-                var processedData = []
-
-                for (var c in data.data) {
-                    processedData[c] = {}
-                    for (var f in data.data[c]) {
-                        processedData[c][f] = getPrintableValues(f, data.data[c][f]).value;
-                    }
-                }
-
-                return processedData;
-            }
-        },
-        "processing": false,
-        "serverSide": true,
-        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
-        "pagingType": "full_numbers",
-        "pageLength": 25,
-        "bAutoWidth": false, 
-        "columns": [
-            { "data": "hand", "title": "hand", "width": "15%" },
-            { "data": "script_name", "title": "script name", "width": "15%" },
-            { "data": "sequence_in_ms", "title": "sequence in ms", "width": "15%" },
-            { "data": "where_in_ms_from", "title": "where in MS (from)", "visible": false },
-            { "data": "where_in_ms_to", "title": "where in MS (to)", "visible": false },
-            { "data": "is_range_interrupted", "title": "range interrupted", "visible": false },
-            {
-                "data": "where",
-                "title": "where in MS",
-                "render": function (data, type, row, meta) {
-                    //let fromIndex = findCanvasIndexByLabel(row.where_in_ms_from);
-                    //let toIndex = findCanvasIndexByLabel(row.where_in_ms_to);
-
-                    if(row.is_range_interrupted=="Yes" || row.is_range_interrupted=="yes" )
-                        return "";
-
-                    let fromText = row.where_in_ms_from;
-                    let toText = row.where_in_ms_to;
-
-                    //if(fromIndex)
-                    fromText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_from + '\')">' + row.where_in_ms_from + '</a></b>';
-
-                    //if(toIndex)
-                    toText = '<b><a  onclick="goToCanvasByLabel(\'' + row.where_in_ms_to + '\')">' + row.where_in_ms_to + '</a></b>';
-
-                    if (row.where_in_ms_from == row.where_in_ms_to || row.where_in_ms_to == '-')
-                        return fromText;
-                    return fromText + ' - ' + toText;
-                }, 
-                "width": "15%",
-                "orderable":false,
-            },
-            { "data": "is_medieval", "title": "is medieval?", "visible": false },
-            { "data": "is_main_text", "name": "is_main_text", "title": "is main text?", "visible": false },
-            { "data": "comment", "title": "comment", "width": "40%" },
-            { "data": "authors", "title": "authors", "visible": false },
-            { "data": "data_contributor", "title": "data contributor", "visible": false },
-        ],
-        "order": [
-            { "data": "sequence_in_ms", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
-            { "data": "where_in_ms_from", "order": "asc" }      // Then sort by the "manuscript" column in descending order
-        ],
-        "createdRow": function (row, data, dataIndex) {
-            if (data.is_medieval == true || data.is_medieval == "true" || data.is_medieval == "yes" || data.is_medieval == "Yes") {
-                $(row).addClass('medieval-row');
-            } else {
-                $(row).addClass('non-medieval-row');
-            }
-        },
-        "initComplete": function() {
-            displayDebate(additions_hands,"#additions_hands");
-            displayUniqueAuthorsAndContributors(additions_hands,"#additions_hands");
-            displayScriptsLegend(additions_hands,"#additions_hands");
+  additions_hands = $('#additions_hands').DataTable({
+    ajax: {
+      url: pageRoot + "/hands_info/",
+      type: 'GET',
+      data: d => ({ is_main_text: false, ms: manuscriptId }),
+      dataSrc: data => {
+        const processedData = [];
+        for (const c in data.data) {
+          processedData[c] = {};
+          for (const f in data.data[c]) {
+            processedData[c][f] = getPrintableValues(f, data.data[c][f]).value;
+          }
         }
-    });
+        return processedData;
+      }
+    },
+    processing: false,
+    serverSide: true,
+    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+    pagingType: "full_numbers",
+    pageLength: 25,
+    bAutoWidth: false,
+    columns: [
+      { data: "hand", title: "hand", width: "15%" },
+      { data: "script_name", title: "script name", width: "15%" },
+      { data: "sequence_in_ms", title: "sequence in ms", width: "15%" },
+      { data: "where_in_ms_from", title: "where in MS (from)", visible: false },
+      { data: "where_in_ms_to", title: "where in MS (to)", visible: false },
+      { data: "is_range_interrupted", title: "range interrupted", visible: false },
+      {
+        data: "where",
+        title: "where in MS",
+        render: (data, type, row) => {
+          if (row.is_range_interrupted === "Yes" || row.is_range_interrupted === "yes") return "";
+          let fromText = row.where_in_ms_from;
+          let toText = row.where_in_ms_to;
+          fromText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_from}')">${row.where_in_ms_from}</a></b>`;
+          toText = `<b><a onclick="goToCanvasByLabel('${row.where_in_ms_to}')">${row.where_in_ms_to}</a></b>`;
+          return row.where_in_ms_from === row.where_in_ms_to || row.where_in_ms_to === '-' ? fromText : `${fromText} - ${toText}`;
+        },
+        width: "15%",
+        orderable: false
+      },
+      { data: "is_medieval", title: "is medieval?", visible: false },
+      { data: "is_main_text", name: "is_main_text", title: "is main text?", visible: false },
+      { data: "comment", title: "comment", width: "30%" },
+      { data: "authors", title: "authors", visible: false },
+      { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: (data, type) => type === 'display' ? `
+          <a href="/admin/indexerapp/manuscripthands/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change hand"
+             onclick="window.openDataTablePopup(this.href, window.additions_hands); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/manuscripthands/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete hand"
+             onclick="window.openDataTablePopup(this.href, window.additions_hands); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Edit" width="20" height="20">
+          </a>
+        ` : data
+      }
+    ],
+    order: [
+      { data: "sequence_in_ms", order: "asc" },
+      { data: "where_in_ms_from", order: "asc" }
+    ],
+    createdRow: (row, data) => {
+      $(row).addClass(data.is_medieval === true || data.is_medieval === "true" || data.is_medieval === "yes" || data.is_medieval === "Yes" ? 'medieval-row' : 'non-medieval-row');
+    },
+    initComplete: () => {
+      displayDebate(additions_hands, "#additions_hands");
+      displayUniqueAuthorsAndContributors(additions_hands, "#additions_hands");
+      displayScriptsLegend(additions_hands, "#additions_hands");
+    }
+  });
 }
 
-//Watermarks----------------------------------------------------------------
+// Watermarks----------------------------------------------------------------
 var watermarks_table;
 function init_watermarks_table() {
-    watermarks_table = $('#watermarks').DataTable({
-        "ajax": {
-            "url": pageRoot + '/watermarks_info/?ms=' + manuscriptId,
-            "dataSrc": function (data) {
-                return data.data;
-            }
-        },
-        "bAutoWidth": false, 
-        "columns": [
-            { "data": "name", "title": "name", "width": "20%" },
-            {
-                "data": "watermark_img",
-                "name": "watermark_img",
-                "title": "image",
-                "render": function (data, type, row, meta) {
-                    return renderImg(data, type, row, meta);
-                },
-                "width": "20%" 
-            },
-            { "data": "where_in_manuscript", "title": "where in MS", "width": "10%" },
-            { "data": "external_id", "title": "external id" , "width": "10%"},
-            { "data": "comment", "title": "comment", "width": "40%" },
-            { "data": "authors", "title": "authors", "visible": false },
-            { "data": "data_contributor", "title": "data contributor", "visible": false },
-        ],
-        "order": [
-            { "data": "where_in_manuscript", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
-        ],
-        "initComplete": function () {
-            displayUniqueAuthorsAndContributors(watermarks_table, "#watermarks");
-        }
-    });
+  watermarks_table = $('#watermarks').DataTable({
+    ajax: {
+      url: pageRoot + '/watermarks_info/?ms=' + manuscriptId,
+      dataSrc: data => data.data
+    },
+    bAutoWidth: false,
+    columns: [
+      { data: "name", title: "name", width: "20%" },
+      {
+        data: "watermark_img",
+        name: "watermark_img",
+        title: "image",
+        render: renderImg,
+        width: "20%"
+      },
+      { data: "where_in_manuscript", title: "where in MS", width: "10%" },
+      { data: "external_id", title: "external id", width: "10%" },
+      { data: "comment", title: "comment", width: "30%" },
+      { data: "authors", title: "authors", visible: false },
+      { data: "data_contributor", title: "data contributor", visible: false },
+      {
+        data: "id",
+        title: "Actions",
+        visible: DISPLAY_EDIT_OPTIONS,
+        orderable: false,
+        width: "10%",
+        render: (data, type) => type === 'display' ? `
+          <a href="/admin/indexerapp/manuscriptwatermarks/${data}/change/?_to_field=id&_popup=1"
+             class="edit_widget related-widget-wrapper-link change-related"
+             data-popup="yes"
+             title="Change watermark"
+             onclick="window.openDataTablePopup(this.href, window.watermarks_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+          </a>
+          <a href="/admin/indexerapp/manuscriptwatermarks/${data}/delete/?_to_field=id&_popup=1"
+             class="delete_widget related-widget-wrapper-link delete-related"
+             data-popup="yes"
+             title="Delete watermark"
+             onclick="window.openDataTablePopup(this.href, window.watermarks_table); return false;">
+            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+          </a>
+        ` : data
+      }
+    ],
+    order: [{ data: "where_in_manuscript", order: "asc" }],
+    initComplete: () => displayUniqueAuthorsAndContributors(watermarks_table, "#watermarks")
+  });
 }
 
 
