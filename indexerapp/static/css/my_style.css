@@ -1191,3 +1191,71 @@ ul.decoration_comment {
 .refresh_widget:hover {
     text-decoration: underline;
 }
+
+
+/* For MODAL */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.model-inner {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    max-width: 32rem;
+    width: 100%;
+    padding: 1.5rem;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.modal-header button {
+    color: #4b5563;
+    cursor: pointer;
+}
+
+.sugestions {
+    width: 100%;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+}
+
+.sugestions[type="submit"] {
+    background: #795a42;
+    color: white;
+}
+
+.sugestions[type="button"]#refreshCaptcha {
+    background: #e5e7eb;
+}
+
+.sugestions-error {
+    color: #ef4444;
+    margin-top: 0.5rem;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 40;
+}
