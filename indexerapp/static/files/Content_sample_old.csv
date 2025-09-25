@@ -1,0 +1,5 @@
+id,manuscript_id,sequence_in_ms,formula_id,formula_text_from_ms,similarity_by_user,where_in_ms_from,where_in_ms_to,rite_name_from_ms,rite_id,rite_sequence_in_the_MS,original_or_added,biblical_reference,reference_to_other_items,edition_index,comments,function_id,subfunction_id,liturgical_genre_id,music_notation_id,quire_id,section_id,subsection_id,contributor_id,entry_date
+,,,,,,1.1,1.1,In Assumptione sanctae Marię,123,1,ORIGINAL,Biblical reference (text),Reference to other items (text),(text),comments,Collecta,Sanctus,Sacramentary,1,1,Temporal,Temporal,,
+,,1,1,zainportowana formuła 1,0.5,1.1,1.2,,,,ADDED,Biblical reference (text),,,,Secreta,Agnus dei,Benedictional,2,1,Sanctoral,Sanctoral,,
+,,2,37045,zainportowana formuła 2,1,1.2,2.1,,,,ADDED,,Reference to other items (text),,,,,Graduale,,,Votive,Votive,,
+,,3,37043,zainportowana formuła 3,0,2.2,2.2,,,,ADDED,,,(text),comments,,,Pontifical,,,Canon,Canon,,

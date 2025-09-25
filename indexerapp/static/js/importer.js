@@ -61,6 +61,7 @@ function processData(csvData) {
             data = results.data;
 
             // Loop through each row in the parsed data
+            /*
             data = data.map(row => {
                 // Apply the reverse foliation logic for where_in_ms_from and where_in_ms_to columns
                 if (row.where_in_ms_from) {
@@ -71,6 +72,7 @@ function processData(csvData) {
                 }
                 return row;
             });
+            */
 
             const columnNames = Object.keys(data[0]);
 
@@ -89,7 +91,7 @@ function processData(csvData) {
 
                 document.getElementById('ms_selector').style.display = 'none';
                 document.getElementById('contributor_selector').style.display = 'none';
-            } else if (columnNames.includes('formula_sequence_in_ms')) {
+            } else if (columnNames.includes('formula_text_from_ms')) {
                 console.log(`Content table`);
                 tableName='Content';
 
@@ -151,8 +153,8 @@ function processData(csvData) {
 
 expectedColumnNamesByTable = {
     'Content': [
-        'id', 'manuscript_id', 'formula_sequence_in_ms', 'formula_id', 'formula_text_from_ms',
-        'similarity_by_user', 'where_in_ms_from', 'where_in_ms_to', 'rite_name_from_ms', 'subrite_name_from_ms',
+        'id', 'manuscript_id', 'sequence_in_ms', 'formula_id', 'formula_text_from_ms',
+        'similarity_by_user', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'rite_name_from_ms', 'subrite_name_from_ms',
         'rite_id', 'rite_sequence_in_the_MS', 'original_or_added', 'biblical_reference',
         'reference_to_other_items', 'edition_index', 'edition_subindex', 'comments', 'function_id', 'subfunction_id',
         'liturgical_genre_id', 'music_notation_id', 'quire_id', 'section_id', 'subsection_id',
@@ -296,12 +298,19 @@ function validateContent(data) {
         if ( !isInteger(row.formula_id) && row.formula_id != "") {
             errors.push(`Invalid integer value in formula_id at row ${rowIndex + 1}. Value: "${row.formula_id}"`);
         }
+        if ( !isInteger(row.sequence_in_ms) && row.sequence_in_ms != "") {
+            errors.push(`Invalid integer value in sequence_in_ms at row ${rowIndex + 1}. Value: "${row.sequence_in_ms}"`);
+        }
+        if ( !isInteger(row.digital_page_number) && row.digital_page_number != "") {
+            errors.push(`Invalid integer value in digital_page_number at row ${rowIndex + 1}. Value: "${row.digital_page_number}"`);
+        }
+        /*
         if (row.where_in_ms_to && !isFloat(row.where_in_ms_to)) {
             errors.push(`Invalid float value in where_in_ms_to at row ${rowIndex + 1}. Value: "${row.where_in_ms_to}"`);
         }
         if (row.where_in_ms_from && !isFloat(row.where_in_ms_from)) {
             errors.push(`Invalid float value in where_in_ms_from at row ${rowIndex + 1}. Value: "${row.where_in_ms_from}"`);
-        }
+        }*/
         
     });
 

@@ -470,8 +470,9 @@ class Content(models.Model):
     #pagination_from = models.IntegerField( null=True, blank=True)
     #pagination_to = models.IntegerField(null=True, blank=True)
     sequence_in_ms = models.PositiveIntegerField(null=True, blank=True, default=calc_last_sequence)
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
 
     original_or_added = models.CharField(max_length=10,choices=[("ORIGINAL", "original"),("ADDED", "added")], blank=True, null=True)
     
@@ -502,6 +503,17 @@ class Content(models.Model):
     edition_subindex = models.CharField(max_length=1024, null=True, blank=True)
     
     comments = models.TextField(blank=True, null=True)
+
+    #New columns inspired by USUARIUM project:
+    #text_standarization_id = models.CharField(max_length=32, null=True, blank=True)
+    layer = models.ForeignKey('Layer', models.DO_NOTHING, blank=True, null=True)
+
+    mass_hour = models.ForeignKey('MassHour', models.DO_NOTHING, related_name='%(class)s_mass_hour', blank=True, null=True)
+    genre = models.ForeignKey('Genre', models.DO_NOTHING, related_name='%(class)s_genre', blank=True, null=True)
+    season_month = models.ForeignKey('SeasonMonth', models.DO_NOTHING, related_name='%(class)s_season_month', blank=True, null=True)
+    week = models.ForeignKey('Week', models.DO_NOTHING, related_name='%(class)s_week', blank=True, null=True)
+    day = models.ForeignKey('Day', models.DO_NOTHING, related_name='%(class)s_day', blank=True, null=True)
+
 
     def calculate_and_save_similarity(self):
         # Calculate similarity and save to the field
@@ -730,6 +742,7 @@ class Manuscripts(models.Model):
     foreign_id = models.CharField(max_length=255, blank=True, null=True)
     contemporary_repository_place = models.ForeignKey(Places, models.DO_NOTHING, blank=True, null=True)
     shelf_mark = models.CharField(max_length=255, blank=True, null=True)
+    usuarium_shelfmark = models.CharField(max_length=255, blank=True, null=True)
     liturgical_genre_comment = models.TextField(blank=True, null=True)
     common_name = models.CharField(max_length=255, blank=True, null=True)
     dating = models.ForeignKey(TimeReference, models.DO_NOTHING, related_name='%(class)s_dating', blank=True, null=True)
@@ -1346,6 +1359,7 @@ class RiteNames(models.Model):
     english_translation = models.CharField(max_length=128,  blank=True, null=True)
     section = models.ForeignKey('Sections', models.DO_NOTHING,  blank=True, null=True)
     votive = models.BooleanField(null=True)
+    ceremony = models.ForeignKey('Ceremony', models.DO_NOTHING,  blank=True, null=True)
 
     class Meta:
         #managed = False
@@ -1397,5 +1411,160 @@ class Rites(models.Model):
         return txt
 """
 
-### NOWE ###
+### NOWE from USUARIUM ###
 
+# Column A
+class Type(models.Model):
+    short_name = models.CharField(max_length=8, unique=True)#max 28
+    name = models.CharField(max_length=16, unique=True)#max 65
+
+    def __str__(self):
+        return "("+self.short_name + ") " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'type'
+        verbose_name_plural = 'Types'
+
+
+# Column C
+class SeasonMonth(models.Model):
+    short_name = models.CharField(max_length=4, unique=True)#max 28
+    name = models.CharField(max_length=30, unique=True)#max 65
+    kind = models.CharField(max_length=12,choices=[("S", "season"),("M", "month")], blank=True, null=True)
+    types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+
+
+    def __str__(self):
+        season_or_month = '['+self.kind+']'
+        return season_or_month+" ("+ self.short_name + ") " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'season_month'
+        verbose_name_plural = 'Seasons/Months'
+
+# Column D
+class Week(models.Model):
+    short_name = models.CharField(max_length=4, unique=True)#max 28
+    name = models.CharField(max_length=75, unique=True)#max 65
+    types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+
+    def __str__(self):
+        return self.short_name + " " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'week'
+        verbose_name_plural = 'Weeks'
+
+# Column E
+class Day(models.Model):
+    part = models.CharField(max_length=2,choices=[("T", "temporal"),("S", "sanctoral")], blank=True, null=True)
+    short_name = models.CharField(max_length=4, unique=True)#max 28
+    name = models.CharField(max_length=65, unique=True)#max 65
+    types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+
+    def __str__(self):
+        return self.short_name + " " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'day'
+        verbose_name_plural = 'Days'
+
+
+# Column H
+class MassHour(models.Model):
+    short_name = models.CharField(max_length=4, unique=True)#max 28
+    name = models.CharField(max_length=80, unique=True)#max 65
+    type = models.ForeignKey('Type', models.DO_NOTHING, blank=True, null=True)
+
+    def __str__(self):
+        return self.short_name + " " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'mass_hour'
+        verbose_name_plural = 'Mass/Hours'
+
+# Column L
+class Layer(models.Model):
+    short_name = models.CharField(max_length=4, unique=True)#max 28
+    name = models.CharField(max_length=30, unique=True)#max 65
+
+    def __str__(self):
+        return self.short_name + " " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'layer'
+        verbose_name_plural = 'Layers'
+
+# Column I
+class Genre(models.Model):
+    short_name = models.CharField(max_length=28, unique=True)#max 28
+    name = models.CharField(max_length=100, unique=True)#max 65
+    types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+    layers = models.ManyToManyField('Layer', related_name='%(class)s_layers', blank=True)
+
+    def __str__(self):
+        return "("+self.short_name + ") " + self.name
+
+    class Meta:
+        #managed = False
+        db_table = 'genre'
+        verbose_name_plural = 'Genres'
+
+
+class Topic(models.Model):
+    name = models.CharField(max_length=64, blank=True, null=True)
+    section = models.ForeignKey('Sections', models.DO_NOTHING,  blank=True, null=True) #oryginalne kind
+    votive = models.BooleanField(null=True)
+    parent = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
+
+    def __str__(self):
+        return self.name or "Unnamed Topic"
+
+    class Meta:
+        db_table = 'topic'
+        verbose_name = "Topic"
+        verbose_name_plural = "Topics"
+
+# Column I
+class Ceremony(models.Model):
+    name = models.CharField(max_length=40, blank=True, null=True)
+    latin_keywords = models.CharField(max_length=400, blank=True)
+    short_description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name or "Unnamed Ceremony"
+
+    class Meta:
+        db_table = 'ceremony'
+        verbose_name = "Ceremony"
+        verbose_name_plural = "Ceremonies"
+
+
+class ContentTopic(models.Model):
+    content = models.ForeignKey('Content', models.CASCADE, related_name='content_topics')
+    topic = models.ForeignKey('Topic', models.CASCADE, related_name='topic_contents')
+
+    def __str__(self):
+        return f"{self.content} - {self.topic}"
+
+    class Meta:
+        db_table = 'content_topics'
+        verbose_name = "Content Topic"
+        verbose_name_plural = "Content Topics"
+
+
+class TextStandarization(models.Model):
+    usu_id = models.CharField(max_length=10, blank=True, null=True)
+    cantus_id = models.CharField(max_length=10, blank=True, null=True)
+    co_no = models.CharField(max_length=10, blank=True, null=True)
+    formula = models.ForeignKey(Formulas, models.DO_NOTHING, blank=True, null=True)
+
+    standard_incipit = models.CharField(max_length=64, blank=True, null=True)
+    standard_full_text = models.TextField(blank=True, null=True)
+    

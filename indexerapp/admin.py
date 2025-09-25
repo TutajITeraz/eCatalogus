@@ -61,12 +61,19 @@ class FolioPaginationWidget(forms.MultiWidget):
 
 
 class FolioPaginationField(forms.MultiValueField):
-    def __init__(self, attrs=None):
+    def __init__(self, *args, **kwargs):
+        # kwargs może zawierać required, label, help_text itp.
         fields = (
-            forms.DecimalField(max_digits=5, decimal_places=1, widget=TextInput(attrs={'pattern': r'^\d+(\.\d+)?[rv]?$'})),
+            forms.DecimalField(
+                max_digits=5, 
+                decimal_places=1, 
+                widget=TextInput(attrs={'pattern': r'^\d+(\.\d+)?[rv]?$'})
+            ),
         )
-        super().__init__(fields, widget=FolioPaginationWidget(attrs), require_all_fields=False)
+        # require_all_fields=False można zostawić lub przepuścić z kwargs
+        kwargs.setdefault('require_all_fields', False)
 
+        super().__init__(fields, *args, **kwargs)
 
     def to_python(self, value):
         print('to_python ',value)
@@ -79,11 +86,11 @@ class FolioPaginationField(forms.MultiValueField):
                 return Decimal(value)
         return None
 
-    def clean(self, value):
-        #value = super().clean(value)
-
-        print("clean value: ",value)
-        return self.to_python(value[0])
+def clean(self, value):
+    # value może być None lub pustą listą
+    if not value or not value[0]:
+        return None
+    return self.to_python(value[0])
 ##############################################################
 
 
@@ -102,14 +109,15 @@ class FormulasForm(forms.ModelForm):
 
 class ContentForm(forms.ModelForm):
     where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    where_in_ms_to = FolioPaginationField(required=False)
 
     class Meta:
         model = Content
         fields = ('__all__')
         widgets = {
-            'formula': autocomplete.ListSelect2(url='formula-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rite': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'formula': autocomplete.ListSelect2(url='formula-autocomplete', attrs={'style': 'width: 400px;'}),
+            'rite': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 400px;'}),
+            'genre': autocomplete.ListSelect2(url='genre-autocomplete', attrs={'style': 'width: 400px;'})
         }
 
 
@@ -378,16 +386,21 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
 
 
     def formfield_for_dbfield(self, db_field, **kwargs):
+        # pobierz oryginalne pole formularza od Django (może zwrócić None!)
         field = super().formfield_for_dbfield(db_field, **kwargs)
 
-        if db_field.name not in ['id', 'created_at', 'updated_at']:
-            if hasattr(self, 'obj') and self.obj:
-                debates = self.get_debate(self.obj, db_field.name)
-                field.help_text = ', '.join(debates)
+        if field is not None:
+            # jeśli pole w modelu ma blank=True → wymuś required=False w formularzu
+            if getattr(db_field, "blank", False):
+                field.required = False
 
-                field.help_text += ' ' + self.add_debate_link(self.obj, db_field, field)
-            #else:
-                #field.help_text += ' ' + self.add_debate_link(None, db_field, field)
+            if db_field.name not in ['id', 'created_at', 'updated_at']:
+                if hasattr(self, 'obj') and self.obj:
+                    debates = self.get_debate(self.obj, db_field.name)
+                    field.help_text = ', '.join(debates)
+                    field.help_text += ' ' + self.add_debate_link(self.obj, db_field, field)
+                #else:
+                    #field.help_text += ' ' + self.add_debate_link(None, db_field, field)
 
         #if db_field.name in ['folio_starting', ]:
         #    field = FolioPaginationField
@@ -436,7 +449,7 @@ class EditionContentAdmin(admin.ModelAdmin):
 # @admin.register(Content)
 class ContentAdmin(CustomDebateableAdmin):
     form = ContentForm
-    list_display= ['id', 'manuscript', 'formula_text', 'formula_standarized', 'similarity_levenshtein', 'where_in_ms_from', 'where_in_ms_to', 'original_or_added', 'biblical_reference', 'reference_to_other_items', 'similarity_by_user', 'entry_date', 'sequence_in_ms', 'edition_index', 'comments']
+    list_display= ['id', 'manuscript', 'formula_text', 'formula_standarized', 'rite_name_from_ms', 'similarity_levenshtein', 'where_in_ms_from', 'where_in_ms_to', 'original_or_added', 'biblical_reference', 'reference_to_other_items', 'similarity_by_user', 'entry_date', 'sequence_in_ms', 'edition_index', 'comments']
 
 
     list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
@@ -996,6 +1009,62 @@ class TraditionsAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+class MassHourAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in MassHour._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class TypeAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Type._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class LayerAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Layer._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class GenreAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Genre._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class SeasonMonthAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in SeasonMonth._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]              
+
+class WeekAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Week._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]      
+
+class DayAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Day._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class CeremonyAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Ceremony._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class TopicAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in Topic._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+
+class ContentTopicAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in ContentTopic._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
+class TextStandarizationAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in TextStandarization._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
 # Re-register UserAdmin
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
@@ -1056,3 +1125,15 @@ admin.site.register(Layouts,LayoutsAdmin)
 admin.site.register(UserOpenAIAPIKey,UserOpenAIAPIKeyAdmin)
 admin.site.register(ImproveOurDataEntry,ImproveOurDataEntryAdmin)
 admin.site.register(Traditions,TraditionsAdmin)
+
+admin.site.register(MassHour,MassHourAdmin)
+admin.site.register(Type,TypeAdmin)
+admin.site.register(Layer,LayerAdmin)
+admin.site.register(Genre,GenreAdmin)
+admin.site.register(SeasonMonth,SeasonMonthAdmin)
+admin.site.register(Week,WeekAdmin)
+admin.site.register(Day,DayAdmin)
+admin.site.register(Ceremony,CeremonyAdmin)
+admin.site.register(Topic,TopicAdmin)
+admin.site.register(ContentTopic,ContentTopicAdmin)
+admin.site.register(TextStandarization,TextStandarizationAdmin)
