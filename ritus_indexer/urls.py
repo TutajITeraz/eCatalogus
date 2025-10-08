@@ -149,6 +149,7 @@ urlpatterns = [
     path('subject-autocomplete/',views.SubjectAutocomplete.as_view(),name='subject-autocomplete'),
     path('content-autocomplete/',views.ContentAutocomplete.as_view(),name='content-autocomplete'),
     path('rites-autocomplete/',views.RiteNamesAutocomplete.as_view(),name='rites-autocomplete'),
+    path('genre-autocomplete/',views.GenreAutocomplete.as_view(),name='genre-autocomplete'),
     path('manuscripts-autocomplete/',views.ManuscriptsAutocomplete.as_view(),name='manuscripts-autocomplete'),
     path('manuscripts-autocomplete-main/',views.ManuscriptsAutocompleteMain.as_view(),name='manuscripts-autocomplete-main'),
     path('contributors-autocomplete/',views.ContributorsAutocomplete.as_view(),name='contributors-autocomplete'),

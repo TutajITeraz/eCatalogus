@@ -8,7 +8,7 @@ from django.contrib.auth import login, authenticate
 
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres
+from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre
 from django.http import JsonResponse
 from django.contrib.contenttypes.models import ContentType
 
@@ -2076,6 +2076,20 @@ class RiteNamesAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
+class GenreAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        # Don't forget to filter out results depending on the visitor !
+        if not self.request.user.is_authenticated:
+            return Genre.objects.none()
+
+        qs = Genre.objects.all()
+
+        if self.q:
+            #Name or short_name contains the query
+            qs = qs.filter(Q(name__icontains=self.q) | Q(short_name__icontains=self.q))
+
+        return qs
+
 
 class ColoursAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
@@ -2508,13 +2522,6 @@ class ContentImportView(View):
                 row['subsection_id'] = new_subsection_id
                 row['edition_index'] = new_edition_index
 
-                where_in_ms_from = None
-                if 'where_in_ms_from' in row and row['where_in_ms_from'] is not None:
-                    where_in_ms_from = Decimal(row['where_in_ms_from'])
-
-                where_in_ms_to = None
-                if 'where_in_ms_to' in row and row['where_in_ms_to'] is not None:
-                    where_in_ms_to = Decimal(row['where_in_ms_to'])
 
                     # Sprawdź, czy wartość klucza obcego 'formula_id' jest poprawna
                 if 'formula_id' in row and isinstance(row['formula_id'], (int, str)) and row['formula_id']:
@@ -2531,9 +2538,10 @@ class ContentImportView(View):
                     subrite_name_from_ms=row.get('subrite_name_from_ms'),
                     rite_sequence=row.get('rite_sequence_in_the_MS'),
                     formula_text=row.get('formula_text_from_ms'),
-                    sequence_in_ms=row.get('formula_sequence_in_ms'),
-                    where_in_ms_from=where_in_ms_from,
-                    where_in_ms_to=where_in_ms_to,
+                    sequence_in_ms=row.get('sequence_in_ms'),
+                    where_in_ms_from=row.get('where_in_ms_from'),
+                    where_in_ms_to=row.get('where_in_ms_to'),
+                    digital_page_number=row.get('digital_page_number'),
                     original_or_added=row.get('original_or_added'),
                     liturgical_genre_id=row.get('liturgical_genre_id'),
                     quire_id=row.get('quire_id'),
@@ -4018,8 +4026,8 @@ class ContentCSVExportView(View):
         writer = csv.writer(response)
         # Write header
         writer.writerow([
-            "id", "manuscript_id", "formula_sequence_in_ms", "formula_id", "formula_text_from_ms",
-            "similarity_by_user", "where_in_ms_from", "where_in_ms_to", "rite_name_from_ms", "rite_id",
+            "id", "manuscript_id", "sequence_in_ms", "formula_id", "formula_text_from_ms",
+            "similarity_by_user", "where_in_ms_from", "where_in_ms_to", "rite_name_from_ms", "digital_page_number", "rite_id",
             "rite_sequence_in_the_MS", "original_or_added", "biblical_reference", "reference_to_other_items",
             "edition_index", "comments", "function_id", "subfunction_id", "liturgical_genre_id", "music_notation_id",
             "quire_id", "section_id", "subsection_id", "contributor_id", "entry_date"
@@ -4036,6 +4044,7 @@ class ContentCSVExportView(View):
                 content.similarity_by_user,
                 foliation(content.where_in_ms_from),
                 foliation(content.where_in_ms_to),
+                content.digital_page_number,
                 content.rite_name_from_ms,
                 content.rite.id if content.rite else "",
                 content.rite_sequence,
