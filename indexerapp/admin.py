@@ -108,8 +108,8 @@ class FormulasForm(forms.ModelForm):
         #ModelSelect2 gdy nie ma url ;)
 
 class ContentForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField(required=False)
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField(required=False)
 
     class Meta:
         model = Content
@@ -407,25 +407,25 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
 
         return field
 
+    
+    # def where_in_ms_start(self, obj):
+    #     # Custom formatting logic
+    #     value = obj.where_in_ms_from
+    #     if value is not None:
+    #         formatted_value = str(value).replace('.2', 'v').replace('.1', 'r').replace('.0', '')
+    #         return formatted_value
+    #     return None
 
-    def where_in_ms_start(self, obj):
-        # Custom formatting logic
-        value = obj.where_in_ms_from
-        if value is not None:
-            formatted_value = str(value).replace('.2', 'v').replace('.1', 'r').replace('.0', '')
-            return formatted_value
-        return None
+    # def where_in_ms_end(self, obj):
+    #     # Custom formatting logic
+    #     value = obj.where_in_ms_to
+    #     if value is not None:
+    #         formatted_value = str(value).replace('.2', 'v').replace('.1', 'r').replace('.0', '')
+    #         return formatted_value
+    #     return None
 
-    def where_in_ms_end(self, obj):
-        # Custom formatting logic
-        value = obj.where_in_ms_to
-        if value is not None:
-            formatted_value = str(value).replace('.2', 'v').replace('.1', 'r').replace('.0', '')
-            return formatted_value
-        return None
-
-    where_in_ms_start.short_description = 'where in ms from'
-    where_in_ms_end.short_description = 'where in ms to'
+    # where_in_ms_start.short_description = 'where in ms from'
+    # where_in_ms_end.short_description = 'where in ms to'
 
 class EditionContentAdmin(admin.ModelAdmin):
     form = EditionContentForm
@@ -452,8 +452,8 @@ class ContentAdmin(CustomDebateableAdmin):
     list_display= ['id', 'manuscript', 'formula_text', 'formula_standarized', 'rite_name_from_ms', 'similarity_levenshtein', 'where_in_ms_from', 'where_in_ms_to', 'original_or_added', 'biblical_reference', 'reference_to_other_items', 'similarity_by_user', 'entry_date', 'sequence_in_ms', 'edition_index', 'comments']
 
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
 
     #wrapped_field= easy.SimpleAdminField(lambda x: linebreaksbr(x.formula), 'formula', 'formula')
@@ -634,8 +634,8 @@ class CodicologyAdmin(CustomDebateableAdmin):
     list_filter = [ManuscriptsFilter]
 
 class QuiresForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField()
 
     class Meta:
         model = Quires
@@ -649,8 +649,8 @@ class QuiresAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
     list_filter = [ManuscriptsFilter]
 
@@ -672,8 +672,8 @@ class MusicNotationNamesAdmin(admin.ModelAdmin):
 
 
 class ManuscriptMusicNotationsForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField()
 
     class Meta:
         model = ManuscriptMusicNotations
@@ -687,15 +687,15 @@ class ManuscriptMusicNotationsAdmin(CustomDebateableAdmin):
                              ]
 
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
     list_filter = [ManuscriptsFilter]
 
 
 class ManuscriptHandsForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField()
 
     class Meta:
         model = ManuscriptHands
@@ -706,8 +706,8 @@ class ManuscriptHandsAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
     list_filter = [ManuscriptsFilter]
 
@@ -828,8 +828,8 @@ class AttributeDebateAdmin(admin.ModelAdmin):
                              ]
 
 class LayoutsForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField()
 
     class Meta:
         model = Layouts
@@ -842,8 +842,8 @@ class LayoutsAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
     list_filter = [ManuscriptsFilter]
 
@@ -851,8 +851,8 @@ class LayoutsAdmin(CustomDebateableAdmin):
 #Decoration #[ ] TODO Zmienić z admin.ModelAdmin na CustomDebateableAdmin
 
 class CalendarForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField()
 
     class Meta:
         model = Decoration
@@ -870,8 +870,8 @@ class CalendarAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
 
 
@@ -915,8 +915,8 @@ class DecorationTypesAdmin(admin.ModelAdmin):
 
 #Decoration #[ ] TODO Zmienić z admin.ModelAdmin na CustomDebateableAdmin
 class DecorationForm(forms.ModelForm):
-    where_in_ms_from = FolioPaginationField()
-    where_in_ms_to = FolioPaginationField()
+    #where_in_ms_from = FolioPaginationField()
+    #where_in_ms_to = FolioPaginationField()
 
     class Meta:
         model = Decoration
@@ -949,8 +949,8 @@ class DecorationAdmin(CustomDebateableAdmin):
 
     list_display=  ['id','manuscript','original_or_added', 'where_in_ms_from', 'where_in_ms_to', 'decoration_type', 'decoration_subtype', 'ornamented_text' ]
 
-    list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
-    list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
+    #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
+    #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
 
     list_filter = [ManuscriptsFilter]
 

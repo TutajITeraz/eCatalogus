@@ -2474,6 +2474,35 @@ class ContentImportView(View):
                 if 'liturgical_genre_id' in row:
                     new_liturgical_genre_id = self.get_id_by_name('LiturgicalGenres', row.get('liturgical_genre_id'), 'title')
                 
+                new_music_notation_id = None
+                if 'music_notation_id' in row and row.get('music_notation_id') is not None:
+                    # Get the music_notation_name ID from MusicNotationNames
+                    music_notation_name_id = self.get_id_by_name('MusicNotationNames', row.get('music_notation_id'), 'name')
+                    if music_notation_name_id is None:
+                        return JsonResponse({'info': f'error: could not find value "{row.get("music_notation_id")}" in table MusicNotationNames'}, status=200)
+                    
+                    # Create a new ManuscriptMusicNotations entry
+                    try:
+                        manuscript_music_notation = ManuscriptMusicNotations(
+                            manuscript_id=row.get('manuscript_id'),
+                            music_notation_name_id=music_notation_name_id,
+                            where_in_ms_from=row.get('where_in_ms_from') or "",
+                            where_in_ms_to=row.get('where_in_ms_to') or "",
+                            digital_page_number=row.get('digital_page_number'),
+                            sequence_in_ms=row.get('sequence_in_ms') or 0,
+                            dating=None,
+                            original=None,
+                            on_lines=None,
+                            music_custos=None,
+                            number_of_lines=None,
+                            comment=None,
+                            data_contributor_id=row.get('contributor_id')
+                        )
+                        manuscript_music_notation.save()
+                        new_music_notation_id = manuscript_music_notation.id
+                    except Exception as e:
+                        return JsonResponse({'info': f'error: could not create ManuscriptMusicNotations entry for "{row.get("music_notation_id")}": {str(e)}'}, status=200)
+
                 new_function_id = None
                 if 'function_id' in row:
                     new_function_id = self.get_id_by_name('ContentFunctions', row.get('function_id'))
@@ -2490,6 +2519,43 @@ class ContentImportView(View):
                 if 'subsection_id' in row:
                     new_subsection_id = self.get_id_by_name('Sections', row.get('subsection_id'))
 
+                new_layer = None
+                if 'layer' in row:
+                    new_layer = self.get_id_by_name('Layer', row.get('layer'), 'short_name')
+
+                new_mass_hour = None
+                if 'mass_hour' in row:
+                    new_mass_hour = self.get_id_by_name('MassHour', row.get('mass_hour'), 'short_name')
+
+                new_genre = None
+                if 'genre' in row:
+                    new_genre = self.get_id_by_name('Genre', row.get('genre'), 'short_name')
+                print('new_genre', new_genre)
+
+                new_season_month = None
+                if 'season_month' in row:
+                    new_season_month = self.get_id_by_name('SeasonMonth', row.get('season_month'), 'short_name')
+                print('new_season_month', new_season_month)
+
+                new_week = None
+                if 'week' in row:
+                    new_week = self.get_id_by_name('Week', row.get('week'), 'short_name')
+                print('new_week', new_week)
+
+                new_day = None
+                if 'day' in row:
+                    new_day = self.get_id_by_name('Day', row.get('day'), 'short_name')
+                print('new_day', new_day)
+
+                new_proper_texts = None
+                if 'proper_texts' in row and row.get('proper_texts') is not None:
+                    value = str(row.get('proper_texts')).lower()
+                    if value in ['1', 'true']:
+                        new_proper_texts = True
+                    elif value in ['0', 'false']:
+                        new_proper_texts = False
+                    # Empty string or other values result in None (null)
+
                 new_edition_index = None
                 if 'edition_index' in row and row.get('edition_index') :
                     #print(row.get('edition_index'))
@@ -2502,6 +2568,8 @@ class ContentImportView(View):
                 
                 if new_liturgical_genre_id == None and row.get('liturgical_genre_id') != None :
                     return JsonResponse({'info': 'error: could not find value "'+row.get('liturgical_genre_id')+'" in table LiturgicalGenres'}, status=200)
+                if new_music_notation_id == None and row.get('music_notation_id') != None :
+                    return JsonResponse({'info': 'error: could not create ManuscriptMusicNotations entry for "'+row.get('music_notation_id')+'" in table ManuscriptMusicNotations'}, status=200)
                 if new_function_id == None and row.get('function_id')  != None :
                     return JsonResponse({'info': 'error: could not find value "'+row.get('function_id') +'" in table ContentFunctions'}, status=200)
                 if new_subfunction_id == None and row.get('subfunction_id')  != None :
@@ -2510,16 +2578,36 @@ class ContentImportView(View):
                     return JsonResponse({'info': 'error: could not find value "'+row.get('section_id') +'" in table Sections'}, status=200)
                 if new_subsection_id == None and row.get('subsection_id')  != None :
                     return JsonResponse({'info': 'error: could not find value "'+row.get('subsection_id') +'" in table Sections'}, status=200)
+                if new_layer == None and row.get('layer') != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row.get('layer')+'" in table Layer'}, status=200)
+                if new_mass_hour == None and row.get('mass_hour') != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row.get('mass_hour')+'" in table MassHour'}, status=200)
+                if new_genre == None and row.get('genre') != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row.get('genre')+'" in table Genre'}, status=200)
+                if new_season_month == None and row.get('season_month') != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row.get('season_month')+'" in table SeasonMonth'}, status=200)
+                if new_week == None and row.get('week') != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row.get('week')+'" in table Week'}, status=200)
+                if new_day == None and row.get('day') != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row.get('day')+'" in table Day'}, status=200)
                 if new_edition_index == None and row.get('edition_index')  != None :
                     return JsonResponse({'info': 'error: could not find value "'+row.get('edition_index') +'" in table EditionContent'}, status=200)
 
 
 
                 row['liturgical_genre_id'] = new_liturgical_genre_id 
+                row['music_notation_id'] = new_music_notation_id
                 row['function_id'] = new_function_id
                 row['subfunction_id'] = new_subfunction_id 
                 row['section_id'] = new_section_id
                 row['subsection_id'] = new_subsection_id
+                row['layer'] = new_layer
+                row['mass_hour'] = new_mass_hour
+                row['genre'] = new_genre
+                row['season_month'] = new_season_month
+                row['week'] = new_week
+                row['day'] = new_day
+                row['proper_texts'] = new_proper_texts
                 row['edition_index'] = new_edition_index
 
 
@@ -2556,7 +2644,17 @@ class ContentImportView(View):
                     #entry_date=row.get('entry_date'),
                     edition_index_id=row.get('edition_index'),
                     edition_subindex=row.get('edition_subindex'),
-                    comments=row.get('comments')
+                    comments=row.get('comments'),
+
+                    layer_id=row.get('layer'),
+                    mass_hour_id=row.get('mass_hour'),
+                    genre_id=row.get('genre'),
+                    season_month_id=row.get('season_month'),
+                    week_id=row.get('week'),
+                    day_id=row.get('day'),
+                    proper_texts=row.get('proper_texts'),
+
+
                     # Add more fields as needed
                 )
 

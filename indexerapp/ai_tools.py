@@ -8,7 +8,7 @@ from .models import UserOpenAIAPIKey, Manuscripts
 def get_all_manuscript_names(projectId):
     queryset = Manuscripts.objects.all()
 
-    print("projectId = " + str(projectId))
+    #print("projectId = " + str(projectId))
     if projectId != 0:
         queryset = queryset.filter(ms_projects__project__id=projectId)
 
@@ -20,8 +20,8 @@ def get_all_manuscript_names(projectId):
         row = f'"{manuscript.id}","{manuscript.name}","{manuscript.rism_id or ""}","{manuscript.foreign_id or ""}","{manuscript.shelf_mark or ""}"\n'
         csv_data += row
 
-    print('csv names:')
-    print(csv_data)
+    #print('csv names:')
+    #print(csv_data)
 
     return csv_data
 
@@ -574,10 +574,10 @@ def gpt_generate_sql(request, question,projectId):
         #    for block in msg.content:
         #        print(block.text.value)
 
-        print("-------------RAW MSG------------")
+        #print("-------------RAW MSG------------")
         for msg in messages:
-            print(msg)
-            print('-----------')
+            #print(msg)
+            #print('-----------')
 
             if msg.assistant_id and len(msg.assistant_id)>1:
                 full_mess = msg.content[0].text.value
@@ -604,18 +604,18 @@ def gpt_generate_sql(request, question,projectId):
                 response['sql'] = sql_code
                 response['text'] = comments
 
-                print("-------------SQL------------")
-                print(sql_code)
+                #print("-------------SQL------------")
+                #print(sql_code)
 
-                print("-------------TEXT------------")
-                print(comments)
+                #print("-------------TEXT------------")
+                #print(comments)
 
                 break
 
 
     else:
         response['text'] = str(run.status)
-        print(run.status)
+        #print(run.status)
 
     
     #response['sql'] = "SELECT * from manuscripts;"

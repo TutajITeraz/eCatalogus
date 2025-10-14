@@ -1029,8 +1029,9 @@ class ManuscriptMusicNotations(models.Model):
 
     music_notation_name = models.ForeignKey(MusicNotationNames, models.DO_NOTHING)
     sequence_in_ms = models.PositiveIntegerField()
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, default="")
+    digital_page_number = models.PositiveIntegerField(blank=True,null=True)
     dating = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True)
     original = models.BooleanField(null=True)
     on_lines = models.BooleanField(null=True)
