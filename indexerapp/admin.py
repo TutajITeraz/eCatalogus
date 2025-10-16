@@ -644,6 +644,7 @@ class QuiresForm(forms.ModelForm):
 
 class QuiresAdmin(CustomDebateableAdmin):
     form = QuiresForm
+    readonly_fields = ('digital_page_number',)
 
     list_display=  [field.name for field in Quires._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -681,6 +682,7 @@ class ManuscriptMusicNotationsForm(forms.ModelForm):
 
 class ManuscriptMusicNotationsAdmin(CustomDebateableAdmin):
     form = ManuscriptMusicNotationsForm
+    readonly_fields = ('digital_page_number',)
 
     list_display=  [field.name for field in ManuscriptMusicNotations._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -705,6 +707,8 @@ class ManuscriptHandsAdmin(CustomDebateableAdmin):
     list_display=  [field.name for field in ManuscriptHands._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+
+    readonly_fields = ('digital_page_number',)
 
     #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
     #list_display = ["where_in_ms_end" if x == "where_in_ms_to" else x for x in list_display]
@@ -837,6 +841,7 @@ class LayoutsForm(forms.ModelForm):
 
 class LayoutsAdmin(CustomDebateableAdmin):
     form = LayoutsForm
+    readonly_fields = ('digital_page_number',)
 
     list_display=  [field.name for field in Layouts._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -865,6 +870,8 @@ class CalendarForm(forms.ModelForm):
 
 class CalendarAdmin(CustomDebateableAdmin):
     form = CalendarForm
+
+    readonly_fields = ('digital_page_number',)
 
     list_display=  [field.name for field in Calendar._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -946,6 +953,8 @@ class DecorationForm(forms.ModelForm):
 class DecorationAdmin(CustomDebateableAdmin):
     form = DecorationForm
     inlines = [DecorationSubjectsInline, DecorationColoursInline, DecorationCharacteristicsInline]
+
+    readonly_fields = ('digital_page_number',)
 
     list_display=  ['id','manuscript','original_or_added', 'where_in_ms_from', 'where_in_ms_to', 'decoration_type', 'decoration_subtype', 'ornamented_text' ]
 
