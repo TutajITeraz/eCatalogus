@@ -109,12 +109,12 @@ class FeastRanks(models.Model):
     def __str__(self):
         return self.name
 
-#[ ] TODO Where in MS where_in_ms_from change to folio_starting
 #[ ] TODO Uwzględnić  verbose name przy wyświetlaniu w view
 class Calendar(models.Model):
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_calendar')
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
 
     #folio_starting = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     #folio_ending = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
@@ -209,8 +209,10 @@ class Decoration(models.Model):
     content = models.ForeignKey('Content', models.SET_NULL, related_name='content_decoration', blank=True, null=True)
     calendar = models.ForeignKey('Calendar', models.DO_NOTHING, related_name='calendar_decoration', blank=True, null=True)
 
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
+    
     location_on_the_page = models.CharField(max_length=10,choices=[("WITHIN", "within the column"),("MARGIN", "on the margin"),("IN_TEXT", "in the text line")], blank=True, null=True)
 
     decoration_type = models.ForeignKey('DecorationTypes', models.DO_NOTHING, related_name='decoration_type')
@@ -869,8 +871,10 @@ class Clla(models.Model):
 class Layouts(models.Model):
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_layouts')
     name = models.CharField(max_length=32, blank=True, null=True)
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
+
     how_many_columns = models.PositiveIntegerField(blank=True, null=True)
     lines_per_page_maximum = models.PositiveIntegerField(blank=True, null=True)
     lines_per_page_minimum = models.PositiveIntegerField(blank=True, null=True)
@@ -957,8 +961,10 @@ class Quires(models.Model):
     sequence_of_the_quire = models.PositiveIntegerField()
     #http://leksykon.oprawoznawczy.ukw.edu.pl/index.php/Sk%C5%82adka
     type_of_the_quire = models.CharField(max_length=12,choices=[("bifolium", "bifolium"),("binion", "binion"),("ternion", "ternion"),("quaternion", "quaternion"),("quinternion", "quinternion"),("seksternion", "seksternion"),("septernion", "septernion"),("okternion", "okternion")])
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
+    
     graph_img = models.ImageField(upload_to='images/', blank=True, null=True)
     material = models.CharField(max_length=10,choices=[("parchment", "parchment"),("paper", "paper quire")], blank=True, null=True)
 
@@ -1029,8 +1035,10 @@ class ManuscriptMusicNotations(models.Model):
 
     music_notation_name = models.ForeignKey(MusicNotationNames, models.DO_NOTHING)
     sequence_in_ms = models.PositiveIntegerField()
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
+
     dating = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True)
     original = models.BooleanField(null=True)
     on_lines = models.BooleanField(null=True)
@@ -1252,8 +1260,10 @@ class ManuscriptHands(models.Model):
     script_name = models.ForeignKey(ScriptNames, models.DO_NOTHING)
     hand_name_in_ms = models.CharField(max_length=255, blank=True, null=True)
     sequence_in_ms = models.PositiveIntegerField()
-    where_in_ms_from = models.DecimalField(max_digits=5, decimal_places=1, blank=True, null=True)
-    where_in_ms_to = models.DecimalField(max_digits=5, decimal_places=1, blank=True, null=True)
+    where_in_ms_from = models.CharField(max_length=32, default="")
+    where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
+    digital_page_number = models.PositiveIntegerField(null=True, blank=True)
+
     is_range_interrupted = models.BooleanField(default=False)
     is_medieval = models.BooleanField(null=True)
     is_main_text = models.BooleanField(null=True)
