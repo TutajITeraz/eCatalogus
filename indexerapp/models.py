@@ -505,7 +505,7 @@ class Content(models.Model):
     comments = models.TextField(blank=True, null=True)
 
     #New columns inspired by USUARIUM project:
-    #text_standarization_id = models.CharField(max_length=32, null=True, blank=True)
+    text_standarization = models.ForeignKey('TextStandarization',models.DO_NOTHING, blank=True, null=True)
     layer = models.ForeignKey('Layer', models.DO_NOTHING, blank=True, null=True)
 
     mass_hour = models.ForeignKey('MassHour', models.DO_NOTHING, related_name='%(class)s_mass_hour', blank=True, null=True)
