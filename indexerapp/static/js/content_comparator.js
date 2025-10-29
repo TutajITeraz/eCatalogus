@@ -449,6 +449,7 @@ content_comparator_init = function()
 
                 { "data": "authors", "title": "Authors", "visible": false },
                 { "data": "data_contributor", "title": "Data contributor", "visible": false },
+                { data: "comments", title: "comments", width: "30%" },
                 // Add more columns as needed
             ],
             "searchCols":[
@@ -494,7 +495,7 @@ content_comparator_init = function()
 
                 if (!json || !json.data) return;
 
-                var columnsToCheck = ["function", "subfunction", "biblical_reference", "subsection", "quire", "similarity_by_user", "proper_texts", "formula_text", "rite_name_from_ms", "formula_standarized"];
+                var columnsToCheck = ["function", "subfunction", "biblical_reference", "subsection", "quire", "similarity_by_user", "proper_texts", "formula_text", "rite_name_from_ms", "formula_standarized", "comments"] ;
 
                 var table = this;
 

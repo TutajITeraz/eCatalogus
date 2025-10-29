@@ -1074,6 +1074,11 @@ class TextStandarizationAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+class AIQueryAdmin(admin.ModelAdmin):
+    list_display=  [field.name for field in AIQuery._meta.fields
+                             #if not isinstance(field, models.ForeignKey)
+                             ]
+
 # Re-register UserAdmin
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
@@ -1146,3 +1151,4 @@ admin.site.register(Ceremony,CeremonyAdmin)
 admin.site.register(Topic,TopicAdmin)
 admin.site.register(ContentTopic,ContentTopicAdmin)
 admin.site.register(TextStandarization,TextStandarizationAdmin)
+admin.site.register(AIQuery,AIQueryAdmin)

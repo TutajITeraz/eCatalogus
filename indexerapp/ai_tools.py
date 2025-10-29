@@ -72,7 +72,7 @@ def execute_sql(query):
     if re.search(forbidden_table_pattern, query_lower, re.IGNORECASE):
         raise Exception("Dostęp do tabel systemowych jest niedozwolony. Konsekwencje będą wyciągnięte.")
 
-    print(f"Executing SQL: {query}")
+    #print(f"Executing SQL: {query}")
     with connection.cursor() as cursor:
         try:
             cursor.execute(query)
@@ -85,7 +85,7 @@ def execute_sql(query):
             else:
                 return {"affected_rows": cursor.rowcount}
         except Exception as e:
-            print(f"SQL Error: {str(e)}")
+            #print(f"SQL Error: {str(e)}")
             raise e
 
 def format_sql_result(result, query, is_final=False):
@@ -105,7 +105,7 @@ def format_sql_result(result, query, is_final=False):
         return f"<{tag_prefix}_QUERY>\n{query}\n</{tag_prefix}_QUERY>\n<{tag_prefix}_RESULTS_STATUS>{status}</{tag_prefix}_RESULTS_STATUS>"
 
 def process_ai_query(ai_query_id):
-    print(f"Starting process for AIQuery {ai_query_id}")
+    #print(f"Starting process for AIQuery {ai_query_id}")
     ai_query = AIQuery.objects.get(id=ai_query_id)
     ai_query.status = 'running'
     ai_query.save()
@@ -316,7 +316,7 @@ Field enum dictionaries:
                 temperature=0.7,
             )
             ai_message = response.choices[0].message.content
-            print(f"AI Response: {ai_message}")
+            #print(f"AI Response: {ai_message}")
 
             conversation.append({"role": "assistant", "content": ai_message})
             ai_query.conversation = json.dumps(conversation)
@@ -330,7 +330,7 @@ Field enum dictionaries:
                     ai_query.result = json.dumps([{"comment": "\n".join(comments)}])
                     ai_query.status = 'completed'
                     ai_query.save()
-                    print(f"Completed with comment for AIQuery {ai_query_id}")
+                    #print(f"Completed with comment for AIQuery {ai_query_id}")
                     return
                 else:
                     # If there is final query, continue processing
@@ -356,7 +356,7 @@ Field enum dictionaries:
                 results = []
                 for fq in final_queries:
                     fq = fq.strip()
-                    print(f"Final Query: {fq}")
+                    #print(f"Final Query: {fq}")
                     try:
                         result = execute_sql(fq)
                         if "columns" in result and len(result["rows"]) == 0:

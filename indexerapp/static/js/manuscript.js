@@ -727,6 +727,7 @@ function init_content_table(reinit = false) {
 
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
+      { data: "comments", title: "comments", width: "30%" },
       {
         data: "id",
         title: "Actions",
@@ -786,6 +787,7 @@ function init_content_table(reinit = false) {
         "formula_text",
         "rite_name_from_ms",
         "formula_standarized",
+        "comments",
       ];
 
       var table = this;
