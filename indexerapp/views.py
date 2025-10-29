@@ -52,7 +52,9 @@ from django.db.models import F
 from django.db import connection
 #from dubo import generate_sql
 import os
-from .ai_tools import gpt_generate_sql 
+from .ai_tools import process_ai_query
+import threading
+from .models import AIQuery  # Add this import
 
 
 #For content importer:
@@ -423,6 +425,9 @@ class ContentViewSet(viewsets.ModelViewSet):
         manuscript_id = self.request.GET.get('manuscript_id', None)
         if manuscript_id:
             queryset = queryset.filter(manuscript_id=manuscript_id)
+            
+        #I want to send only if sequence_in_ms is not null or comments is not null
+        queryset = queryset.filter(Q(sequence_in_ms__isnull=False) | Q(comments__isnull=False))
         
         order_column_name = self.request.query_params.get('order_column', 'manuscript')
         order_direction = self.request.query_params.get('order_direction', 'asc')
@@ -1201,55 +1206,94 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
 
     
 
-class assistantAjaxView(LoginRequiredMixin,View):
+# class assistantAjaxView(LoginRequiredMixin,View):
 
-    def get(self, request, *args, **kwargs):
-        q = self.request.GET.get('q')
-        projectId = self.request.GET.get('project_id', None)
-        #print(q)
-        sql_text = self.text_to_sql(request,q,projectId)
+#     def get(self, request, *args, **kwargs):
+#         q = self.request.GET.get('q')
+#         projectId = self.request.GET.get('project_id', None)
+#         #print(q)
+#         sql_text = self.text_to_sql(request,q,projectId)
 
 
-        #print(sql)
-        answer = self.sql_query(sql_text['sql'])
-        json_output = (answer)
-        #print(json_output)
+#         #print(sql)
+#         answer = self.sql_query(sql_text['sql'])
+#         json_output = (answer)
+#         #print(json_output)
 
-        data = {
-            'info': json_output,
-            'text': sql_text['text']
-        }
+#         data = {
+#             'info': json_output,
+#             'text': sql_text['text']
+#         }
 
-        return JsonResponse(data)
+#         return JsonResponse(data)
 
-    def text_to_sql(self, request, text,projectId):
+#     def text_to_sql(self, request, text,projectId):
         
-        #return generate_sql(text, fast=False)
+#         #return generate_sql(text, fast=False)
 
-        return gpt_generate_sql(request,text,projectId)
+#         return gpt_generate_sql(request,text,projectId)
 
 
-    def sql_query(self,query):
-        with connection.cursor() as cursor:
+#     def sql_query(self,query):
+#         with connection.cursor() as cursor:
 
-            try:
-                cursor.execute(query)
+#             try:
+#                 cursor.execute(query)
 
-            except Exception as e:
-                print(e)
-                return None
+#             except Exception as e:
+#                 print(e)
+#                 return None
 
             
-            try: 
-                r = [dict((cursor.description[i][0], value) \
-                    for i, value in enumerate(row)) for row in cursor.fetchall()]
-                return r
+#             try: 
+#                 r = [dict((cursor.description[i][0], value) \
+#                     for i, value in enumerate(row)) for row in cursor.fetchall()]
+#                 return r
 
-            except TypeError as e:
-                print(e)
-                return None
+#             except TypeError as e:
+#                 print(e)
+#                 return None
 
-        return None
+#         return None
+
+
+## Modified views.py fragment
+
+
+class AssistantStartView(LoginRequiredMixin, View):
+    def get(self, request, *args, **kwargs):
+        q = request.GET.get('q')
+        project_id = request.GET.get('project_id', 0)
+        if not q:
+            return JsonResponse({'error': 'No question provided'})
+        ai_query = AIQuery.objects.create(
+            user=request.user,
+            project_id=project_id,
+            question=q,
+            status='pending'
+        )
+        threading.Thread(target=process_ai_query, args=(ai_query.id,)).start()
+        return JsonResponse({'query_id': ai_query.id})
+
+class AssistantStatusView(LoginRequiredMixin, View):
+    def get(self, request, query_id, *args, **kwargs):
+        try:
+            ai_query = AIQuery.objects.get(id=query_id, user=request.user)
+            conversation = json.loads(ai_query.conversation) if ai_query.conversation else []
+            messages = [{'role': msg['role'], 'content': msg['content']} for msg in conversation if msg['role'] != 'system']
+            data = {
+                'status': ai_query.status,
+                'messages': messages,
+                'result': json.loads(ai_query.result) if ai_query.result else None,
+                'error': ai_query.error,
+                'execution_time': ai_query.execution_time
+            }
+            return JsonResponse(data)
+        except AIQuery.DoesNotExist:
+            return JsonResponse({'error': 'Query not found'}, status=404)
+
+# Remove or comment out the old assistantAjaxView if not needed
+# class assistantAjaxView(...)
 
 class CodicologyAjaxView(View):
     def get(self, request, *args, **kwargs):

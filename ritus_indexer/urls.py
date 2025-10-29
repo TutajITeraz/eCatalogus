@@ -212,7 +212,9 @@ urlpatterns = [
     path('hands_info/', views.HandsAjaxView.as_view(), name='hands_info'),
     path('watermarks_info/', views.WatermarksAjaxView.as_view(), name='watermarks_info'),
 
-    path('assistant/', views.assistantAjaxView.as_view(), name='assistant'),
+    #path('assistant/', views.assistantAjaxView.as_view(), name='assistant'),
+    path('assistant/start/', views.AssistantStartView.as_view(), name='assistant_start'),
+    path('assistant/status/<int:query_id>/', views.AssistantStatusView.as_view(), name='assistant_status'),
 
     path('compare_graph/', views.contentCompareGraph.as_view(), name='compare_graph'),
     path('compare_edition_graph/', views.contentCompareEditionGraph.as_view(), name='compare_edition_graph'),

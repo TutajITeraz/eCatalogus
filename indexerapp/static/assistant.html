@@ -1,5 +1,6 @@
+<!-- Modified assistant.html: remove flex flex-row from answer to avoid layout issues -->
 
-<div  id="assistant" x-init="assistant_init()" class="px-2 flex flex-col">
+<div id="assistant" x-init="assistant_init()" class="px-2 flex flex-col">
     <div class="flex flex-row mb-3">
         <img src="/static/img/magpie.jpg" class="max-w-20 md:max-w-36">
         <h1 class="text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left mt-4 mb-3 pl-3" style="vertical-align: middle; display: inline-block;">AI Database Assistant</h1>
@@ -9,7 +10,12 @@
         <button id="askBtn" class="py-2 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded w-[144px] hover:bg-[#dec5b2]" onclick="askQuestion()">Ask Me...</button>
     </div>
     <div id="assistant_content" class="flex flex-col overflow-x-auto">
-        <div class="flex flex-row mb-2" id="loader">Loading...(can take up to 20sec)</div>
-        <div class="flex flex-row mb-2" id="answer"></div>
+        <div class="flex flex-row mb-2" id="loader" style="display: none;">Loading...</div>
+        <div id="conversation" class="mb-4" style="display: none;">
+            <h2>Conversation History <button id="toggleConv" onclick="toggleConversation()">(Unfold)</button></h2>
+            <div id="convContent" style="display: none; overflow-y: auto; max-height: 300px; border: 1px solid #ccc; padding: 10px;"></div>
+        </div>
+        <div id="answer" class="mb-2"></div> <!-- Removed flex flex-row -->
+        <div id="error" class="text-red-500"></div>
     </div>
 </div>

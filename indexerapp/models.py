@@ -1578,3 +1578,15 @@ class TextStandarization(models.Model):
     standard_incipit = models.CharField(max_length=64, blank=True, null=True)
     standard_full_text = models.TextField(blank=True, null=True)
     
+
+class AIQuery(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    project_id = models.IntegerField(default=0)
+    question = models.TextField()
+    status = models.CharField(max_length=20, default='pending')  # pending, running, completed, error
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    conversation = models.TextField(default='')  # JSON string of list of {"role": , "content": }
+    result = models.TextField(default='')  # JSON string of list of {"query": , "result": {"columns": , "rows": }, "comment": }
+    error = models.TextField(default='')
+    execution_time = models.FloatField(default=0.0)
