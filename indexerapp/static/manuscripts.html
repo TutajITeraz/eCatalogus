@@ -164,13 +164,13 @@
                         </div>
                     </li>
                     <li x-data="{ cap: false }" @click.away="cap = false"
-                        class="md:relative items-center justify-center xl:mb-0 flex col-span-2">
+                        class="md:relative items-center justify-center xl:mb-0 flex col-span-1">
                         <button @click="cap = !cap"
                             id="mega-menu-icons-dropdown-button"
                             data-dropdown-toggle="mega-menu-icons-dropdown"
                             :class="cap ? 'text-[#0d1b2a] underline' : 'hover:underline hover:text-[#070e16]'"
                             class="w-full h-full text-center young-serif text-[10px] sm:text-xs md:text-[8pt] uppercase" style="line-height: 15px !important;">
-                            Codicology and Paleography
+                            Codicology
 
                         </button>
                         <div id="mega-menu-icons-dropdown"
@@ -196,7 +196,7 @@
                                 </div>
                             </div>
                             <div class="flex mx-3 mt-1 mb-2">
-                                <h2 class="w-1/2 flex items-center">Quires included in MS</h2>
+                                <h2 class="w-1/2 flex items-center">Quires included in the MS</h2>
                                 <select class="manuscript_filter w-1/2" id="type_of_the_quire_select" multiple style="width: 50% !important;">
                                     <option value="bifolium">bifolium</option>
                                     <option value="binion">binion</option>
@@ -286,40 +286,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="flex mx-3 my-1">
-                                <h2 class="w-1/2 flex items-center">Main script</h2>
-                                <select class="manuscript_filter w-1/2" id="main_script_select" style="width: 50% !important;"></select>
-                            </div>
-                            <!--
-                            <div class="flex mx-3 my-1">
-                                <h2 class="w-1/2 flex items-center">How many columns</h2>
-                                <div class="flex w-1/2">
-                                    <div class="range_input">
-                                        <label class="top_level_label range_label" for="ms_how_many_columns_min">min.</label>
-                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="ms_how_many_columns_min" min="0" max="1000" />
-                                    </div>
-                                    <div class="range_input ml-2">
-                                        <label class="top_level_label range_label" for="ms_how_many_columns_max">max.</label>
-                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="ms_how_many_columns_max" min="0" max="1000" />
-                                    </div>
-                                    
-                                </div>
-                            </div>
-                            -->
-                            <div class="flex mx-3 my-1">
-                                <h2 class="w-1/2 flex items-center">How many columns</h2>
-                                <div class="flex my-1 w-1/2">
-                                    <div class="range_input">
-                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="ms_how_many_columns1" name="ms_how_many_columns1" value="true" checked> <label for="ms_how_many_columns1">1</label>
-                                    </div>
-                                    <div class="range_input ml-2">
-                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="ms_how_many_columns2" name="ms_how_many_columns2" value="true" checked> <label for="ms_how_many_columns2">2</label>
-                                    </div>
-                                    <div class="range_input ml-2">
-                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="ms_how_many_columns3" name="ms_how_many_columns3" value="true" checked> <label for="ms_how_many_columns3">3</label>
-                                    </div>
-                                </div>
-                            </div>
+                            
 
                             <div class="flex mx-3 mt-1 mb-2">
                                 <h2 class="w-1/2 flex items-center">Watermarks</h2>
@@ -365,7 +332,7 @@
                             data-dropdown-toggle="mega-menu-icons-dropdown"
                             :class="script ? 'text-[#0d1b2a] underline' : 'hover:underline hover:text-[#070e16]'"
                             class="w-full h-full text-center young-serif text-[10px] sm:text-xs md:text-[8pt] uppercase">
-                            Script
+                            Paleography
 
                         </button>
                         <div id="mega-menu-icons-dropdown"
@@ -416,7 +383,42 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Main script</h2>
+                                <select class="manuscript_filter w-1/2" id="main_script_select" style="width: 50% !important;"></select>
+                            </div>
+                            <!--
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">How many columns</h2>
+                                <div class="flex w-1/2">
+                                    <div class="range_input">
+                                        <label class="top_level_label range_label" for="ms_how_many_columns_min">min.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="ms_how_many_columns_min" min="0" max="1000" />
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <label class="top_level_label range_label" for="ms_how_many_columns_max">max.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="ms_how_many_columns_max" min="0" max="1000" />
+                                    </div>
+                                    
+                                </div>
+                            </div>
+                            -->
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">How many columns</h2>
+                                <div class="flex my-1 w-1/2">
+                                    <div class="range_input">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="ms_how_many_columns1" name="ms_how_many_columns1" value="true" checked> <label for="ms_how_many_columns1">1</label>
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="ms_how_many_columns2" name="ms_how_many_columns2" value="true" checked> <label for="ms_how_many_columns2">2</label>
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="ms_how_many_columns3" name="ms_how_many_columns3" value="true" checked> <label for="ms_how_many_columns3">3</label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+                        
                     </li>
                     <li x-data="{ layout: false }" @click.away="layout = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
@@ -466,7 +468,7 @@
                             </div>
                             -->
                             <div class="flex mx-3 my-1">
-                                <h2 class="w-1/2 flex items-center">Lines / stakes per page</h2>
+                                <h2 class="w-1/2 flex items-center">Lines / staves per page</h2>
                                 <div class="flex w-1/2">
                                     <div class="range_input">
                                         <label class="top_level_label range_label" for="ms_lines_per_page_min">min.</label>
@@ -687,9 +689,9 @@
                             <div class="flex mx-3 mt-1 mb-2">
                                 <h2 class="w-1/2 flex items-center">Damage</h2>
                                 <select class="manuscript_filter w-1/2" id="damage_select" style="width: 50% !important;">
-                                    <option value="very">Very damaged</option>
-                                    <option value="average">Average damaged</option>
-                                    <option value="slightly">Slightly damaged</option>
+                                    <option value="very">very damaged</option>
+                                    <option value="average">average damaged</option>
+                                    <option value="slightly">slightly damaged</option>
                                     <option value>No damages</option>
                                 </select>
                             </div>
@@ -832,6 +834,70 @@
                             </div>
                         </div>
                     </li>
+
+                    <li x-data="{ musicology: false }"
+                        @click.away="musicology = false"
+                        class="md:relative items-center justify-center xl:mb-0 flex border-0">
+                        <button @click="musicology = !musicology"
+                            id="mega-menu-icons-dropdown-button"
+                            data-dropdown-toggle="mega-menu-icons-dropdown"
+                            :class="musicology ? 'text-[#0d1b2a] underline' : 'hover:underline hover:text-[#070e16]'"
+                            class="w-full h-full text-center young-serif text-[10px] sm:text-xs md:text-[8pt] uppercase">
+                            Musicology
+
+                        </button>
+                        <div id="mega-menu-icons-dropdown"
+                            class="absolute flex flex-col z-10 w-full md:w-[28rem] top-[60px] md:top-[30px] text-xs md:text-sm text-[#0d1b2a] bg-[#fef9f6] border border-gray-200 rounded shadow-md right-0"
+                            x-show="musicology"
+                            x-transition:enter="transition ease-out duration-400"
+                            x-transition:enter-start="transform opacity-0 scale-90"
+                            x-transition:enter-end="transform opacity-100 scale-100"
+                            x-transition:leave="transition ease-in duration-400"
+                            x-transition:leave-start="transform opacity-100 scale-100"
+                            x-transition:leave-end="transform opacity-0 scale-90">
+
+                            <div class="flex mx-3 mt-1 mb-2">
+                                <h2 class="w-1/2 flex items-center">Type</h2>
+                                <select class="manuscript_filter w-1/2" id="musicology_type_select" multiple style="width: 50% !important;"></select>
+                            </div>
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Number of lines</h2>
+                                <div class="flex w-1/2">
+                                    <div class="range_input">
+                                        <label class="top_level_label range_label" for="musicology_how_many_lines_min">min.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="musicology_how_many_lines_min" min="0" max="100" />
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <label class="top_level_label range_label" for="musicology_how_many_lines_max">max.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="musicology_how_many_lines_max" min="0" max="100" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Original</h2>
+                                <div class="flex my-1 w-1/2">
+                                    <div class="range_input">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="musicology_original_true" name="musicology_original_true" value="true" checked> <label for="musicology_original_true">Yes</label>
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="musicology_original_false" name="musicology_original_false" value="true" checked> <label for="musicology_original_false">No</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">On lines</h2>
+                                <div class="flex my-1 w-1/2">
+                                    <div class="range_input">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="musicology_on_lines_true" name="musicology_on_lines_true" value="true" checked> <label for="musicology_on_lines_true">Yes</label>
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <input class="mr-1 h-5 w-5 bg-gray-50 cursor-pointer text-[#1895cd] border border-[#bbb]" type="checkbox" id="musicology_on_lines_false" name="musicology_on_lines_false" value="true" checked> <label for="musicology_on_lines_false">No</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                    
                     <li x-data="{ decoration: false }"
                         @click.away="decoration = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
@@ -854,12 +920,12 @@
                             x-transition:leave-end="transform opacity-0 scale-90">
 
                             <div class="flex mx-3 mt-1 mb-2">
-                                <h2 class="w-1/2 flex items-center">Type</h2>
+                                <h2 class="w-1/2 flex items-center">Type (general)</h2>
                                 <select class="manuscript_filter w-1/2" id="decoration_type_select" multiple style="width: 50% !important;"></select>
                             </div>
 
                             <div class="flex mx-3 mt-1 mb-2">
-                                <h2 class="w-1/2 flex items-center">Subtype</h2>
+                                <h2 class="w-1/2 flex items-center">Type (detailed)</h2>
                                 <select class="manuscript_filter w-1/2" id="decoration_subtype_select" multiple style="width: 50% !important;">
                                 </select>
                             </div>
@@ -1096,7 +1162,7 @@
                 <option value="dating__year_from" selected>Dating</option>
                 <option value="name">Name</option>
                 <option value="binding_date__year_from">Binding date</option>
-                <option value="rism_id">RISM ID</option>
+                <option value="rism_id">RISM ID (shelfmark)</option>
 
         </select>
         <span class="select2-selection__rendered" id="select2-sortField-container" role="textbox" aria-readonly="true" title="Name"></span>

@@ -8,7 +8,7 @@ from django.contrib.auth import login, authenticate
 
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre
+from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames
 from django.http import JsonResponse
 from django.contrib.contenttypes.models import ContentType
 
@@ -543,6 +543,15 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         digitized_true = True if digitized_true == "true" else False if digitized_true == "false" else None
         digitized_false = True if digitized_false == "true" else False if digitized_false == "false" else None
 
+        musicology_original_true = self.request.query_params.get('musicology_original_true')
+        musicology_original_false = self.request.query_params.get('musicology_original_false')
+        musicology_on_lines_true = self.request.query_params.get('musicology_on_lines_true')
+        musicology_on_lines_false = self.request.query_params.get('musicology_on_lines_false')
+        musicology_original_true = True if musicology_original_true == "true" else False if musicology_original_true == "false" else None
+        musicology_original_false = True if musicology_original_false == "true" else False if musicology_original_false == "false" else None
+        musicology_on_lines_true = True if musicology_on_lines_true == "true" else False if musicology_on_lines_true == "false" else None
+        musicology_on_lines_false = True if musicology_on_lines_false == "true" else False if musicology_on_lines_false == "false" else None
+
         projectId = int(self.request.query_params.get('projectId'))
 
         #text values
@@ -699,6 +708,15 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Q(iiif_manifest_url__isnull=True) | Q(iiif_manifest_url__exact=''), Q(links__isnull=True) | Q(links__exact=''))
         if digitized_true and not digitized_false:
             queryset = queryset.filter(Q(iiif_manifest_url__isnull=False) & ~Q(iiif_manifest_url__exact='') | Q(links__isnull=False) & ~Q(links__exact=''))
+
+        if musicology_original_true and not musicology_original_false:
+            queryset =queryset.filter(ms_music_notation__original=True)
+        if musicology_original_false and not musicology_original_true:
+            queryset =queryset.filter(ms_music_notation__original=False)
+        if musicology_on_lines_true and not musicology_on_lines_false:
+            queryset =queryset.filter(ms_music_notation__on_lines=True)
+        if musicology_on_lines_false and not musicology_on_lines_true: 
+            queryset =queryset.filter(ms_music_notation__on_lines=False)
 
         #NEW CHECKS:
         foliation = self.request.query_params.get('foliation')
@@ -978,6 +996,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         decoration_addition_date_max = self.request.query_params.get('decoration_addition_date_max')
         decoration_addition_date_years_min = self.request.query_params.get('decoration_addition_date_years_min')
         decoration_addition_date_years_max = self.request.query_params.get('decoration_addition_date_years_max')
+        musicology_how_many_lines_min = self.request.query_params.get('musicology_how_many_lines_min')
+        musicology_how_many_lines_max = self.request.query_params.get('musicology_how_many_lines_max')
 
         if decoration_size_height_min and decoration_size_height_min.isdigit():
             queryset = queryset.filter(ms_decorations__size_height_min__gte=int(decoration_size_height_min))
@@ -998,6 +1018,12 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(ms_decorations__date_of_the_addition__year_from__gte=int(decoration_addition_date_years_min))
         if decoration_addition_date_years_max and decoration_addition_date_years_max.isdigit():
             queryset = queryset.filter(ms_decorations__date_of_the_addition__year_to__lte=int(decoration_addition_date_years_max))
+
+
+        if musicology_how_many_lines_min and musicology_how_many_lines_min.isdigit():
+            queryset = queryset.filter(ms_music_notation__number_of_lines__gte=int(musicology_how_many_lines_min))
+        if musicology_how_many_lines_max and musicology_how_many_lines_max.isdigit():
+            queryset = queryset.filter(ms_music_notation__number_of_lines__lte=int(musicology_how_many_lines_max))
 
         #New select values:
         parchment_colour_select = self.request.query_params.get('parchment_colour_select')
@@ -1034,6 +1060,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         decoration_subject_select = self.request.query_params.get('decoration_subject_select')
         decoration_colours_select = self.request.query_params.get('decoration_colours_select')
         decoration_characteristics_select = self.request.query_params.get('decoration_characteristics_select')
+        musicology_type_select = self.request.query_params.get('musicology_type_select')
 
         clla_liturgical_genre_select = self.request.query_params.get('clla_liturgical_genre_select')
         clla_provenance_place_select = self.request.query_params.get('clla_provenance_place_select')
@@ -1184,6 +1211,11 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             for q in decoration_characteristics_select_ids:
                 queryset = queryset.filter(ms_decorations__decoration_characteristics__characteristics=q)
 
+        if musicology_type_select: 
+            musicology_type_select_ids = musicology_type_select.split(';')
+            #queryset = queryset.filter(ms_decorations__decoration_characteristics__characteristics__in=musicology_type_select_ids)
+            for q in musicology_type_select_ids:
+                queryset = queryset.filter(ms_music_notation__music_notation_name=q)
 
         if formula_text and len(formula_text)>1:
             queryset = queryset.filter(ms_content__formula_text__icontains=formula_text)
@@ -2302,6 +2334,20 @@ class BindingComponentsAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(name__icontains=self.q)
 
         return qs
+
+class MusicNotationNamesAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        # Don't forget to filter out results depending on the visitor !
+        if not self.request.user.is_authenticated:
+            return MusicNotationNames.objects.none()
+
+        qs = MusicNotationNames.objects.all()
+
+        if self.q:
+            qs = qs.filter(name__icontains=self.q)
+
+        return qs
+
 
 class BindingCategoryAutocomplete(autocomplete.Select2ListView):
     def get_list(self):

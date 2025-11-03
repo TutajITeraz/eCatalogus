@@ -193,6 +193,7 @@ urlpatterns = [
     #DecorationTechniques
     path('decoration-techniques-autocomplete/',views.DecorationTechniquesAutocomplete.as_view(),name='decoration-techniques-autocomplete'),
     path('decoration-ornamented_text-autocomplete/',views.DecorationOrnamentedTextAutocomplete.as_view(),name='decoration-ornamented_text-autocomplete'),
+    path('music-notation-names-autocomplete/',views.MusicNotationNamesAutocomplete.as_view(),name='music-notation-names-autocomplete'),
 
 
     #ajax:

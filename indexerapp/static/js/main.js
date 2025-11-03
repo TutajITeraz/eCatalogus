@@ -4,7 +4,7 @@ let loc = window.location.protocol + '//' + window.location.hostname;
 
 let pageRoot=loc;
 let projectId=0;//All
-let foreign_id_name='MSPL';
+let foreign_id_name='Manuscripta.pl';
 
 if(loc == "https://eclla.hostline.net.pl")
 {

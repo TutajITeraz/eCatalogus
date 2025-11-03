@@ -1208,7 +1208,7 @@ class Binding(models.Model):
     place_of_origin = models.ForeignKey(Places, models.DO_NOTHING, blank=True, null=True)
     type_of_binding = models.ForeignKey(BindingTypes, models.DO_NOTHING, null=True)
     style_of_binding = models.ForeignKey(BindingStyles, models.DO_NOTHING, null=True)
-    category = models.CharField(max_length=12,choices=[("original", "original"),("early", "early modern"),("historical", "Historical rebinding"),("conservation", "Conservation binding"),("restored", "Restored binding")], blank=True, null=True)
+    category = models.CharField(max_length=12,choices=[("original", "original"),("early", "early modern"),("historical", "historical rebinding"),("conservation", "conservation binding"),("restored", "restored binding")], blank=True, null=True)
 
     #materials #many-to-one
     #type of decoration #many-to-one

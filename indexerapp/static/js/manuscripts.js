@@ -606,6 +606,18 @@ manuscripts_init = function()
           allowClear: true,
           placeholder: '',
     });
+    $('#musicology_type_select').select2({
+        ajax: {
+            url: pageRoot+'/music-notation-names-autocomplete/',
+            dataType: 'json',
+            xhrFields: {
+                withCredentials: true
+              }
+            },
+            allowClear: true,
+            placeholder: '',
+    });
+
 
     
     //explicitly added options:
@@ -883,6 +895,7 @@ manuscripts_init = function()
     $('#decoration_subject_select').on("change", processFilters);
     $('#decoration_colours_select').on("change", processFilters);
     $('#decoration_characteristics_select').on("change", processFilters);
+    $('#musicology_type_select').on("change", processFilters);
 
     $('#decoration_size_height_min').on("change", processFilters);
     $('#decoration_size_height_max').on("change", processFilters);
@@ -892,6 +905,9 @@ manuscripts_init = function()
     $('#decoration_addition_date_max').on("change", processFilters);
     $('#decoration_addition_date_years_min').on("change", processFilters);
     $('#decoration_addition_date_years_max').on("change", processFilters);
+
+    $('#musicology_how_many_lines_min').on("change", processFilters);
+    $('#musicology_how_many_lines_max').on("change", processFilters);
 
 
     $('#paper_leafs_false').on("change", processFilters);
@@ -927,6 +943,11 @@ manuscripts_init = function()
     $('#water_staining_false').on("change", processFilters);
     $('#historic_repairs_true').on("change", processFilters);
     $('#historic_repairs_false').on("change", processFilters);
+
+    $('#musicology_original_true').on("change", processFilters);
+    $('#musicology_original_false').on("change", processFilters);
+    $('#musicology_on_lines_true').on("change", processFilters);
+    $('#musicology_on_lines_false').on("change", processFilters);
 
 
     var getFilterData = function(d)
@@ -1030,6 +1051,11 @@ manuscripts_init = function()
         d.historic_repairs_true = $('#historic_repairs_true').is(':checked');
         d.historic_repairs_false = $('#historic_repairs_false').is(':checked');
 
+        d.musicology_original_true = $('#musicology_original_true').is(':checked');
+        d.musicology_original_false = $('#musicology_original_false').is(':checked');
+        d.musicology_on_lines_true = $('#musicology_on_lines_true').is(':checked');
+        d.musicology_on_lines_false = $('#musicology_on_lines_false').is(':checked');
+
         //New Select:
         d.parchment_colour_select = $('#parchment_colour_select').select2('data').map(item => item.id).join(';');
         d.main_script_select = $('#main_script_select').select2('data').map(item => item.id).join(';');
@@ -1071,6 +1097,7 @@ manuscripts_init = function()
         d.decoration_subject_select = $('#decoration_subject_select').select2('data').map(item => item.id).join(';');
         d.decoration_colours_select = $('#decoration_colours_select').select2('data').map(item => item.id).join(';');
         d.decoration_characteristics_select = $('#decoration_characteristics_select').select2('data').map(item => item.id).join(';');
+        d.musicology_type_select = $('#musicology_type_select').select2('data').map(item => item.id).join(';');
 
         d.binding_date_years_max = $('#ms_binding_date_years_max').val();
 
@@ -1083,6 +1110,10 @@ manuscripts_init = function()
         d.decoration_addition_date_max = $('#decoration_addition_date_max').val();
         d.decoration_addition_date_years_min = $('#decoration_addition_date_years_min').val();
         d.decoration_addition_date_years_max = $('#decoration_addition_date_years_max').val();
+
+
+        d.musicology_how_many_lines_min = $('#musicology_how_many_lines_min').val();
+        d.musicology_how_many_lines_max = $('#musicology_how_many_lines_max').val();
         
 
         d.formula_text = $('#formula_text').val();
