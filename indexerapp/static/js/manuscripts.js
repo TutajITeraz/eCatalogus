@@ -91,6 +91,8 @@ manuscripts_init = function()
 
     function processFilters(e)
     {
+        updateTags();
+        
         if(!clearingAllFieldsInProgress)
             manuscripts_table.ajax.reload();
     }
@@ -1403,5 +1405,231 @@ manuscripts_init = function()
         }
     });
 
+// Optional: translation map for cases where filter key != DOM id
+const filterIdMap = {
+  name: 'ms_name_select',
+  foreign_id: 'ms_foreign_id_select',
+  liturgical_genre: 'ms_liturgical_genre_select',
+  contemporary_repository_place: 'ms_contemporary_repository_place_select',
+  shelfmark: 'ms_shelfmark_select',
+  place_of_origin: 'ms_place_of_origin_select',
+
+  dating_min: 'ms_dating_min',
+  dating_max: 'ms_dating_max',
+  dating_years_min: 'ms_dating_years_min',
+  dating_years_max: 'ms_dating_years_max',
+
+  binding_date_min: 'ms_binding_date_min',
+  binding_date_max: 'ms_binding_date_max',
+  binding_date_years_min: 'ms_binding_date_years_min',
+  binding_date_years_max: 'ms_binding_date_years_max',
+
+  binding_date_years_max: 'ms_binding_date_years_max',
+
+  order_column: 'sortField'
+};
+
+// Resolves the selector (#id) for a given filter key
+function resolveSelectorFromKey(key) {
+  if (filterIdMap.hasOwnProperty(key)) {
+    const id = filterIdMap[key];
+    return id.startsWith('#') ? id : `#${id}`;
+  }
+
+  const msPrefixed = `#ms_${key}`;
+  if (document.querySelector(msPrefixed)) return msPrefixed;
+
+  const plain = `#${key}`;
+  if (document.querySelector(plain)) return plain;
+
+  const alt = `#${key.replace(/_true|_false$/, '')}`;
+  if (document.querySelector(alt)) return alt;
+
+  return plain;
+}
+
+// Returns the element for a given key
+function getElementForKey(key) {
+  const selector = resolveSelectorFromKey(key);
+  return document.querySelector(selector);
+}
+// --- Improved selector resolver ---
+function resolveSelectorFromKey(key) {
+  // Check explicit map first
+  if (filterIdMap.hasOwnProperty(key)) {
+    const id = filterIdMap[key];
+    return id.startsWith('#') ? id : `#${id}`;
+  }
+
+  // Try variations from your getFilterData naming pattern
+  const candidates = [
+    `#ms_${key}_select`,
+    `#ms_${key}`,
+    `#${key}_select`,
+    `#${key}`,
+  ];
+
+  for (const sel of candidates) {
+    if (document.querySelector(sel)) return sel;
+  }
+
+  return `#${key}`;
+}
+
+function updateTags() {
+    const d = {};
+    getFilterData(d);
+
+    const container = document.getElementById('filterTagsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    for (const [key, value] of Object.entries(d)) {
+        // skip irrelevant keys
+        if (['projectId', 'order_column', 'order_direction', 'dating_years_min', 'dating_years_max'].includes(key))
+            continue;
+
+        // skip empty/false values
+        if (value === undefined || value === null || value === '' || value === false)
+            continue;
+
+        const selector = resolveSelectorFromKey(key);
+        const el = document.querySelector(selector);
+        if (!el) continue;
+
+        let displayText = '';
+        const label = prettifyKeyLabel(key);
+
+        if (el.tagName === 'INPUT' && el.type === 'checkbox') {
+            // For checkboxes, only show the label (True/False is in the name)
+            displayText = label;
+        } else if (el.tagName === 'SELECT' && $(el).hasClass('select2-hidden-accessible')) {
+            // Select2: show text of selected items
+            const items = $(el).select2('data');
+            const valText = items.map(i => i.text || i.id).join('; ');
+            displayText = `<strong>${label}</strong>: ${valText}`;
+        } else {
+            // Input/number fields: label + value
+            displayText = `<strong>${label}</strong>: ${value}`;
+        }
+
+        const tag = document.createElement('span');
+        tag.className = 'filter-tag';
+        tag.innerHTML = displayText;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'filter-tag-x';
+        btn.innerHTML = '&times;';
+        btn.dataset.key = key;
+        btn.dataset.target = selector;
+        btn.addEventListener('click', () => clearFilter(btn));
+
+        tag.appendChild(btn);
+        container.appendChild(tag);
+    }
+}
+
+
+// Converts snake_case keys to readable labels
+function prettifyKeyLabel(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, s => s.toUpperCase());
+}
+
+// Clears the specific filter element dynamically depending on its DOM type
+function clearFilter(btn) {
+  const key = btn.dataset.key;
+  const targetSelector = btn.dataset.target;
+  const el = document.querySelector(targetSelector);
+
+  if (!el) {
+    console.warn('clearFilter: element not found for', key, 'selector', targetSelector);
+    return;
+  }
+
+  const tag = el.tagName.toLowerCase();
+  const typeAttr = (el.getAttribute('type') || '').toLowerCase();
+
+  console.log('Clearing', key, '->', targetSelector, '| tag:', tag, '| type:', typeAttr);
+
+  // Handle <select> (Select2 single or multiple)
+  if (tag === 'select') {
+    try {
+      $(el).val(null).trigger('change.select2');
+    } catch (e) {}
+    el.value = '';
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    try { $(el).trigger('change'); } catch (e) {}
+    try { $(el).trigger('select2:clear'); } catch (e) {}
+  }
+  // Handle checkboxes
+  else if (tag === 'input' && typeAttr === 'checkbox') {
+    el.checked = false;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // Handle radio buttons
+  else if (tag === 'input' && typeAttr === 'radio') {
+    const name = el.getAttribute('name');
+    if (name) {
+      document.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`).forEach(r => {
+        r.checked = false;
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    } else {
+      el.checked = false;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  // Handle text, number, range, textarea, etc.
+  else if ((tag === 'input' && ['text','number','range','search','tel','email','url'].includes(typeAttr)) || tag === 'textarea') {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // Fallback
+  else {
+    try { el.value = ''; } catch (e) {}
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Sync duplicate controls (if they exist)
+  syncMirroredControls(key);
+
+  // Refresh tags and filters
+  updateTags();
+  if (typeof processFilters === 'function') processFilters();
+}
+
+// Keeps duplicate UI controls (like quick filters) in sync when one is cleared
+function syncMirroredControls(key) {
+  const baseKey = key.replace(/_(true|false)$/, '');
+  const candidates = Array.from(document.querySelectorAll('input, select, textarea'))
+    .filter(el => {
+      const id = el.id || '';
+      const name = el.getAttribute('name') || '';
+      return id.includes(baseKey) || name.includes(baseKey);
+    });
+
+  candidates.forEach(el => {
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute('type') || '').toLowerCase();
+
+    if (tag === 'input' && type === 'checkbox') {
+      el.checked = false;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (tag === 'select') {
+      try { $(el).val(null).trigger('change.select2'); } catch (e) {}
+      el.value = '';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      try { $(el).trigger('change'); } catch (e) {}
+    } else if (tag === 'input' || tag === 'textarea') {
+      try { el.value = ''; } catch (e) {}
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+}
+
 
 }
+

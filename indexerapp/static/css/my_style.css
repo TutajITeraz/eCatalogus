@@ -1259,3 +1259,29 @@ ul.decoration_comment {
     background: rgba(0, 0, 0, 0.5);
     z-index: 40;
 }
+
+.filter-tag {
+    display: inline-flex;
+    align-items: center;
+    background: #efeceb;
+    color: #1a202c;
+    border-radius: 20px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin: 0.25rem;
+}
+
+.filter-tag-x {
+    background: transparent;
+    border: none;
+    color: #4a5568;
+    font-size: 1rem;
+    margin-left: 0.5rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.filter-tag-x:hover {
+    color: #e53e3e;
+}
