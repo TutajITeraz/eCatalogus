@@ -1284,8 +1284,8 @@ manuscripts_init = function()
                 "title": "Image",
                 "width": "220px",
                 "fnCreatedCell": function (nTd, sData, oData, iRow, iCol) {
-                    if (oData.image && oData.image.length > 3) {
-                        $(nTd).html("<img src='" + oData.image + "' style='max-height: 170px; max-width: 190px;'></img>");
+                    if (oData.thumbnail_url && oData.thumbnail_url.length > 3) {
+                        $(nTd).html("<img src='" + oData.thumbnail_url + "' style='max-height: 170px; max-width: 190px;'></img>");
                     }
                 }
             },

@@ -11,6 +11,14 @@ from django.contrib.contenttypes.fields import GenericForeignKey #dla komentarzy
 from django.utils.functional import cached_property
 from django.contrib.auth.models import User
 
+#For saving thumbnails:
+from django.dispatch import receiver
+from django.db.models.signals import post_save
+from PIL import Image
+from io import BytesIO
+from django.core.files import File
+import os
+
 from Levenshtein import distance
 
 def toRoman(num):
@@ -774,6 +782,8 @@ class Manuscripts(models.Model):
     iiif_manifest_url = models.CharField(max_length=1024, blank=True, null=True)
     #zoteroCollection = models.CharField(max_length=64, blank=True, null=True)
     image = models.ImageField(upload_to='images/', blank=True, null=True)
+    thumbnail = models.ImageField(upload_to='images/thumbnails/', blank=True, null=True)
+
     pdf_url = models.CharField(max_length=1024, blank=True, null=True)
 
     general_comment = models.TextField(blank=True, null=True)
@@ -1590,3 +1600,24 @@ class AIQuery(models.Model):
     result = models.TextField(default='')  # JSON string of list of {"query": , "result": {"columns": , "rows": }, "comment": }
     error = models.TextField(default='')
     execution_time = models.FloatField(default=0.0)
+
+#Change for 
+
+@receiver(post_save, sender=Manuscripts)
+def create_thumbnail(sender, instance, created, **kwargs):
+    if not instance.image:
+        return
+
+    if not instance.thumbnail or created:  # tylko jeśli nie ma lub nowy obiekt
+        img = Image.open(instance.image.path)
+
+        # Zachowaj proporcje, max 300px na dłuższym boku
+        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+
+        # Zapisz jako nowy plik
+        thumb_io = BytesIO()
+        img.save(thumb_io, format='JPEG', quality=90)
+        thumb_filename = f"thumb_{os.path.basename(instance.image.name)}"
+
+        instance.thumbnail.save(thumb_filename, File(thumb_io), save=False)
+        instance.save(update_fields=['thumbnail'])

@@ -116,6 +116,7 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
     binding_place_name = serializers.CharField(source='binding_place.__str__', allow_null=True, read_only=True)
     binding_place_latitude = serializers.FloatField(source='binding_place.latitude', allow_null=True, read_only=True)
     binding_place_longitude = serializers.FloatField(source='binding_place.longitude', allow_null=True, read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Manuscripts
@@ -150,6 +151,13 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
             'binding_place_latitude',
             'binding_place_longitude',
         )
+
+    def get_thumbnail_url(self, obj):
+        if obj.thumbnail:
+            return obj.thumbnail.url
+        elif obj.image:
+            return obj.image.url
+        return None
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
