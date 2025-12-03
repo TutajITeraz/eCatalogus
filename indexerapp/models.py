@@ -10,10 +10,9 @@ from django.contrib.contenttypes.models import ContentType #dla komentarzy
 from django.contrib.contenttypes.fields import GenericForeignKey #dla komentarzy
 from django.utils.functional import cached_property
 from django.contrib.auth.models import User
+from django.conf import settings
 
 #For saving thumbnails:
-from django.dispatch import receiver
-from django.db.models.signals import post_save
 from PIL import Image
 from io import BytesIO
 from django.core.files import File
@@ -833,6 +832,73 @@ class Manuscripts(models.Model):
         else:
             return 'mixed'  # Mixed materials
 
+    def generate_thumbnail(self, save=True):
+        """
+        Generate a 300px thumbnail (longer side).
+        Works with RGB, RGBA, PNG, CMYK, etc.
+        Automatically creates thumbnail directory.
+        """
+        if not self.image:
+            return
+
+        if self.thumbnail and not save:
+            return
+
+        try:
+            img = Image.open(self.image.path)
+
+            # Convert problematic modes to RGB
+            if img.mode in ("RGBA", "LA", "P"):   # P = palette (often from GIF/PNG)
+                # For transparent PNGs: paste on white background
+                if img.mode in ("RGBA", "LA"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "RGBA":
+                        background.paste(img, mask=img.split()[-1])  # use alpha channel
+                    else:
+                        background.paste(img)
+                    img = background
+                else:
+                    img = img.convert("RGB")
+            elif img.mode == "CMYK":
+                img = img.convert("RGB")
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+
+            # Resize
+            img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+
+            # Save as JPEG in memory
+            thumb_io = BytesIO()
+            img.save(thumb_io, format='JPEG', quality=92, optimize=True)
+            thumb_io.seek(0)
+
+            # Ensure directory exists
+            thumbnail_dir = os.path.join(settings.MEDIA_ROOT, 'images', 'thumbnails')
+            os.makedirs(thumbnail_dir, exist_ok=True)
+
+            # Save to model
+            filename = f"thumb_{os.path.basename(self.image.name).rsplit('.', 1)[0]}.jpg"
+            self.thumbnail.save(filename, File(thumb_io), save=save)
+
+        except Exception as e:
+            print(f"Warning: Failed to generate thumbnail for Manuscript {self.pk}: {e}")
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to generate thumbnail after the full image is saved.
+        We use a flag to prevent infinite recursion.
+        """
+        is_new_image = self.image and (not self.pk or 
+                     Manuscripts.objects.filter(pk=self.pk, image=self.image).exists() == False)
+
+        super().save(*args, **kwargs)  # Save full image first
+
+        # Only generate thumbnail if image exists and it's new or changed
+        if self.image and (not self.thumbnail or is_new_image):
+            # Temporarily disable save inside generate_thumbnail to avoid loop
+            self.generate_thumbnail(save=True)
+
+                
 class Projects(models.Model):
     name = models.CharField(max_length=64, default="Project Name")
 
@@ -1600,24 +1666,3 @@ class AIQuery(models.Model):
     result = models.TextField(default='')  # JSON string of list of {"query": , "result": {"columns": , "rows": }, "comment": }
     error = models.TextField(default='')
     execution_time = models.FloatField(default=0.0)
-
-#Change for 
-
-@receiver(post_save, sender=Manuscripts)
-def create_thumbnail(sender, instance, created, **kwargs):
-    if not instance.image:
-        return
-
-    if not instance.thumbnail or created:  # tylko jeśli nie ma lub nowy obiekt
-        img = Image.open(instance.image.path)
-
-        # Zachowaj proporcje, max 300px na dłuższym boku
-        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
-
-        # Zapisz jako nowy plik
-        thumb_io = BytesIO()
-        img.save(thumb_io, format='JPEG', quality=90)
-        thumb_filename = f"thumb_{os.path.basename(instance.image.name)}"
-
-        instance.thumbnail.save(thumb_filename, File(thumb_io), save=False)
-        instance.save(update_fields=['thumbnail'])

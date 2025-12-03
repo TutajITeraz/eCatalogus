@@ -120,37 +120,7 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Manuscripts
-        fields = (
-            'id',
-            'name',
-            'foreign_id',
-            'rism_id',
-            'image',
-            'contemporary_repository_place',
-            'shelf_mark',
-            'dating',
-            'place_of_origin',
-            'main_script',
-            'form_of_an_item',
-            'how_many_columns_mostly',
-            'lines_per_page_usually',
-            'how_many_quires',
-            'foliation_or_pagination',
-            'decorated',
-            'music_notation',
-            'binding_date',
-            'binding_place',
-            'ms_provenance',
-            'contemporary_repository_place_name',
-            'contemporary_repository_place_latitude',
-            'contemporary_repository_place_longitude',
-            'place_of_origin_name',
-            'place_of_origin_latitude',
-            'place_of_origin_longitude',
-            'binding_place_name',
-            'binding_place_latitude',
-            'binding_place_longitude',
-        )
+        fields = '__all__'
 
     def get_thumbnail_url(self, obj):
         if obj.thumbnail:

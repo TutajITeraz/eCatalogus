@@ -1332,7 +1332,8 @@ manuscripts_init = function()
             { "data": "binding_date", "title": "Binding Date", visible: false },
             { "data": "binding_place_name", "title": "Binding Place Name", visible: false },
             { "data": "binding_place_latitude", "title": "Binding Place Latitude", visible: false },
-            { "data": "binding_place_longitude", "title": "Binding Place Longitude", visible: false }
+            { "data": "binding_place_longitude", "title": "Binding Place Longitude", visible: false },
+            { "data": "thumbnail_url", "title": "Thumbnail URL", visible: false }
         ],
         "initComplete": function() {
             // Inject sort dropdown before the search bar
