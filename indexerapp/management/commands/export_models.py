@@ -4,68 +4,96 @@ from django.apps import apps
 from django.db import models
 
 RELATION_TYPES = {
-    models.ForeignKey: 'FK',
-    models.OneToOneField: 'O2O',
-    models.ManyToManyField: 'M2M',
+    models.ForeignKey: 'ForeignKey',
+    models.OneToOneField: 'OneToOneField',
+    models.ManyToManyField: 'ManyToManyField',
 }
 
 class Command(BaseCommand):
-    help = "Eksportuje wszystkie modele Django do CSV z pełnym opisem pól"
+    help = "Eksportuje podsumowanie wszystkich modeli i pól do CSV"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--output',
+            "--output",
             type=str,
-            default='models_summary.csv',
-            help='Nazwa pliku wyjściowego CSV'
+            default="models_summary.csv",
+            help="Nazwa pliku wyjściowego (domyślnie models_summary.csv)",
         )
 
     def handle(self, *args, **options):
         rows = []
         header = [
-            "app_label", "model_name", "verbose_name_plural",
-            "field_name", "verbose_name", "field_type",
-            "can_be_null", "can_be_blank", "max_length",
-            "choices", "related_model", "related_name", "relation_type", "comments"
+            "app_label",
+            "model_name",
+            "verbose_name_plural",
+            "field_name",
+            "verbose_name",
+            "field_type",
+            "null",
+            "blank",
+            "max_length",
+            "choices",
+            "related_model",
+            "related_name",
+            "relation_type",
+            "help_text",
         ]
         rows.append(header)
 
         for model in apps.get_models():
-            app_label = model._meta.app_label
+            meta = model._meta
+            app_label = meta.app_label
             model_name = model.__name__
-            verbose_plural = model._meta.verbose_name_plural.title() if model._meta.verbose_name_plural else ""
+            verbose_plural = (
+                str(meta.verbose_name_plural).title()
+                if meta.verbose_name_plural
+                else ""
+            )
 
-            # Najpierw dodaj wiersz z informacją o modelu (bez pola)
-            rows.append([
-                app_label, model_name, verbose_plural,
-                "", "", "", "", "", "", "", "", "", "", ""
-            ])
+            # Wiersz z informacją o modelu (pusty wiersz na pole)
+            rows.append([app_label, model_name, verbose_plural] + [""] * 11)
 
-            for field in model._meta.get_fields():
-                if field.auto_created or field.is_relation and field.auto_created:
-                    continue  # pomijamy reverse relations i pola automatyczne
+            # Przechodzimy tylko po "konkretnych" polach (nie reverse, nie auto_created)
+            for field in meta.get_fields():
+                # Pomijamy relacje odwrotne i pola automatyczne (np. reverse FK, m2m reverse)
+                if field.auto_created or field.is_relation and field.one_to_many or field.many_to_many and not field.concrete:
+                    continue
 
+                # Podstawowe informacje o polu
                 field_name = field.name
-                verbose_name = (field.verbose_name.title() if hasattr(field, 'verbose_name') and field.verbose_name else field_name.replace('_', ' ').title())
+                verbose_name = (
+                    str(field.verbose_name).title()
+                    if field.verbose_name
+                    else field_name.replace("_", " ").title()
+                )
                 field_type = field.get_internal_type()
-                can_be_null = field.null
-                can_be_blank = field.blank
-                max_length = field.max_length if hasattr(field, 'max_length') else ""
+
+                null = field.null if hasattr(field, "null") else ""
+                blank = field.blank if hasattr(field, "blank") else ""
+                max_length = getattr(field, "max_length", "") or ""
+
+                # Choices
                 choices = ""
-                if field.choices:
+                if getattr(field, "choices", None) and field.choices:
                     choices = " | ".join([f"{k}: {v}" for k, v in field.choices])
 
+                # Relacje
                 related_model = ""
                 related_name = ""
                 relation_type = ""
 
                 if field.is_relation:
-                    if field.related_model:
-                        related_model = field.related_model.__name__
-                    related_name = field.related_name or "(brak - używane domyślne)"
+                    # Dla zwykłych pól relacyjnych (FK, O2O, M2M) – mają related_model
+                    if hasattr(field, "related_model") and field.related_model:
+                        related_model = field.related_model._meta.object_name
+
+                    # related_name istnieje tylko na polach "wielu" (czyli nie na reverse)
+                    if hasattr(field, "related_name"):
+                        related_name = field.related_name or "(domyślne)"
+
                     relation_type = RELATION_TYPES.get(type(field), "Inne")
 
-                comments = field.help_text or ""
+                help_text = getattr(field, "help_text", "") or ""
 
                 rows.append([
                     app_label,
@@ -74,19 +102,21 @@ class Command(BaseCommand):
                     field_name,
                     verbose_name,
                     field_type,
-                    can_be_null,
-                    can_be_blank,
+                    null,
+                    blank,
                     max_length,
                     choices,
                     related_model,
                     related_name,
                     relation_type,
-                    comments
+                    help_text,
                 ])
 
-        filename = options['output']
-        with open(filename, 'w', newline='', encoding='utf-8') as f:
+        filename = options["output"]
+        with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerows(rows)
 
-        self.stdout.write(self.style.SUCCESS(f"Zapisano do {filename} – {len(rows)-1} wierszy"))
+        self.stdout.write(
+            self.style.SUCCESS(f"Gotowe! Zapisano {len(rows)-1} wierszy do pliku: {filename}")
+        )

@@ -63,7 +63,7 @@ if(!page)
 
 (function() { // Scoping function to avoid globals
     var src = page+".js"
-    document.write('<script src="'+pageRoot+'/static/js/' + src + '"><\/script>');
+    //document.write('<script src="'+pageRoot+'/static/js/' + src + '"><\/script>');
 })();
 
 let main_info_lock = false; // Flag to check if the request is in progress

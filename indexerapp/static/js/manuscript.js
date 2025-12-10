@@ -2641,6 +2641,27 @@ manuscript_init = function () {
     });
   });
 
+  //Tables init:
+  init_content_table(false);
+
+  /*
+  //I cannot init here because these tables are in the x-if template. 
+  init_origins_table();
+  init_quires_table();
+  init_layouts_table();
+  init_main_hands();
+  init_additions_hands();
+  init_music_table();
+  init_initials_table();
+  init_miniatures_table();
+  init_borders_others_table();
+
+  init_provenance_table();
+  init_bibliography_table();
+  init_watermarks_table();
+  */
+
+
   //Tooltips:
   /*
     $('a').hover(function(e){

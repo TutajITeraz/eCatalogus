@@ -1,5 +1,27 @@
 
-<div x-data="{}" class="manuscriptPage" id="manuscriptPages" x-init="manuscript_init()" style="height: calc(100vh - 272px);">
+<script src="/static/js/manuscript.js"></script>
+
+<script src="/static/js/lib/leaflet.js"
+    crossorigin="anonymous"></script>
+
+<script src="/static/js/lib/leaflet.markercluster.js"></script>
+
+<script src="/static/js/lib/leaflet.geometryutil.js"
+    crossorigin="anonymous"></script>
+<script src="/static/js/lib/leaflet-arrowheads.js"
+    crossorigin="anonymous"></script>
+
+
+<script src="/static/js/lib/leaflet_numbered_markers.js"></script>
+
+
+<script src="/static/js/lib/mirador.min.js"></script> 
+
+<script src="js/lib/zoomist.umd.js"></script>
+
+
+    
+<div  x-init="manuscript_init()"  x-data="{}" class="manuscriptPage" id="manuscriptPages" style="height: calc(100vh - 272px);">
     <h1 class="printIt text-[#0d1b2a] text-[16px] md:text-[24pt] caudex-bold text-center mt-4 mb-3"><strong x-text="(await getMSInfo()).manuscript.name + ', ' + ((await getMSInfo()).manuscript.rism_id || '')"></strong></h1>
 
     <div class="two_columns">
@@ -725,7 +747,7 @@
                           Identify traditions
                         </a>
                         
-                        <table x-init="init_content_table" id="content" class="table printIt table-striped  table-bordered table-hover" style="width:100%">
+                        <table  id="content" class="table printIt table-striped  table-bordered table-hover" style="width:100%">
                         </table>
                     </div>
                 </div>
