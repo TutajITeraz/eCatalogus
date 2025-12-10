@@ -624,7 +624,7 @@ function init_content_table(reinit = false) {
         width: "10%",
         orderable: false,
       },
-      { data: "rite_name_from_ms", title: "rite name from MS", width: "20%" },
+      { data: "rubric_name_from_ms", title: "rubric name from MS", width: "20%" },
       { data: "subsection", title: "subsection", width: "20%" },
       { data: "function", title: "function / genre", width: "10%" },
       { data: "subfunction", title: "subgenre", width: "10%" },
@@ -785,7 +785,7 @@ function init_content_table(reinit = false) {
         "similarity_by_user",
         "proper_texts",
         "formula_text",
-        "rite_name_from_ms",
+        "rubric_name_from_ms",
         "formula_standarized",
         "comments",
       ];
@@ -987,7 +987,7 @@ function init_decoration_table() {
             },
             { "data": "content", "title": "content", "visible": false },
             { "data": "calendar", "title": "calendar", "visible": false },
-            { "data": "rite_name_standarized", "title": "rite_name_standarized", "visible": false },
+            { "data": "rubric_name_standarized", "title": "rubric_name_standarized", "visible": false },
             {
                 "data": "decorated_content",
                 "title": "Decorated content",
@@ -997,18 +997,18 @@ function init_decoration_table() {
 
                     let content = row.content;
                     let calendar = row.calendar;
-                    let rite_name_standarized = row.rite_name_standarized;
+                    let rubric_name_standarized = row.rubric_name_standarized;
 
                     if(content.length<2)
                         content = '';
                     if(calendar.length<2)
                         calendar = '';
-                    if(rite_name_standarized.length<2)
-                        rite_name_standarized = '';
+                    if(rubric_name_standarized.length<2)
+                        rubric_name_standarized = '';
 
 
 
-                    return content+' '+calendar+' '+rite_name_standarized;
+                    return content+' '+calendar+' '+rubric_name_standarized;
                 }
             },
 
@@ -1185,8 +1185,8 @@ function init_decoration_table(table_info) {
       { data: "content", title: "content", visible: false },
       { data: "calendar", title: "calendar", visible: false },
       {
-        data: "rite_name_standarized",
-        title: "rite_name_standarized",
+        data: "rubric_name_standarized",
+        title: "rubric_name_standarized",
         visible: false,
       },
       {
@@ -1198,13 +1198,13 @@ function init_decoration_table(table_info) {
 
           let content = row.content;
           let calendar = row.calendar;
-          let rite_name_standarized = row.rite_name_standarized;
+          let rubric_name_standarized = row.rubric_name_standarized;
 
           if (content.length < 2) content = "";
           if (calendar.length < 2) calendar = "";
-          if (rite_name_standarized.length < 2) rite_name_standarized = "";
+          if (rubric_name_standarized.length < 2) rubric_name_standarized = "";
 
-          return content + " " + calendar + " " + rite_name_standarized;
+          return content + " " + calendar + " " + rubric_name_standarized;
         },
       },
       { data: "where_in_ms_from", title: "where in MS (from)", visible: false },

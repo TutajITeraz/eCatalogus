@@ -396,14 +396,14 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
 class ContentGlobalFilter(DatatablesFilterSet):
     """Filter name, artist and genre by name with icontains"""
 
-    'manuscript', 'formula', 'rite', 'rite_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'similarity_by_user', 'similarity_levenshtein' 
+    'manuscript', 'formula', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'similarity_by_user', 'similarity_levenshtein' 
 
     manuscript = filters.NumberFilter(lookup_expr='exact')
 
 
     #manuscript = GlobalCharFilter(lookup_expr='icontains')
     #formula = GlobalCharFilter(field_name='formula__text', lookup_expr='icontains')
-    rite_name_from_ms = GlobalCharFilter(field_name='rite_name_from_ms', lookup_expr='icontains')
+    rubric_name_from_ms = GlobalCharFilter(field_name='rubric_name_from_ms', lookup_expr='icontains')
     formula_text = GlobalCharFilter(field_name='formula_text', lookup_expr='icontains')
     sequence_in_ms = GlobalCharFilter()
     where_in_ms_from = GlobalNumberFilter(field_name='where_in_ms_from', lookup_expr='gt')
@@ -556,7 +556,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
 
         #text values
         formula_text = self.request.query_params.get('formula_text')
-        rite_name_from_ms = self.request.query_params.get('rite_name_from_ms')
+        rubric_name_from_ms = self.request.query_params.get('rubric_name_from_ms')
         clla_no = self.request.query_params.get('clla_no')
 
 
@@ -1040,7 +1040,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         binding_category_select = self.request.query_params.get('binding_category_select')
         binding_decoration_type_select = self.request.query_params.get('binding_decoration_select')
         formula_select = self.request.query_params.get('formula_select')
-        rite_select = self.request.query_params.get('rite_select')
+        rubric_select = self.request.query_params.get('rubric_select')
         damage_select = self.request.query_params.get('damage_select')
         provenance_place_select = self.request.query_params.get('provenance_place_select')
         provenance_place_countries_select = self.request.query_params.get('provenance_place_countries_select')
@@ -1116,10 +1116,10 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             formula_select_ids = formula_select.split(';')
             for q in formula_select_ids:
                 queryset = queryset.filter(ms_content__formula=q)
-        if rite_select: 
-            rite_select_ids = rite_select.split(';')
-            for q in rite_select_ids:
-                queryset = queryset.filter(ms_content__rite=q)
+        if rubric_select: 
+            rubric_select_ids = rubric_select.split(';')
+            for q in rubric_select_ids:
+                queryset = queryset.filter(ms_content__rubric=q)
         if damage_select: 
             damage_select_ids = damage_select.split(';')
             queryset = queryset.filter(ms_condition__damage__in=damage_select_ids)
@@ -1219,8 +1219,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
 
         if formula_text and len(formula_text)>1:
             queryset = queryset.filter(ms_content__formula_text__icontains=formula_text)
-        if rite_name_from_ms and len(rite_name_from_ms)>1:
-            queryset = queryset.filter(ms_content__rite_name_from_ms__icontains=rite_name_from_ms)
+        if rubric_name_from_ms and len(rubric_name_from_ms)>1:
+            queryset = queryset.filter(ms_content__rubric_name_from_ms__icontains=rubric_name_from_ms)
         
         if clla_no and len(clla_no)>=1:
             queryset = queryset.filter(ms_clla__clla_no__icontains=clla_no)
@@ -2653,8 +2653,8 @@ class ContentImportView(View):
                     if len(parts) < 2:
                         return JsonResponse({'info': f'error: edition_index "{row.get("edition_index")}" is invalid'}, status=200)
                     bibliography_shortname= parts[0]
-                    feast_rite_sequence= parts[1]
-                    new_edition_index = self.get_edition_content_id_by_fields('EditionContent', bibliography_shortname, feast_rite_sequence)
+                    feast_rubric_sequence= parts[1]
+                    new_edition_index = self.get_edition_content_id_by_fields('EditionContent', bibliography_shortname, feast_rubric_sequence)
                 
                 if new_liturgical_genre_id == None and row.get('liturgical_genre_id') != None :
                     return JsonResponse({'info': 'error: could not find value "'+row.get('liturgical_genre_id')+'" in table LiturgicalGenres'}, status=200)
@@ -2711,10 +2711,10 @@ class ContentImportView(View):
                 content = Content(
                     manuscript_id=row.get('manuscript_id'),
                     formula_id=row.get('formula_id'),
-                    rite_id=row.get('rite_id'),
-                    rite_name_from_ms=row.get('rite_name_from_ms'),
-                    subrite_name_from_ms=row.get('subrite_name_from_ms'),
-                    rite_sequence=row.get('rite_sequence_in_the_MS'),
+                    rubric_id=row.get('rubric_id'),
+                    rubric_name_from_ms=row.get('rubric_name_from_ms'),
+                    subrubric_name_from_ms=row.get('subrubric_name_from_ms'),
+                    rubric_sequence=row.get('rubric_sequence_in_the_MS'),
                     formula_text=row.get('formula_text_from_ms'),
                     sequence_in_ms=row.get('sequence_in_ms'),
                     where_in_ms_from=row.get('where_in_ms_from'),
@@ -2785,9 +2785,9 @@ class ContentImportView(View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-    def get_edition_content_id_by_fields(self, model_name, bibliography_shortname, feast_rite_sequence):
+    def get_edition_content_id_by_fields(self, model_name, bibliography_shortname, feast_rubric_sequence):
         model = apps.get_model(app_label='indexerapp', model_name=model_name)
-        obj = model.objects.filter(bibliography__shortname__iexact=bibliography_shortname, feast_rite_sequence=feast_rite_sequence).first()
+        obj = model.objects.filter(bibliography__shortname__iexact=bibliography_shortname, feast_rubric_sequence=feast_rubric_sequence).first()
         return obj.id if obj else None
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -3042,10 +3042,10 @@ class EditionContentImportView(View):
                         row[key] = None
 
                 # Convert names to IDs
-                new_rite_name_standarized = self.get_id_by_name('RiteNames', row.get('rite_name_standarized'), 'name')
-                if new_rite_name_standarized == None and row['rite_name_standarized'] != None :
-                    return JsonResponse({'info': 'error: could not find value "'+row['rite_name_standarized']+'" in table RiteNames'}, status=200)
-                row['rite_name_standarized'] = new_rite_name_standarized 
+                new_rubric_name_standarized = self.get_id_by_name('RiteNames', row.get('rubric_name_standarized'), 'name')
+                if new_rubric_name_standarized == None and row['rubric_name_standarized'] != None :
+                    return JsonResponse({'info': 'error: could not find value "'+row['rubric_name_standarized']+'" in table RiteNames'}, status=200)
+                row['rubric_name_standarized'] = new_rubric_name_standarized 
 
                 new_function = self.get_id_by_name('ContentFunctions', row.get('function'))
                 if new_function == None and row['function'] != None :
@@ -3062,8 +3062,8 @@ class EditionContentImportView(View):
                 content = EditionContent(
                     bibliography_id = row.get('bibliography_id'),
                     formula_id = row.get('formula_id'),
-                    rite_name_standarized_id = row.get('rite_name_standarized'),
-                    feast_rite_sequence = row.get('feast_rite_sequence'),
+                    rubric_name_standarized_id = row.get('rubric_name_standarized'),
+                    feast_rubric_sequence = row.get('feast_rubric_sequence'),
                     subsequence = row.get('subsequence'),
                     page = row.get('page'),
                     function_id = row.get('function'),
@@ -3715,9 +3715,9 @@ class TestPage(Page):
         #query_from_indexes=True,
         columns__manuscript__filter__include=True,
         columns__formula__filter__include=True,
-        columns__rite__filter__include=True,
-        columns__rite_name_from_ms__filter__include=True,
-        columns__rite_sequence__filter__include=True,
+        columns__rubric__filter__include=True,
+        columns__rubric_name_from_ms__filter__include=True,
+        columns__rubric_sequence__filter__include=True,
         columns__formula_text__filter__include=True,
         columns__where_in_ms_from__filter__include=True,
         columns__where_in_ms_to__filter__include=True,
@@ -3822,7 +3822,7 @@ class contentCompareJSON(View):
             for content_object in row['Values']:
                 formula_id = content_object.formula_id
                 formula = str(content_object.formula)
-                rite_name = content_object.rite_name_from_ms
+                rubric_name = content_object.rubric_name_from_ms
 
                 formula_traditions = []
                 traditions = content_object.formula.tradition
@@ -3835,7 +3835,7 @@ class contentCompareJSON(View):
                     'formula_id': str(formula_id),
                     'sequence_in_ms': content_object.sequence_in_ms,
                     'formula': formula,
-                    'rite_name': rite_name,
+                    'rubric_name': rubric_name,
                     'formula_traditions': formula_traditions
                 })
 
@@ -3856,7 +3856,7 @@ class contentCompareEditionGraph(View):
 
         ms_ids = [left,right]
         category_column = 'edition_index'
-        value_column = 'rite_sequence'
+        value_column = 'rubric_sequence'
 
 
         # Query the database for data
@@ -3875,7 +3875,7 @@ class contentCompareEditionGraph(View):
         for index, row in df.iterrows():
             for content_object in row['Values']:
                 edition_index = content_object.edition_index # Assuming edition_index is a ForeignKey field in Content model
-                reshaped_data.append({'Table': row['Table'], 'edition_index': str(edition_index), 'rite_sequence': content_object.rite_sequence})
+                reshaped_data.append({'Table': row['Table'], 'edition_index': str(edition_index), 'rubric_sequence': content_object.rubric_sequence})
 
         reshaped_df = pd.DataFrame(reshaped_data)
         
@@ -3887,18 +3887,18 @@ class contentCompareEditionGraph(View):
 
         for edition_index in unique_edition_indexs:
             values = reshaped_df[reshaped_df['edition_index'] == edition_index]
-            line = plt.plot(values['rite_sequence'], values['Table'], marker='o', label=f'edition_index {str(edition_index)}')  # Swapping x and y axes
+            line = plt.plot(values['rubric_sequence'], values['Table'], marker='o', label=f'edition_index {str(edition_index)}')  # Swapping x and y axes
             color = line[0].get_color()  # Retrieve the color of the marker used in the line plot
             
             # Annotate only the last point of each edition_index with its label
             # Calculate the midpoint index
             midpoint_index = len(values) // 2
             midpoint = values.iloc[midpoint_index]
-            plt.text(midpoint['rite_sequence'], midpoint['Table'], f'{str(edition_index)}', rotation=33, verticalalignment='top', horizontalalignment='right', fontsize=8, color=color)
+            plt.text(midpoint['rubric_sequence'], midpoint['Table'], f'{str(edition_index)}', rotation=33, verticalalignment='top', horizontalalignment='right', fontsize=8, color=color)
 
         # Add labels and title
         plt.ylabel('Connections')  # Swapping x and y axis labels
-        plt.xlabel('rite_sequence')  # Swapping x and y axis labels
+        plt.xlabel('rubric_sequence')  # Swapping x and y axis labels
         plt.title('Comparison graph')
 
         # Rotate y-axis labels for better readability
@@ -3936,7 +3936,7 @@ class contentCompareEditionJSON(View):
         ms_ids = mss.split(';')
 
         category_column = 'edition_index'
-        value_column = 'rite_sequence'
+        value_column = 'rubric_sequence'
 
         # Query the database for data
         data = []
@@ -3953,12 +3953,12 @@ class contentCompareEditionJSON(View):
         for index, row in df.iterrows():
             for content_object in row['Values']:
                 edition_index = content_object.edition_index
-                rite_name_standarized = str(content_object.edition_index.rite_name_standarized)
+                rubric_name_standarized = str(content_object.edition_index.rubric_name_standarized)
                 reshaped_data.append({
                     'Table': row['Table'],
                     'edition_index': str(edition_index),
-                    'rite_sequence': content_object.rite_sequence,
-                    'rite_name_standarized': rite_name_standarized
+                    'rubric_sequence': content_object.rubric_sequence,
+                    'rubric_name_standarized': rubric_name_standarized
                 })
 
         reshaped_df = pd.DataFrame(reshaped_data)
@@ -3975,10 +3975,10 @@ class MSRitesLookupView(View):
 
         print("manuscript = "+str(manuscript))
 
-        # Get all content related to the manuscript with non-empty edition_index and rite_sequence fields
-        ms_content = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False, rite_sequence__isnull=False)
+        # Get all content related to the manuscript with non-empty edition_index and rubric_sequence fields
+        ms_content = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False, rubric_sequence__isnull=False)
 
-        sorted_ms_content = ms_content.order_by('rite_sequence')
+        sorted_ms_content = ms_content.order_by('rubric_sequence')
         #sorted_ms_content = [str(ms_content.edition_index) for ms_content in sorted_ms_content]
 
 
@@ -4033,7 +4033,7 @@ class MSRitesLookupView(View):
             last_name=''
             for content in ms_content:
                 # Get content related to the current related manuscript
-                related_content = Content.objects.filter(manuscript=related_ms, edition_index=content.edition_index, rite_sequence__isnull=False)
+                related_content = Content.objects.filter(manuscript=related_ms, edition_index=content.edition_index, rubric_sequence__isnull=False)
                 
                 if len(related_content)>0:
                     name = str(related_content[0].edition_index)
@@ -4042,20 +4042,20 @@ class MSRitesLookupView(View):
                         ms_info['identical_edition_index_list'] += name + ", "
                         ms_info['identical_edition_index_count'] += 1
 
-                        if related_content[0].rite_sequence == content.rite_sequence :
+                        if related_content[0].rubric_sequence == content.rubric_sequence :
                             ms_info['identical_edition_index_on_same_sequence_count'] += 1
                     
                     last_name = name
 
             # Get sorted list of edition_index for the related manuscript
-            all_content = Content.objects.filter(manuscript=related_ms, edition_index__isnull=False, rite_sequence__isnull=False)
-            sorted_edition_index = all_content.order_by('rite_sequence')#.distinct('edition_index')
+            all_content = Content.objects.filter(manuscript=related_ms, edition_index__isnull=False, rubric_sequence__isnull=False)
+            sorted_edition_index = all_content.order_by('rubric_sequence')#.distinct('edition_index')
 
             sorted_unique_edition_index = []
             last_name=''
             for content in sorted_edition_index:
                 name = str(content.edition_index)
-                sequence = content.rite_sequence
+                sequence = content.rubric_sequence
 
                 if name != last_name:
                     sorted_unique_edition_index.append(name)
@@ -4218,8 +4218,8 @@ class ContentCSVExportView(View):
         # Write header
         writer.writerow([
             "id", "manuscript_id", "sequence_in_ms", "formula_id", "formula_text_from_ms",
-            "similarity_by_user", "where_in_ms_from", "where_in_ms_to", "rite_name_from_ms", "digital_page_number", "rite_id",
-            "rite_sequence_in_the_MS", "original_or_added", "biblical_reference", "reference_to_other_items",
+            "similarity_by_user", "where_in_ms_from", "where_in_ms_to", "rubric_name_from_ms", "digital_page_number", "rubric_id",
+            "rubric_sequence_in_the_MS", "original_or_added", "biblical_reference", "reference_to_other_items",
             "edition_index", "comments", "function_id", "subfunction_id", "liturgical_genre_id", "music_notation_id",
             "quire_id", "section_id", "subsection_id", "contributor_id", "entry_date"
         ])
@@ -4236,9 +4236,9 @@ class ContentCSVExportView(View):
                 foliation(content.where_in_ms_from),
                 foliation(content.where_in_ms_to),
                 content.digital_page_number,
-                content.rite_name_from_ms,
+                content.rubric_name_from_ms,
                 content.rite.id if content.rite else "",
-                content.rite_sequence,
+                content.rubric_sequence,
                 content.original_or_added,
                 content.biblical_reference,
                 content.reference_to_other_items,

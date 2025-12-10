@@ -1,4 +1,4 @@
-sequence_in_ms,formula_id,formula_text_from_ms,similarity_by_user,where_in_ms_from,where_in_ms_to,digital_page_number,rite_name_from_ms,rite_id,rite_sequence,original_or_added,biblical_reference,reference_to_other_items,edition_index,comments,function_id,subfunction_id,liturgical_genre_id,music_notation_id,quire_id,section_id,subsection_id
+sequence_in_ms,formula_id,formula_text_from_ms,similarity_by_user,where_in_ms_from,where_in_ms_to,digital_page_number,rubric_name_from_ms,subrubric_name_from_ms,rubric_id,rubric_sequence,original_or_added,biblical_reference,reference_to_other_items,edition_index,comments,function_id,subfunction_id,liturgical_genre_id,music_notation_id,quire_id,section_id,subsection_id
 ,,,,[Front pastedown],,1,,,,,,,,,,,,,,,
 1,,,,1v,,2,Ordinatio abbatis,123,1,,,,,,,,,,,,
 ,,,,2r,,3,,,,,,,,,,,,,,,

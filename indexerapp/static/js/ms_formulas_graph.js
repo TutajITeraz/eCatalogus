@@ -525,7 +525,7 @@ ms_formulas_graph_init = function() {
                         .style("opacity", .9);
                     tooltip.html(`Formula: ${d.formula_id}<br>
                         Tradition: ${values[0].formula_traditions.join(', ')}<br>
-                        Sequence: ${d.sequence_in_ms}<br>${d.rite_name}<br>${d.formula}`)
+                        Sequence: ${d.sequence_in_ms}<br>${d.rubric_name}<br>${d.formula}`)
                         .style("left", `${event.pageX + 5}px`)
                         .style("top", `${event.pageY - 28}px`);
                 })

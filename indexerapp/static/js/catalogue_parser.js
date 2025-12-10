@@ -4,7 +4,7 @@ let numberOfPages = 0;
 let contentTable = [];
 
 // Define headers as a constant string so it's easy to replace
-const CSV_HEADERS_STRING = "sequence_in_ms,formula_id,formula_text_from_ms,similarity_by_user,where_in_ms_from,where_in_ms_to,digital_page_number,rite_name_from_ms,rite_id,rite_sequence_in_the_MS,original_or_added,biblical_reference,reference_to_other_items,edition_index,comments,function_id,subfunction_id,liturgical_genre_id,music_notation_id,quire_id,section_id,subsection_id,contributor_id,entry_date";
+const CSV_HEADERS_STRING = "sequence_in_ms,formula_id,formula_text_from_ms,similarity_by_user,where_in_ms_from,where_in_ms_to,digital_page_number,rubric_name_from_ms,subrubric_name_from_ms,rubric_id,rubric_sequence_in_the_MS,original_or_added,biblical_reference,reference_to_other_items,edition_index,comments,function_id,subfunction_id,liturgical_genre_id,music_notation_id,quire_id,section_id,subsection_id,contributor_id,entry_date";
 const HEADERS = CSV_HEADERS_STRING.split(',');
 
 function parseCatalogue() {
@@ -60,14 +60,14 @@ function parseCatalogue() {
         }
     });
     if (lastIndex >= 0) {
-        if (contentTable[lastIndex].rite_name_from_ms === '') {
-        contentTable[lastIndex].rite_name_from_ms = prayer.riteText;
-        contentTable[lastIndex].rite_sequence_in_the_MS = prayer.originalIndex;
+        if (contentTable[lastIndex].rubric_name_from_ms === '') {
+        contentTable[lastIndex].rubric_name_from_ms = prayer.riteText;
+        contentTable[lastIndex].rubric_sequence_in_the_MS = prayer.originalIndex;
         contentTable[lastIndex].sequence_in_ms = prayer.originalIndex;
         } else {
         let duplicate = { ...contentTable[lastIndex] };
-        duplicate.rite_name_from_ms = prayer.riteText;
-        duplicate.rite_sequence_in_the_MS = prayer.originalIndex;
+        duplicate.rubric_name_from_ms = prayer.riteText;
+        duplicate.rubric_sequence_in_the_MS = prayer.originalIndex;
         duplicate.sequence_in_ms = prayer.originalIndex;
         contentTable.splice(lastIndex+1, 0, duplicate);
         }

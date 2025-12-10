@@ -105,12 +105,12 @@ ms_edition_graph_init = function()
     
         const editionIndexes = [...new Set(data.map(d => d.edition_index))];
         y.domain(data.map(d => d.Table));
-        x.domain(d3.extent(data, d => d.rite_sequence));
+        x.domain(d3.extent(data, d => d.rubric_sequence));
     
         const color = d3.scaleOrdinal(d3.schemeCategory10).domain(editionIndexes);
     
         const line = d3.line()
-                        .x(d => x(d.rite_sequence))
+                        .x(d => x(d.rubric_sequence))
                         .y(d => y(d.Table));
     
         svg.append("g").attr("class", "x axis")
@@ -159,7 +159,7 @@ ms_edition_graph_init = function()
                     tooltip.transition()
                         .duration(200)
                         .style("opacity", .9);
-                    tooltip.html(`Edition: ${edition_index}<br>${values[0].rite_name_standarized}`)
+                    tooltip.html(`Edition: ${edition_index}<br>${values[0].rubric_name_standarized}`)
                         .style("left", `${event.pageX + 5}px`)
                         .style("top", `${event.pageY - 28}px`);
                 })
@@ -176,23 +176,23 @@ ms_edition_graph_init = function()
             /*
             svg.append("text")
                 .attr("class", "line-label")
-                .attr("x", x(midpoint.rite_sequence))
+                .attr("x", x(midpoint.rubric_sequence))
                 .attr("y", y(midpoint.Table) + 10)
-                .attr("transform", `rotate(90, ${x(midpoint.rite_sequence)}, ${y(midpoint.Table) + 10})`)
+                .attr("transform", `rotate(90, ${x(midpoint.rubric_sequence)}, ${y(midpoint.Table) + 10})`)
                 .text(edition_index);
             */
             svg.selectAll("dot")
                 .data(values)
                 .enter().append("circle")
                 .attr("r", 7)  // Ustaw promień kropki na 7
-                .attr("cx", d => x(d.rite_sequence))
+                .attr("cx", d => x(d.rubric_sequence))
                 .attr("cy", d => y(d.Table))
                 .attr("fill", color(edition_index))
                 .on("mouseover", function(event, d) {
                     tooltip.transition()
                         .duration(200)
                         .style("opacity", .9);
-                    tooltip.html(`Edition: ${d.edition_index}<br>Rite: ${d.rite_sequence}<br>${d.rite_name_standarized}`)
+                    tooltip.html(`Edition: ${d.edition_index}<br>Rubric: ${d.rubric_sequence}<br>${d.rubric_name_standarized}`)
                         .style("left", `${event.pageX + 5}px`)
                         .style("top", `${event.pageY - 28}px`);
                 })
@@ -215,13 +215,13 @@ ms_edition_graph_init = function()
         
             // Update only the x position of circles, no scaling for size or y-axis
             svg.selectAll('circle')
-                .attr('cx', d => new_x(d.rite_sequence));  // Update x position only
+                .attr('cx', d => new_x(d.rubric_sequence));  // Update x position only
         
 
             // Update the paths (lines) with the new x-scale, ensure proper data binding
             svg.selectAll('path.data-line')  // Select paths associated with data lines
                 .attr('d', d => line
-                    .x(d => new_x(d.rite_sequence))  // Update the x position using new_x
+                    .x(d => new_x(d.rubric_sequence))  // Update the x position using new_x
                     .y(d => y(d.Table))(d));  // Keep the y position the same
         }
         

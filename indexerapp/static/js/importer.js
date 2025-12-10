@@ -97,7 +97,7 @@ function processData(csvData) {
 
                 document.getElementById('ms_selector').style.display = 'block';
                 document.getElementById('contributor_selector').style.display = 'block';
-            } else if (columnNames.includes('feast_rite_sequence')) {
+            } else if (columnNames.includes('feast_rubric_sequence')) {
                 console.log(`EditionContent content table`);
                 tableName='EditionContent';
 
@@ -154,8 +154,8 @@ function processData(csvData) {
 expectedColumnNamesByTable = {
     'Content': [
         'id', 'manuscript_id', 'sequence_in_ms', 'formula_id', 'formula_text_from_ms',
-        'similarity_by_user', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'rite_name_from_ms', 'subrite_name_from_ms',
-        'rite_id', 'rite_sequence_in_the_MS', 'original_or_added', 'biblical_reference',
+        'similarity_by_user', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'rubric_name_from_ms', 'subrubric_name_from_ms',
+        'rubric_id', 'rubric_sequence_in_the_MS', 'original_or_added', 'biblical_reference',
         'reference_to_other_items', 'edition_index', 'edition_subindex', 'comments', 'function_id', 'subfunction_id',
         'liturgical_genre_id', 'music_notation_id', 'quire_id', 'section_id', 'subsection_id',
         'contributor_id', 'entry_date'
@@ -176,7 +176,7 @@ expectedColumnNamesByTable = {
         'time_description',	'century_from',	'century_to',	'year_from',	'year_to'
     ],
     'EditionContent': [
-        'bibliography_id',	'formula_id',	'rite_name_standarized',	'feast_rite_sequence',	'subsequence',	'page',	'function',	'subfunction',	'authors',	'data_contributor'
+        'bibliography_id',	'formula_id',	'rubric_name_standarized',	'feast_rubric_sequence',	'subsequence',	'page',	'function',	'subfunction',	'authors',	'data_contributor'
     ],
     'Places': [
         'longitude','latitude','place_type','country_today_eng','region_today_eng','city_today_eng','repository_today_eng','country_today_local_language','region_today_local_language','city_today_local_language','repository_today_local_language','country_historic_eng','region_historic_eng','city_historic_eng','repository_historic_eng','country_historic_local_language','region_historic_local_language','city_historic_local_language','repository_historic_local_language','country_historic_latin','region_historic_latin','city_historic_latin','repository_historic_latin',
@@ -329,8 +329,8 @@ function validateEditionContent(data) {
             errors.push(`Invalid integer value in formula_id at row ${rowIndex + 1}. Value: "${row.formula_id}"`);
         }
 
-        if ( !isFloat(row.feast_rite_sequence) && row.feast_rite_sequence != "") {
-            errors.push(`Invalid integer value in feast_rite_sequence at row ${rowIndex + 1}. Value: "${row.feast_rite_sequence}"`);
+        if ( !isFloat(row.feast_rubric_sequence) && row.feast_rubric_sequence != "") {
+            errors.push(`Invalid integer value in feast_rubric_sequence at row ${rowIndex + 1}. Value: "${row.feast_rubric_sequence}"`);
         }
         if ( !isInteger(row.subsequence) && row.subsequence != "") {
             errors.push(`Invalid integer value in subsequence at row ${rowIndex + 1}. Value: "${row.subsequence}"`);

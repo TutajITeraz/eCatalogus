@@ -128,7 +128,7 @@ class Calendar(models.Model):
     #pagination_from = models.IntegerField( null=True, blank=True)
     #pagination_to = models.IntegerField(null=True, blank=True)
 
-    rite_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
+    rubric_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
     content = models.ForeignKey('Content', models.DO_NOTHING, related_name='calendar_content',verbose_name="Content (if present)", null=True, blank=True)
 
     month = models.IntegerField( null=True, blank=True)
@@ -242,7 +242,7 @@ class Decoration(models.Model):
     #subject = models.ForeignKey('Subjects', models.DO_NOTHING, related_name='decoration_subject')
     ornamented_text = models.CharField(max_length=128, blank=True, null=True)
 
-    rite_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
+    rubric_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
 
     comments = models.TextField(blank=True, null=True)
 
@@ -353,8 +353,8 @@ class Condition(models.Model):
 class EditionContent(models.Model):
     bibliography = models.ForeignKey('Bibliography', models.DO_NOTHING)
     formula = models.ForeignKey('Formulas', models.DO_NOTHING, blank=True, null=True)
-    rite_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
-    feast_rite_sequence = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    rubric_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
+    feast_rubric_sequence = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     subsequence = models.PositiveIntegerField( null=True, blank=True)
     page = models.PositiveIntegerField( null=True, blank=True)
     function = models.ForeignKey('ContentFunctions', models.DO_NOTHING, related_name='%(class)s_main_function',  blank=True, null=True)
@@ -374,8 +374,8 @@ class EditionContent(models.Model):
         if hasattr(self.bibliography , 'shortname'):
             txt = self.bibliography.shortname
 
-        if self.feast_rite_sequence is not None:
-            txt += ' c.'+str(self.feast_rite_sequence)
+        if self.feast_rubric_sequence is not None:
+            txt += ' c.'+str(self.feast_rubric_sequence)
             if self.subsequence is not None:
                 txt += '/'+str(self.subsequence)
 
@@ -468,10 +468,10 @@ class Content(models.Model):
 
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_content')
     formula = models.ForeignKey('Formulas', models.DO_NOTHING, blank=True, null=True)
-    rite = models.ForeignKey('RiteNames', models.DO_NOTHING, blank=True, null=True)
-    rite_name_from_ms = models.CharField(max_length=1024, null=True, blank=True)
-    subrite_name_from_ms = models.TextField(null=True, blank=True)
-    rite_sequence = models.PositiveIntegerField(null=True, blank=True, default=calc_last_sequence)
+    rubric = models.ForeignKey('RiteNames', models.DO_NOTHING, blank=True, null=True)
+    rubric_name_from_ms = models.CharField(max_length=1024, null=True, blank=True)
+    subrubric_name_from_ms = models.TextField(null=True, blank=True)
+    rubric_sequence = models.PositiveIntegerField(null=True, blank=True, default=calc_last_sequence)
 
     formula_text = models.TextField(null=True, blank=True)
     #folio_starting = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
@@ -1460,8 +1460,8 @@ class RiteNames(models.Model):
 """
 class Rites(models.Model):
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_rites')
-    rite_name_standarized = models.ForeignKey(RiteNames, models.DO_NOTHING, null=True, blank=True)
-    rite_sequence = models.IntegerField() #feast/rite
+    rubric_name_standarized = models.ForeignKey(RiteNames, models.DO_NOTHING, null=True, blank=True)
+    rubric_sequence = models.IntegerField() #feast/rite
     rubric_name_from_ms = models.CharField(max_length=255, null=True, blank=True)
     proper_texts = models.BooleanField(null=True, blank=True)
 

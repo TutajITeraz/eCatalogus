@@ -197,7 +197,7 @@ class ManuscriptHandsSerializer(serializers.ModelSerializer):
 class ContentSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
     manuscript_name = serializers.SerializerMethodField()
-    rite = RiteNamesSerializer
+    rubric = RiteNamesSerializer
     formula_standarized = serializers.SerializerMethodField()
     data_contributor = ContributorsSerializer
     authors = ContributorsSerializer(many=True)
@@ -218,7 +218,7 @@ class ContentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Content
         fields = (
-            'id', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rite', 'rite_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrite_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'comments'
+            'id', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'comments'
         )
 
     def to_representation(self, instance):

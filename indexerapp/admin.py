@@ -159,7 +159,7 @@ class EditionContentForm(forms.ModelForm):
         model = EditionContent
         fields = ('__all__')
         widgets = {
-            'rite_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'rubric_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
         }
 
 
@@ -449,7 +449,7 @@ class EditionContentAdmin(admin.ModelAdmin):
 # @admin.register(Content)
 class ContentAdmin(CustomDebateableAdmin):
     form = ContentForm
-    list_display= ['id', 'manuscript', 'formula_text', 'formula_standarized', 'rite_name_from_ms', 'similarity_levenshtein', 'where_in_ms_from', 'where_in_ms_to', 'original_or_added', 'biblical_reference', 'reference_to_other_items', 'similarity_by_user', 'entry_date', 'sequence_in_ms', 'edition_index', 'comments']
+    list_display= ['id', 'manuscript', 'formula_text', 'formula_standarized', 'rubric_name_from_ms', 'similarity_levenshtein', 'where_in_ms_from', 'where_in_ms_to', 'original_or_added', 'biblical_reference', 'reference_to_other_items', 'similarity_by_user', 'entry_date', 'sequence_in_ms', 'edition_index', 'comments']
 
 
     #list_display = ["where_in_ms_start" if x == "where_in_ms_from" else x for x in list_display]
@@ -551,7 +551,7 @@ class FormulasAdmin(CustomDebateableAdmin):
     search_fields = ['text__icontains']##_startswith
 """
 class RitesAdmin(CustomDebateableAdmin):
-    #list_display= ('rubric_name_from_ms','manuscript','rite_sequence','content_count')
+    #list_display= ('rubric_name_from_ms','manuscript','rubric_sequence','content_count')
 
     list_display= [field.name for field in Rites._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -865,7 +865,7 @@ class CalendarForm(forms.ModelForm):
         widgets = {
 
             'content': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rite_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'rubric_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
         }
 
 class CalendarAdmin(CustomDebateableAdmin):
@@ -931,7 +931,7 @@ class DecorationForm(forms.ModelForm):
         widgets = {
 
             'content': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rite_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'rubric_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
 
         }
 

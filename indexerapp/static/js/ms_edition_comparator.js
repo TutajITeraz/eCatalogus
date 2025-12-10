@@ -59,12 +59,12 @@ async function getAndShowSimilarMSbyEditionIndex(id,name)
         manuscript_description.append('<tr><td class="firsttd" class="firsttd">Content similarity:</td><td>'+Math.round(content_similarity * 100) / 100+'%</td><tr>');
         manuscript_description.append('<tr><td class="firsttd">Sequence similarity:</td><td>'+Math.round(sequence_similarity * 100) / 100+'%</td><tr>');
 
-        manuscript_description.append('<tr><td class="firsttd">Number of rites in the manuscript:</td><td>'+manuscript.total_edition_index_count+'</td><tr>');
+        manuscript_description.append('<tr><td class="firsttd">Number of rubrics in the manuscript:</td><td>'+manuscript.total_edition_index_count+'</td><tr>');
         
-        manuscript_description.append('<tr><td class="firsttd">How many rites are the same:</td><td>'+manuscript.identical_edition_index_count+'</td><tr>');
-        manuscript_description.append('<tr><td class="firsttd">How many rites are the same (and have the same sequence):</td><td>'+manuscript.identical_edition_index_on_same_sequence_count+'</td><tr>');
-        manuscript_description.append('<tr><td class="firsttd">A list of the same rites:</td><td>'+manuscript.identical_edition_index_list+'</td><tr>');
-        manuscript_description.append('<tr><td class="firsttd">Other rites included in the manuscript:</td><td>'+manuscript.edition_index_list+'</td><tr>');
+        manuscript_description.append('<tr><td class="firsttd">How many rubrics are the same:</td><td>'+manuscript.identical_edition_index_count+'</td><tr>');
+        manuscript_description.append('<tr><td class="firsttd">How many rubrics are the same (and have the same sequence):</td><td>'+manuscript.identical_edition_index_on_same_sequence_count+'</td><tr>');
+        manuscript_description.append('<tr><td class="firsttd">A list of the same rubrics:</td><td>'+manuscript.identical_edition_index_list+'</td><tr>');
+        manuscript_description.append('<tr><td class="firsttd">Other rubrics included in the manuscript:</td><td>'+manuscript.edition_index_list+'</td><tr>');
 
         manuscript_div.append(manuscript_description);
 

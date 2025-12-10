@@ -249,7 +249,7 @@ content_init = function()
                     },
                     "width": "10%" 
                 },
-                { "data": "rite_name_from_ms", "title": "Rite name from MS", "width": "20%" },
+                { "data": "rubric_name_from_ms", "title": "Rubric name from MS", "width": "20%" },
                 { "data": "subsection", "title": "Subsection", "width": "20%"  },
                 { "data": "function", "title": "Function / Genre", "width": "10%"  },
                 { "data": "subfunction", "title": "Subgenre", "width": "10%"  },
@@ -391,7 +391,7 @@ content_init = function()
 
                 if (!json || !json.data) return;
 
-                var columnsToCheck = ["function", "subfunction", "biblical_reference", "subsection", "quire", "similarity_by_user", "proper_texts", "formula_text", "rite_name_from_ms", "formula_standarized", "comments"];
+                var columnsToCheck = ["function", "subfunction", "biblical_reference", "subsection", "quire", "similarity_by_user", "proper_texts", "formula_text", "rubric_name_from_ms", "formula_standarized", "comments"];
 
                 var table = this;
 

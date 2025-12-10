@@ -424,7 +424,7 @@ manuscripts_init = function()
     //$('#provenance_place_select').on('select2:select', processFilters);
 
 
-    $('#rite_select').select2({
+    $('#rubric_select').select2({
         ajax: {
             url: pageRoot+'/ritenames-autocomplete/',
             dataType: 'json',
@@ -869,7 +869,7 @@ manuscripts_init = function()
     $('#binding_components_select').on("change", processFilters);
     $('#binding_category_select').on("change", processFilters);
     $('#formula_select').on("change", processFilters);
-    $('#rite_select').on("change", processFilters);
+    $('#rubric_select').on("change", processFilters);
     $('#binding_decoration_true').on("change", processFilters);
     $('#damage_select').on("change", processFilters);
     $('#parchment_shrinkage_true').on("change", processFilters);
@@ -937,7 +937,7 @@ manuscripts_init = function()
     $('#formula_text').on("change", processFilters);
     $('#clla_no').on("change", processFilters);
 
-    $('#rite_name_from_ms').on("change", processFilters);
+    $('#rubric_name_from_ms').on("change", processFilters);
 
     $('#darkening_true').on("change", processFilters);
     $('#darkening_false').on("change", processFilters);
@@ -1073,7 +1073,7 @@ manuscripts_init = function()
         d.binding_components_select = $('#binding_components_select').select2('data').map(item => item.id).join(';');
         d.binding_category_select = $('#binding_category_select').select2('data').map(item => item.id).join(';');
         d.formula_select = $('#formula_select').select2('data').map(item => item.id).join(';');
-        d.rite_select = $('#rite_select').select2('data').map(item => item.id).join(';');
+        d.rubric_select = $('#rubric_select').select2('data').map(item => item.id).join(';');
         d.damage_select = $('#damage_select').select2('data').map(item => item.id).join(';');
         d.provenance_place_select = $('#provenance_place_select').select2('data').map(item => item.id).join(';');
         d.provenance_place_countries_select = $('#provenance_place_countries_select').select2('data').map(item => item.id).join(';');
@@ -1119,7 +1119,7 @@ manuscripts_init = function()
         
 
         d.formula_text = $('#formula_text').val();
-        d.rite_name_from_ms = $('#rite_name_from_ms').val();
+        d.rubric_name_from_ms = $('#rubric_name_from_ms').val();
         //d.clla_no = $('#clla_no').val();
 
         //d.display_as_main_true = $('#display_as_main_true').is(':checked');

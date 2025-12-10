@@ -78,7 +78,7 @@
                      <title xml:lang="en" resp="content_author_{{ content.authors.0 }}"></title>
                      <note type="text_from_ms">{{ content.formula_text }}</note>
                      <note type="standarized">{{ content.formula.text }}</note>
-                     <rubric> {{ content.rite_name_from_ms }} </rubric>
+                     <rubric> {{ content.rubric_name_from_ms }} </rubric>
                   </msItem>
                   {% endfor %}
                 </msContents>

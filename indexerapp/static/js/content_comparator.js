@@ -246,7 +246,7 @@ content_comparator_init = function()
     //         { "data": "manuscript_name", "title": "Manuscript" },
     //         { "data": "where_in_ms_from", "title": "Where in MS (from)" },
     //         { "data": "where_in_ms_to", "title": "Where in MS (to)" },
-    //         { "data": "rite_name_from_ms", "title": "Rite name from MS" },
+    //         { "data": "rubric_name_from_ms", "title": "Rite name from MS" },
     //         { "data": "subsection", "title": "Subsection" },
     //         { "data": "function", "title": "Function / Genre" },
     //         { "data": "subfunction", "title": "Subgenre" },
@@ -279,7 +279,7 @@ content_comparator_init = function()
 
 
 
-    //         { "data": 'subrite_name_from_ms', "title": "Subrite name from MS", searchable: false },
+    //         { "data": 'subrubric_name_from_ms', "title": "Subrite name from MS", searchable: false },
     //         { "data": 'edition_index', "title": "Edition Index", searchable: false },
     //         { "data": 'edition_subindex', "title": "Edition Subindex", searchable: false },
 
@@ -353,7 +353,7 @@ content_comparator_init = function()
                     },
                     "width": "10%" 
                 },
-                { "data": "rite_name_from_ms", "title": "Rite name from MS", "width": "20%" },
+                { "data": "rubric_name_from_ms", "title": "Rubric name from MS", "width": "20%" },
                 { "data": "subsection", "title": "Subsection", "width": "20%"  },
                 { "data": "function", "title": "Function / Genre", "width": "10%"  },
                 { "data": "subfunction", "title": "Subgenre", "width": "10%"  },
@@ -495,7 +495,7 @@ content_comparator_init = function()
 
                 if (!json || !json.data) return;
 
-                var columnsToCheck = ["function", "subfunction", "biblical_reference", "subsection", "quire", "similarity_by_user", "proper_texts", "formula_text", "rite_name_from_ms", "formula_standarized", "comments"] ;
+                var columnsToCheck = ["function", "subfunction", "biblical_reference", "subsection", "quire", "similarity_by_user", "proper_texts", "formula_text", "rubric_name_from_ms", "formula_standarized", "comments"] ;
 
                 var table = this;
 
