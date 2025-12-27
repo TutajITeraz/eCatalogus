@@ -56,7 +56,7 @@ window.foreign_id_name = foreign_id_name;
 const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
 
-const page = urlParams.get('p');
+var page = urlParams.get('p');
 
 if(!page)
     page = "about";

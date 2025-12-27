@@ -3,6 +3,67 @@
 
     <div class="max-w-5xl">
 
+        <style>
+        /* Two-column responsive layout for the about page */
+        .two-columns {
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-top: 1.5rem;
+            margin-bottom: 1.5rem;
+            /* Keep columns side-by-side on wide screens; allow wrap only at small breakpoint */
+            flex-wrap: nowrap;
+            width: 100%;
+        }
+
+        .two-columns .left-column,
+        .two-columns .right-column {
+            box-sizing: border-box;
+            padding: 0.25rem;
+        }
+
+        /* On wide screens: left takes ~60%, right ~40% */
+        /* Left column fills remaining space; right column fixed at 500px */
+        .two-columns .left-column {
+            /* Fill remaining space; allow shrinking below content width when necessary */
+            flex: 1 1 auto;
+            min-width: 0; /* critical: allow flex child to shrink and prevent overflow */
+        }
+
+        .two-columns .right-column {
+            flex: 0 0 500px;
+            width: 500px;
+        }
+
+        /* Small screens: stack columns */
+        @media (max-width: 768px) {
+            .two-columns {
+                flex-wrap: wrap; /* stack on small screens */
+                gap: 1rem;
+            }
+
+            .two-columns .left-column,
+            .two-columns .right-column {
+                flex: 1 1 100%;
+                max-width: 100%;
+                width: 100%;
+            }
+        }
+
+        /* Minor typography and list spacing adjustments */
+        .two-columns h3 {
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .two-columns ul {
+            margin: 0 0 1rem 1.25rem;
+            padding: 0;
+        }
+
+        </style>
+
         <h2><img style="width: 75%; margin: auto" src ="/static/img/liturgica_poloniae_full_title_flat.svg" alt="Liturgica Poloniae: A Descriptive Catalogue of Polish Liturgical Manuscripts 
         (Part 1: Codices Copied until ca. 1300)."></img></h2>
 
@@ -24,41 +85,57 @@
         <img src="/static/img/about/LiturgicaPoloniae.jpeg"></img>
 
 
+        <!--
         <img style="max-width: 200px; float:right; margin-left: 15px; margin-bottom: 15px; margin-top: 15px;" src="/static/img/about/Tweed.jpeg"></img>
+        -->
 
+        <div class="two-columns">
+            <div class="left-column">
 
-        <h3 class="text-[20px] my-3 caudex-bold">TEAM MEMBERS:</h3>
+                <h3 class="text-[20px] my-3 caudex-bold">TEAM MEMBERS:</h3>
 
-        <ul>
-            <li>Łukasz Bolda (Politechnika Gdańska): from 2024</li>
-            <li>Irina Chachulska (Instytut Sztuki PAN)</li>
-            <li>Katarzyna Danilewicz (Szkoła Doktorska Katolickiego Uniwersytetu Lubelskiego): from 2022 to 2023 </li>
-            <li>Paweł Figurski (Instytut Sztuki PAN) – Principal Investigator</li>
-            <li>Joanna Frońska (Centre National de la Recherche Scientifique, Paris): from 2025</li>
-            <li>Monika Jakubek-Raczkowska (Wydział Sztuk Pięknych UMK)</li>
-            <li>Jakub Kubieniec (Instytut Muzykologii UJ)</li>
-            <li>Weronika Liszewska (Wydział Konserwacji i Restauracji Dzieł Sztuki ASP)</li>
-            <li>Magdalena Łanuszka (Międzynarodowe Centrum Kultury w Krakowie): from 2024</li>
-            <li>Adam Poznański (Oddział Rękopisów BUWr)</li>
-            <li>Juliusz Raczkowski (Wydział Sztuk Pięknych UMK)</li>
-            <li>Jacek Tomaszewski (Muzeum Azji i Pacyfiku)</li>
-            <li>Piotr Ziółkowski (Instytut Sztuki PAN): from 2024</li>
-        </ul>
+                <ul>
+                    <li>Łukasz Bolda (Politechnika Gdańska): from 2024</li>
+                    <li>Irina Chachulska (Instytut Sztuki PAN)</li>
+                    <li>Katarzyna Danilewicz (Szkoła Doktorska Katolickiego Uniwersytetu Lubelskiego): from 2022 to 2023 </li>
+                    <li>Paweł Figurski (Instytut Sztuki PAN) – Principal Investigator</li>
+                    <li>Joanna Frońska (Centre National de la Recherche Scientifique, Paris): from 2025</li>
+                    <li>Monika Jakubek-Raczkowska (Wydział Sztuk Pięknych UMK)</li>
+                    <li>Jakub Kubieniec (Instytut Muzykologii UJ)</li>
+                    <li>Weronika Liszewska (Wydział Konserwacji i Restauracji Dzieł Sztuki ASP)</li>
+                    <li>Magdalena Łanuszka (Międzynarodowe Centrum Kultury w Krakowie): from 2024</li>
+                    <li>Adam Poznański (Oddział Rękopisów BUWr)</li>
+                    <li>Juliusz Raczkowski (Wydział Sztuk Pięknych UMK)</li>
+                    <li>Jacek Tomaszewski (Muzeum Azji i Pacyfiku)</li>
+                    <li>Piotr Ziółkowski (Instytut Sztuki PAN): from 2024</li>
+                </ul>
 
-        <h3 class="text-[20px] my-3 caudex-bold">ADVISORY BOARD:</h3>
-        <ul>
-            <li>Erik Niblaeus (Department of Anglo-Saxon, Norse & Celtic, University of Cambridge)</li>
-            <li>Teresa Webber (Department of History, University of Cambridge)</li>
-        </ul>
+                <h3 class="text-[20px] my-3 caudex-bold">ADVISORY BOARD:</h3>
+                <ul>
+                    <li>Erik Niblaeus (Department of Anglo-Saxon, Norse & Celtic, University of Cambridge)</li>
+                    <li>Teresa Webber (Department of History, University of Cambridge)</li>
+                </ul>
 
-        <h3 class="text-[20px] my-3 caudex-bold">NEWS:</h3>
+            </div>
 
-        <div style="width: 500px; margin: auto">
-            <div class="fb-page" data-href="https://www.facebook.com/profile.php?id=61550428104663" data-tabs="timeline" data-width="500" data-height="750" data-small-header="false" data-adapt-container-width="true" data-hide-cover="false" data-show-facepile="true"><blockquote cite="https://www.facebook.com/profile.php?id=61550428104663" class="fb-xfbml-parse-ignore"><a href="https://www.facebook.com/profile.php?id=61550428104663">Liturgica Poloniae</a></blockquote></div>
+            <div class="right-column">
+
+                <h3 class="text-[20px] my-3 caudex-bold">NEWS:</h3>
+
+                <div style="width: 500px; margin: auto">
+                    <div class="fb-page" data-href="https://www.facebook.com/profile.php?id=61550428104663" data-tabs="timeline" data-width="500" data-height="750" data-small-header="false" data-adapt-container-width="true" data-hide-cover="false" data-show-facepile="true"><blockquote cite="https://www.facebook.com/profile.php?id=61550428104663" class="fb-xfbml-parse-ignore"><a href="https://www.facebook.com/profile.php?id=61550428104663">Liturgica Poloniae</a></blockquote></div>
+                </div>
+
+            </div>
         </div>
 
+        <!--
         <a class="twitter-timeline" data-width="400" data-height="500" data-dnt="true" href="https://twitter.com/LiturgicaPL?ref_src=twsrc%5Etfw">Tweets by LiturgicaPL</a> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script> 
+        
 
+        <a class="twitter-timeline" href="https://twitter.com/LiturgicaPL?ref_src=twsrc%5Etfw">Tweets by LiturgicaPL</a>
+
+        -->
 
         <h3 class="text-[20px] my-3 caudex-bold">FUNDING:</h3> 
         <a href="https://www.ispan.pl" target="_blank" ><img  style="max-height: 100px; float:left; margin: 20px; margin-bottom:20px; margin-right: 20px;" src="/static/img/about/ispan.png"></img></a>
