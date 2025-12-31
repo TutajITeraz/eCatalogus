@@ -20,7 +20,7 @@ The project aims to create an interactive catalog of Latin liturgical manuscript
 
 ### Other Features:
 - Integratet IIIF viewer
-- Integrated AI Assistant (via DUBO)
+- Integrated AI Assistant (via OpenAI API)
 - Zotero Bibliography integration
 - .csv data import with checks and foreign keys lookup
 - XML TEI export (basic data only)
@@ -46,7 +46,7 @@ The project aims to create an interactive catalog of Latin liturgical manuscript
 
     sudo mysql -u root
         CREATE DATABASE ritus;
-        CREATE USER ritus_user@localhost IDENTIFIED BY 'SoftCatEarZ1563!';
+        CREATE USER ritus_user@localhost IDENTIFIED BY 'VeryStronGpassword$$';
 
 
         GRANT ALL PRIVILEGES ON ritus.* TO ritus_user@localhost ;
