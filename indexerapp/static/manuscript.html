@@ -1,5 +1,9 @@
 
+
 <script src="/static/js/manuscript.js"></script>
+<script src="/static/js/lib/lightgallery/js/lightgallery.min.js"></script>
+<script src="/static/js/lib/lightgallery/plugins/lg-thumbnail.min.js"></script>
+<script src="/static/js/lib/lightgallery/plugins/lg-zoom.min.js"></script>
 
 <script src="/static/js/lib/leaflet.js"
     crossorigin="anonymous"></script>
@@ -21,6 +25,9 @@
 
 
     
+
+
+
 <div  x-init="manuscript_init()"  x-data="{}" class="manuscriptPage" id="manuscriptPages" style="height: calc(100vh - 272px);">
     <h1 class="printIt text-[#0d1b2a] text-[16px] md:text-[24pt] caudex-bold text-center mt-4 mb-3"><strong x-text="(await getMSInfo()).manuscript.name + ', ' + ((await getMSInfo()).manuscript.rism_id || '')"></strong></h1>
 
@@ -30,21 +37,26 @@
             <div x-show="(await getMSInfo()).manuscript.iiif_manifest_url == '-'" style="height: 100%;">
                 <div x-show="(await getMSInfo()).manuscript.pdf_url == '-'" style="height: 100%;">
                     <div style="height: 100%;">
-                        <div x-show="(await getMSInfo()).manuscript.image == ''" style="height: 100%;">
-                                <!--<p> No iiif preview </p>-->
-                        </div>
+                        
+                        <!-- Gallery View -->
+                        <template x-if="(await getGallery()) && (await getGallery()).images && (await getGallery()).images.length > 0">
+                             <div x-init="init_gallery()" id="manuscript-gallery" style="width: 100%; height: 100%; padding-bottom: 2px;"></div>
+                        </template>
 
-                        <div x-show="(await getMSInfo()).manuscript.image != ''" style="height: 100%;">
-
-                            <div class="zoomist-container" style="max-height: 100%; max-width:100%; margin:auto; height: 100%;">
-                                <div class="zoomist-wrapper" style="height: 100%;">
-                                    <div class="zoomist-image" style="height: 100%;">
-                                        <img id="msImage" onload="initZoomist()" style="max-height: 100%; max-width:100%; margin:auto; position: relative" x-bind:src="pageRoot+'/media/'+(await getMSInfo()).manuscript.image"></img>
+                        <!-- Fallback: Single Image if NO gallery -->
+                        <template x-if="!((await getGallery()) && (await getGallery()).images && (await getGallery()).images.length > 0)">
+                            <div style="height: 100%;">
+                                <div x-show="(await getMSInfo()).manuscript.image != ''" style="height: 100%;">
+                                    <div class="zoomist-container" style="max-height: 100%; max-width:100%; margin:auto; height: 100%;">
+                                        <div class="zoomist-wrapper" style="height: 100%;">
+                                            <div class="zoomist-image" style="height: 100%;">
+                                                <img id="msImage" onload="initZoomist()" style="max-height: 100%; max-width:100%; margin:auto; position: relative" x-bind:src="pageRoot+'/media/'+(await getMSInfo()).manuscript.image"></img>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                    
-                        </div>
+                             </div>
+                        </template>
                     </div>
                 </div>
                 <div x-show="(await getMSInfo()).manuscript.pdf_url != '-'"  style="height: 100%;">

@@ -3024,3 +3024,71 @@ async function map_refresh() {
 
   map_refreshed = true;
 }
+
+async function getGallery() {
+  return fetchOnce(pageRoot + `/ms-gallery/?manuscript_id=${manuscriptId}`);
+}
+
+async function init_gallery() {
+    console.log("Initializing gallery...");
+    
+    // Ensure data is loaded first so x-if can render the container
+    const data = await getGallery();
+    if (!data || !data.images || data.images.length === 0) {
+        return;
+    }
+
+    // Wait for Alpine to render the x-if block
+    // We poll briefly for the container
+    let attempts = 0;
+    const checkContainer = setInterval(() => {
+        const container = document.getElementById('manuscript-gallery');
+        if (container) {
+            clearInterval(checkContainer);
+            
+            const dynamicEl = data.images.map(item => ({
+                id: item.id, 
+                src: item.image_url,
+                thumb: item.thumbnail_url || item.image_url,
+                subHtml: `<h4>${escapeHtml(item.name || 'Image')}</h4>`,
+                imageId: item.id
+            }));
+
+            const instance = lightGallery(container, {
+                container: container,
+                dynamic: true,
+                dynamicEl: dynamicEl,
+                hash: false,
+                closable: false, // Inline gallery usually isn't closable in the traditional sense
+                showMaximizeIcon: false,
+                appendSubHtmlTo: '.lg-item',
+                slideDelay: 400,
+                plugins: [lgZoom, lgThumbnail],
+                thumbnail: true,
+                zoom: true,
+                autoplay: false
+            });
+            instance.openGallery();
+
+        } else {
+            attempts++;
+            if (attempts > 20) { // Timeout after ~2 seconds
+                clearInterval(checkContainer);
+                console.warn("Gallery container not found after data load.");
+            }
+        }
+    }, 100);
+}
+
+function escapeHtml(s) {
+    return s ? s.replace(/[&<>"']/g, function(m) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[m];
+    }) : '';
+}
+
