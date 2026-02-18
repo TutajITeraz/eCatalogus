@@ -266,6 +266,7 @@ urlpatterns = [
 
     path('captcha/', include('captcha.urls')),
     path('improve_our_data/', views.ImproveOurDataFormView.as_view(), name='improve_our_data_form'),
+    path('ms-gallery/', views.MSGalleryView.as_view(), name='ms_gallery'),
 ]
 
 

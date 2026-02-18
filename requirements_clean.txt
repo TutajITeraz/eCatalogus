@@ -20,7 +20,6 @@ django-filter
 django-modelclone-next
 django-ranged-response
 django-select2
-django-serverside-datatable
 django-simple-captcha
 djangorestframework
 djangorestframework-datatables
@@ -68,4 +67,3 @@ tqdm
 typing_extensions
 urllib3
 whitenoise
-django-simple-captcha

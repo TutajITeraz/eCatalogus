@@ -1,0 +1,45 @@
+<!-- Import gallery UI inspired by importer.html and using select2 + drag & drop + lightgallery -->
+ 
+<script src="/static/js/lib/lightgallery/js/lightgallery.min.js"></script>
+<script src="/static/js/lib/lightgallery/plugins/lg-thumbnail.min.js"></script>
+<script src="/static/js/lib/lightgallery/plugins/lg-zoom.min.js"></script>
+<script src="/static/js/import_gallery.js"></script>
+
+<div x-init="import_gallery_init()" class="px-2">
+    <h1 class="text-2xl caudex-bold">Manuscript gallery importer</h1>
+
+    <div class="mt-4">
+        <label for="ms_select">Select manuscript</label>
+        <select id="ms_select" class="manuscript_filter" style="width: 100%"></select>
+    </div>
+
+    <div class="mt-4">
+        <div id="drop-area" style="border: 2px dashed #ccc; padding: 20px; text-align:center; cursor: pointer">
+            <p>Drag & drop images here, or click to browse (jpg, png)</p>
+            <input type="file" id="file-input-gallery" accept="image/png,image/jpeg" multiple style="display:none">
+        </div>
+        <!-- Progress bar -->
+        <div id="progress-container" class="w-full bg-gray-200 rounded-full h-4 mt-4 hidden">
+            <div id="upload-progress-bar" class="bg-blue-600 h-4 leading-none rounded-full text-xs font-medium text-blue-100 text-center p-0.5" style="width: 0%"> 0%</div>
+        </div>
+
+        <!-- Preview container -->
+        <div id="image-preview-container" class="mt-4 flex flex-wrap gap-1"></div>
+        <p id="selection-count" class="mt-1 text-sm text-gray-600"></p>
+
+        <div class="mt-2 flex gap-2 flex-wrap">
+            <button id="upload-btn" class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5">Upload selected images</button>
+            <button id="delete-selected-btn" class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5">Delete selected image</button>
+            <button id="delete-all-btn" class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5">Delete all images for manuscript</button>
+        </div>
+    </div>
+
+
+    <div class="mt-6">
+        <h2 class="text-xl font-bold mb-4">Gallery</h2>
+        <!-- LightGallery inline container -->
+        <div id="lightgallery" style="width: 100%; height: 600px; padding-bottom: 2px;"></div>
+    </div>
+
+    <p id="gallery-status" class="mt-2"></p>
+</div>

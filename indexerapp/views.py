@@ -8,7 +8,7 @@ from django.contrib.auth import login, authenticate
 
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames
+from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image
 from django.http import JsonResponse
 from django.contrib.contenttypes.models import ContentType
 
@@ -352,6 +352,120 @@ class MSInfoAjaxView(View):
 
 class GlobalCharFilter(GlobalFilter, filters.CharFilter):
     pass
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MSGalleryView(View):
+    """Manage manuscript gallery.
+
+    GET: require ?manuscript_id=<id> — returns JSON with images for manuscript
+    POST: accept multipart/form-data with manuscript_id and one or more files in 'images' field
+    """
+    def get(self, request, *args, **kwargs):
+        manuscript_id = request.GET.get('manuscript_id')
+        if not manuscript_id:
+            return JsonResponse({'error': 'manuscript_id parameter is required'}, status=400)
+
+        try:
+            ms = Manuscripts.objects.get(pk=int(manuscript_id))
+        except (Manuscripts.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'Invalid manuscript_id'}, status=404)
+
+        images_qs = ms.images.all()
+        host = request.build_absolute_uri('/')[:-1]
+        result = []
+        for img in images_qs:
+            image_url = host + img.image.url if img.image else None
+            thumb_url = host + img.thumbnail.url if img.thumbnail else None
+            result.append({
+                'id': img.pk,
+                'name': img.name,
+                'image_url': image_url,
+                'thumbnail_url': thumb_url,
+            })
+
+        return JsonResponse({'manuscript_id': ms.pk, 'images': result})
+
+    def post(self, request, *args, **kwargs):
+        # uploading images — expects multipart form
+        manuscript_id = request.POST.get('manuscript_id')
+        if not manuscript_id:
+            return JsonResponse({'error': 'manuscript_id parameter is required'}, status=400)
+
+        try:
+            ms = Manuscripts.objects.get(pk=int(manuscript_id))
+        except (Manuscripts.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'Invalid manuscript_id'}, status=404)
+
+        # files may be under 'images' (multiple) or 'image' (single)
+        files = request.FILES.getlist('images') or request.FILES.getlist('image')
+        if not files:
+            return JsonResponse({'error': 'No files uploaded (use field name "images" or "image")'}, status=400)
+
+        created = []
+        for f in files:
+            name_without_ext = os.path.splitext(f.name)[0]
+            img = Image.objects.create(manuscript=ms, name=name_without_ext, image=f)
+            created.append({'id': img.pk, 'name': img.name, 'image_url': request.build_absolute_uri(img.image.url) if img.image else None, 'thumbnail_url': request.build_absolute_uri(img.thumbnail.url) if img.thumbnail else None})
+
+        return JsonResponse({'status': 'ok', 'created': created})
+
+    def delete(self, request, *args, **kwargs):
+        """Delete a single image or all images for a manuscript.
+
+        Expects JSON body with:
+        - manuscript_id (required)
+        - image_id (optional) -> deletes single image; if omitted deletes all images for manuscript
+        """
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except Exception:
+            return JsonResponse({'error': 'Invalid JSON body'}, status=400)
+
+        manuscript_id = payload.get('manuscript_id')
+        image_id = payload.get('image_id')
+
+        if not manuscript_id:
+            return JsonResponse({'error': 'manuscript_id is required'}, status=400)
+
+        try:
+            ms = Manuscripts.objects.get(pk=int(manuscript_id))
+        except (Manuscripts.DoesNotExist, ValueError):
+            return JsonResponse({'error': 'Invalid manuscript_id'}, status=404)
+
+        if image_id:
+            try:
+                img = Image.objects.get(pk=int(image_id), manuscript=ms)
+            except (Image.DoesNotExist, ValueError):
+                return JsonResponse({'error': 'Image not found for this manuscript'}, status=404)
+
+            # delete files from storage first
+            try:
+                if img.image:
+                    img.image.delete(save=False)
+                if img.thumbnail:
+                    img.thumbnail.delete(save=False)
+            except Exception:
+                pass
+
+            img.delete()
+            return JsonResponse({'status': 'deleted', 'image_id': image_id})
+
+        # delete all images for manuscript
+        imgs = list(ms.images.all())
+        deleted = []
+        for img in imgs:
+            try:
+                if img.image:
+                    img.image.delete(save=False)
+                if img.thumbnail:
+                    img.thumbnail.delete(save=False)
+            except Exception:
+                pass
+            deleted.append(img.pk)
+            img.delete()
+
+        return JsonResponse({'status': 'deleted_all', 'deleted_ids': deleted})
 
 class GlobalNumberFilter(GlobalFilter, filters.NumberFilter):
     pass

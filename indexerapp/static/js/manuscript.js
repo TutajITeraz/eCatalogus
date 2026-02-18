@@ -2959,8 +2959,8 @@ async function map_init() {
     if (
       !markers[m].lat ||
       !markers[m].lon ||
-      markers[m].lat < 0.001 ||
-      markers[m].lon < 0.001
+      Math.abs(markers[m].lat) < 0.0000001 ||
+      Math.abs(markers[m].lon) < 0.0000001
     )
       continue;
 

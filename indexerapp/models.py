@@ -13,7 +13,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 
 #For saving thumbnails:
-from PIL import Image
+from PIL import Image as PILImage
 from io import BytesIO
 from django.core.files import File
 import os
@@ -917,6 +917,91 @@ class MSProjects(models.Model):
     class Meta:
         #managed = False
         verbose_name_plural = 'Manuscript Projects'
+
+
+class Image(models.Model):
+    """Gallery Image attached to a Manuscript.
+
+    Fields:
+    - name: optional human-readable name
+    - manuscript: FK to Manuscripts (one manuscript -> many images)
+    - image: original uploaded image
+    - thumbnail: generated thumbnail JPEG
+    """
+    manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='images')
+    name = models.CharField(max_length=255, blank=True, null=True)
+    image = models.ImageField(upload_to='images/gallery/', blank=True, null=True)
+    thumbnail = models.ImageField(upload_to='images/thumbnails/', blank=True, null=True)
+
+    class Meta:
+        db_table = 'images'
+        verbose_name_plural = 'Images'
+
+    def __str__(self):
+        return self.name or (self.image.name if self.image else f"Image {self.pk}")
+
+    def generate_thumbnail(self, save=True):
+        """Generate a 300px thumbnail for the image and save it to self.thumbnail.
+
+        Logic mirrors existing Manuscripts.generate_thumbnail behaviour and writes
+        a JPEG thumbnail into MEDIA_ROOT/images/thumbnails.
+        """
+        if not self.image:
+            return
+
+        if self.thumbnail and not save:
+            return
+
+        try:
+            img = PILImage.open(self.image.path)
+
+            # Normalize modes
+            if img.mode in ("RGBA", "LA", "P"):
+                if img.mode in ("RGBA", "LA"):
+                    background = PILImage.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "RGBA":
+                        background.paste(img, mask=img.split()[-1])
+                    else:
+                        background.paste(img)
+                    img = background
+                else:
+                    img = img.convert("RGB")
+            elif img.mode == "CMYK":
+                img = img.convert("RGB")
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+
+            img.thumbnail((300, 300), PILImage.Resampling.LANCZOS)
+
+            thumb_io = BytesIO()
+            img.save(thumb_io, format='JPEG', quality=92, optimize=True)
+            thumb_io.seek(0)
+            
+            # Use self.image.name to derive filename but be careful about paths
+            name_part = os.path.basename(self.image.name)
+            if '.' in name_part:
+                name_part = name_part.rsplit('.', 1)[0]
+                
+            filename = f"thumb_{name_part}.jpg"
+            
+            # We must use save=False in save method to avoid recursion if called from save
+            self.thumbnail.save(filename, File(thumb_io), save=False)
+            if save:
+                super(Image, self).save(update_fields=['thumbnail'])
+
+        except Exception as e:
+            print(f"Warning: Failed to generate thumbnail for Image {self.pk}: {e}")
+
+    def save(self, *args, **kwargs):
+        """Override save to generate thumbnail after saving the original image."""
+        is_new_image = self.image and (not self.pk or
+                                       Image.objects.filter(pk=self.pk, image=self.image).exists() == False)
+
+        super().save(*args, **kwargs)
+
+        if self.image and (not self.thumbnail or is_new_image):
+            # generate and save thumbnail
+            self.generate_thumbnail(save=True)
 
 class Clla(models.Model):
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_clla')
