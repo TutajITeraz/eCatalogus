@@ -8,7 +8,7 @@ from django.contrib.auth import login, authenticate
 
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image
+from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image, DecorationSubjects
 from django.http import JsonResponse
 from django.contrib.contenttypes.models import ContentType
 
@@ -40,7 +40,7 @@ from django_filters import filters
 from rest_framework_datatables.django_filters.backends import DatatablesFilterBackend
 from rest_framework_datatables.django_filters.filterset import DatatablesFilterSet
 from rest_framework_datatables.django_filters.filters import GlobalFilter
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 
 #For sorting nulls last:
 from django.db.models import F
@@ -499,11 +499,19 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
         print(order_column_name)
         print(order_direction)
         print("--------------------------------------------")
-        # Apply ordering to queryset
-        if order_direction == 'asc':
-            queryset = queryset.order_by(order_column_name)
-        else:
-            queryset = queryset.order_by(f'-{order_column_name}')
+        # Skip ordering for FormulasIndexViewSet (handled there) or when column is empty
+        if getattr(view, 'skip_custom_ordering', False) or view.__class__.__name__ == 'FormulasIndexViewSet':
+            return queryset
+
+        # Apply ordering to queryset only if the field exists
+        if order_column_name:
+            try:
+                if order_direction == 'asc':
+                    queryset = queryset.order_by(order_column_name)
+                else:
+                    queryset = queryset.order_by(f'-{order_column_name}')
+            except Exception:
+                pass
 
         return queryset
 
@@ -1050,7 +1058,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         if written_space_width_min and written_space_width_min.isdigit():
             queryset = queryset.filter(ms_layouts__written_space_width_max__gte=int(written_space_width_min))
         if written_space_width_max and written_space_width_max.isdigit():
-            queryset = queryset.filter(ms_layouts__written_space_width_max__lte=int(written_space_width_max))
+            queryset = queryset.filter(ms_layouts__written_space_width__lte=int(written_space_width_max))
             
         if distance_between_horizontal_ruling_min and distance_between_horizontal_ruling_min.isdigit():
             queryset = queryset.filter(ms_layouts__distance_between_horizontal_ruling__gte=int(distance_between_horizontal_ruling_min))
@@ -3083,7 +3091,7 @@ class TimeReferenceImportView(View):
             import_result = self.import_data(data)
             return import_result
         except Exception as e:
-            return JsonResponse({'info': f'exception: {str(e)}'}, status=200)
+            return JsonResponse({'info': f'error: {str(e)}'}, status=200)
 
     def import_data(self, data):
         content_list = []
@@ -3101,7 +3109,7 @@ class TimeReferenceImportView(View):
                 #if new_liturgical_genre_id == None and row['liturgical_genre_id'] != None :
                 #    return JsonResponse({'info': 'error: could not find value "'+row['liturgical_genre_id']+'" in table LiturgicalGenres'}, status=200)
                 
-                #row['liturgical_genre_id'] = new_liturgical_genre_id 
+                #row['liturgical_genre_id'] = new_liturgical_genre_id
 
                 content = TimeReference(
                     time_description = row.get('time_description'),
@@ -3157,8 +3165,10 @@ class EditionContentImportView(View):
 
                 # Convert names to IDs
                 new_rubric_name_standarized = self.get_id_by_name('RiteNames', row.get('rubric_name_standarized'), 'name')
+                
                 if new_rubric_name_standarized == None and row['rubric_name_standarized'] != None :
                     return JsonResponse({'info': 'error: could not find value "'+row['rubric_name_standarized']+'" in table RiteNames'}, status=200)
+                
                 row['rubric_name_standarized'] = new_rubric_name_standarized 
 
                 new_function = self.get_id_by_name('ContentFunctions', row.get('function'))
@@ -3960,8 +3970,6 @@ class contentCompareJSON(View):
 
         return JsonResponse(json_data, safe=False)
 
-
-
 class contentCompareEditionGraph(View):
 
     def get(self, request, *args, **kwargs):
@@ -4001,7 +4009,7 @@ class contentCompareEditionGraph(View):
 
         for edition_index in unique_edition_indexs:
             values = reshaped_df[reshaped_df['edition_index'] == edition_index]
-            line = plt.plot(values['rubric_sequence'], values['Table'], marker='o', label=f'edition_index {str(edition_index)}')  # Swapping x and y axes
+            line = plt.plot(values['rubric_sequence'], values['Table'], marker='o', label=f'edition_index {str(edition_index)}' )  # Swapping x and y axes
             color = line[0].get_color()  # Retrieve the color of the marker used in the line plot
             
             # Annotate only the last point of each edition_index with its label
@@ -4037,11 +4045,6 @@ class contentCompareEditionGraph(View):
         buf.close()
         
         return response
-
-import json
-from django.http import JsonResponse
-from django.views import View
-import pandas as pd
 
 class contentCompareEditionJSON(View):
 
@@ -4470,3 +4473,153 @@ class AssignMSContentToTraditionView(View):
             'message': f'Assigned {added_count} formulas to tradition {tradition.name}',
             'added_count': added_count
         })
+
+class FormulasIndexViewSet(viewsets.ModelViewSet):
+    queryset = Formulas.objects.all().prefetch_related('tradition').order_by('id')
+    serializer_class = FormulasIndexSerializer
+    filter_backends = [CustomDatatablesFilterBackend]
+
+    def get_queryset(self):
+        queryset = Formulas.objects.prefetch_related('tradition', 'content_set__manuscript')
+        
+        # Filtering by "used in manuscripts" (checkbox)
+        used_in_ms = self.request.GET.get('used_in_ms', None)
+        if used_in_ms == 'true':
+            queryset = queryset.filter(content__isnull=False).distinct()
+
+        # Filtering by tradition (select2)
+        tradition_id = self.request.GET.get('tradition', None)
+        if tradition_id:
+            queryset = queryset.filter(tradition__id=tradition_id)
+            
+        # Global Search (DataTables sends 'search[value]')
+        search_value = self.request.GET.get('search[value]', None)
+        if search_value:
+            queryset = queryset.filter(
+                Q(text__icontains=search_value) | 
+                Q(co_no__icontains=search_value) | 
+                Q(translation_en__icontains=search_value) |
+                Q(translation_pl__icontains=search_value)
+            )
+
+        # Ordering
+        order_column_index = self.request.GET.get('order[0][column]', None)
+        order_dir = self.request.GET.get('order[0][dir]', 'asc')
+        
+        if order_column_index is not None:
+            # map column index to field (matches DataTables columns array in formulas_index.js)
+            # 0: id, 1: co_no, 2: text, 3: translation_en, 4: used_in (orderable=false), 5: used_in_count
+            # NOTE: 'traditions' column is commented out in JS, so indices are shifted
+            columns = ['id', 'co_no', 'text', 'translation_en', None, 'used_in_count']
+            try:
+                col_name = columns[int(order_column_index)]
+            except (ValueError, IndexError):
+                col_name = None
+            
+            if col_name == 'used_in_count':
+                queryset = queryset.annotate(used_in_count=Count('content__manuscript', distinct=True))
+                queryset = queryset.order_by('-used_in_count' if order_dir == 'desc' else 'used_in_count')
+            elif col_name:
+                queryset = queryset.order_by(F(col_name).desc(nulls_last=True) if order_dir == 'desc' else F(col_name).asc(nulls_last=True))
+            else:
+                # fallback to deterministic ordering
+                queryset = queryset.order_by('id')
+
+        return queryset
+
+
+class RiteNamesIndexViewSet(viewsets.ModelViewSet):
+    queryset = RiteNames.objects.all().order_by('name')
+    serializer_class = RiteNamesIndexSerializer
+    filter_backends = [CustomDatatablesFilterBackend]
+    skip_custom_ordering = True
+
+    def get_queryset(self):
+        # prefetch_related uses the Python reverse accessor name 'content_set'
+        # (Django auto-name for Content.rubric FK with no related_name).
+        # ORM annotations/filters use the query name 'content'.
+        queryset = RiteNames.objects.prefetch_related(
+            Prefetch('content_set', queryset=Content.objects.select_related('manuscript'))
+        )
+
+        search_value = self.request.GET.get('search[value]', None)
+        if search_value:
+            queryset = queryset.filter(
+                Q(name__icontains=search_value)
+            )
+
+        # Annotate usage count using ORM query name 'content'
+        queryset = queryset.annotate(
+            used_in_count=Count('content__manuscript', distinct=True)
+        )
+
+        order_column_index = self.request.GET.get('order[0][column]', None)
+        order_dir = self.request.GET.get('order[0][dir]', 'asc')
+
+        if order_column_index is not None:
+            # columns: 0 id, 1 name, 2 votive, 3 used_in, 4 used_in_count
+            columns = ['id', 'name', 'votive', None, 'used_in_count']
+            try:
+                col_name = columns[int(order_column_index)]
+            except (ValueError, IndexError):
+                col_name = None
+
+            if col_name == 'used_in_count':
+                queryset = queryset.order_by('-used_in_count' if order_dir == 'desc' else 'used_in_count')
+            elif col_name:
+                queryset = queryset.order_by(F(col_name).desc(nulls_last=True) if order_dir == 'desc' else F(col_name).asc(nulls_last=True))
+            else:
+                queryset = queryset.order_by('name')
+        else:
+            queryset = queryset.order_by('name')
+
+        return queryset
+
+
+class SubjectsIndexViewSet(viewsets.ModelViewSet):
+    queryset = Subjects.objects.all().order_by('name')
+    serializer_class = SubjectsIndexSerializer
+    filter_backends = [CustomDatatablesFilterBackend]
+    skip_custom_ordering = True
+
+    def get_queryset(self):
+        # Subjects ← DecorationSubjects (related_name='decoration_subject') → Decoration → Manuscript
+        queryset = Subjects.objects.prefetch_related(
+            Prefetch(
+                'decoration_subject',
+                queryset=DecorationSubjects.objects.select_related('decoration__manuscript')
+            )
+        )
+
+        search_value = self.request.GET.get('search[value]', None)
+        if search_value:
+            queryset = queryset.filter(
+                Q(name__icontains=search_value)
+            )
+
+        # Annotate usage count via ORM traversal
+        queryset = queryset.annotate(
+            used_in_count=Count('decoration_subject__decoration__manuscript', distinct=True)
+        )
+
+        order_column_index = self.request.GET.get('order[0][column]', None)
+        order_dir = self.request.GET.get('order[0][dir]', 'asc')
+
+        if order_column_index is not None:
+            # columns: 0 id, 1 name, 2 used_in, 3 used_in_count
+            columns = ['id', 'name', None, 'used_in_count']
+            try:
+                col_name = columns[int(order_column_index)]
+            except (ValueError, IndexError):
+                col_name = None
+
+            if col_name == 'used_in_count':
+                queryset = queryset.order_by('-used_in_count' if order_dir == 'desc' else 'used_in_count')
+            elif col_name:
+                queryset = queryset.order_by(F(col_name).desc(nulls_last=True) if order_dir == 'desc' else F(col_name).asc(nulls_last=True))
+            else:
+                queryset = queryset.order_by('name')
+        else:
+            queryset = queryset.order_by('name')
+
+        return queryset

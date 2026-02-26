@@ -2,7 +2,7 @@ from rest_framework import serializers
 from decimal import Decimal
 from collections import OrderedDict
 
-from .models import RiteNames, Provenance, Content, Manuscripts, Contributors, Quires, ManuscriptHands, Hands, ScriptNames, Places, TimeReference, Sections, ContentFunctions, ManuscriptMusicNotations, EditionContent
+from .models import RiteNames, Provenance, Content, Manuscripts, Contributors, Quires, ManuscriptHands, Hands, ScriptNames, Places, TimeReference, Sections, ContentFunctions, ManuscriptMusicNotations, EditionContent, Formulas, Subjects
 
 class RiteNamesSerializer(serializers.ModelSerializer):
     class Meta:
@@ -259,3 +259,82 @@ class ContentSerializer(serializers.ModelSerializer):
 
     def get_data_contributor(self, content):
         return content.data_contributor.initials
+
+class FormulasIndexSerializer(serializers.ModelSerializer):
+    traditions = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field='name'
+     )
+    
+    used_in = serializers.SerializerMethodField()
+    used_in_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Formulas
+        fields = (
+            'id', 'co_no', 'text', 'traditions', 'translation_en', 
+            'translation_pl', 'used_in', 'used_in_count'
+        )
+
+    def get_used_in(self, obj):
+        # We need distinct manuscripts because one formula can appear multiple times in one MS
+        contents = obj.content_set.select_related('manuscript').all()
+        ms_list = {}
+        for c in contents:
+            if c.manuscript:
+                ms_list[c.manuscript.id] = str(c.manuscript)
+        
+        # return list of dicts for easy JS parsing
+        return [{"id": k, "name": v} for k, v in ms_list.items()]
+
+    def get_used_in_count(self, obj):
+        return obj.content_set.values('manuscript').distinct().count()
+
+
+class RiteNamesIndexSerializer(serializers.ModelSerializer):
+    used_in = serializers.SerializerMethodField()
+    used_in_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RiteNames
+        fields = (
+            'id', 'name', 'votive', 'used_in', 'used_in_count'
+        )
+
+    def get_used_in(self, obj):
+        contents = obj.content_set.select_related('manuscript').all()
+        ms_list = {}
+        for c in contents:
+            if c.manuscript:
+                ms_list[c.manuscript.id] = str(c.manuscript)
+        return [{"id": k, "name": v} for k, v in ms_list.items()]
+
+    def get_used_in_count(self, obj):
+        return obj.content_set.values('manuscript').distinct().count()
+
+
+class SubjectsIndexSerializer(serializers.ModelSerializer):
+    used_in = serializers.SerializerMethodField()
+    used_in_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Subjects
+        fields = ('id', 'name', 'used_in', 'used_in_count')
+
+    def get_used_in(self, obj):
+        # Subject -> DecorationSubjects (related_name=decoration_subject) -> Decoration -> Manuscript
+        ms_list = {}
+        for ds in obj.decoration_subject.select_related('decoration__manuscript').all():
+            ms = ds.decoration.manuscript if ds.decoration else None
+            if ms:
+                ms_list[ms.id] = str(ms)
+        return [{"id": k, "name": v} for k, v in ms_list.items()]
+
+    def get_used_in_count(self, obj):
+        return (
+            obj.decoration_subject
+            .values('decoration__manuscript')
+            .distinct()
+            .count()
+        )

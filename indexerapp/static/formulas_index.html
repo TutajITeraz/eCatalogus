@@ -1,0 +1,32 @@
+<script src="/static/js/formulas_index.js"></script>
+
+<div x-init="formulas_init()" class="px-2">
+    <h1 class="text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left mt-4 mb-3">Orations Index</h1>
+    <div class="flex mx-3 my-1 justify-center md:justify-normal items-center flex-wrap gap-4">
+        
+        <div class="flex items-center">
+            <label class="mr-2 font-bold" for="traditionSelect">Tradition:</label>
+            <select id="traditionSelect" style="width: 200px;">
+                <option value="" selected>All Traditions</option>
+            </select>
+        </div>
+
+        <div class="flex items-center ml-8">
+            <input type="checkbox" id="usedInMsCheckbox" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+            <label for="usedInMsCheckbox" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">Show only orations used in manuscripts</label>
+        </div>
+
+    </div>
+    
+    <div class="mt-4">
+        <table id="formulasTable" class="table table-striped table-bordered table-hover overflow-x-auto" style="width:100%"></table>
+    </div>
+</div>
+
+<style>
+/* Add any specific styles here if needed */
+#formulasTable td {
+    white-space: normal;
+    word-break: break-word;
+}
+</style>

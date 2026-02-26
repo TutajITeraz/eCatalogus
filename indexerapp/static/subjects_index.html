@@ -1,0 +1,17 @@
+<script src="/static/js/subjects_index.js"></script>
+
+<div x-init="subjects_init()" class="px-2">
+    <h1 class="text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left mt-4 mb-3">Subjects Index</h1>
+    <p class="text-sm text-gray-700 ml-3 mb-2">List of decoration subjects with manuscript usage.</p>
+
+    <div class="mt-4">
+        <table id="subjectsTable" class="table table-striped table-bordered table-hover overflow-x-auto" style="width:100%"></table>
+    </div>
+</div>
+
+<style>
+#subjectsTable td {
+    white-space: normal;
+    word-break: break-word;
+}
+</style>
