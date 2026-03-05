@@ -953,183 +953,147 @@ manuscripts_init = function()
 
 
     var getFilterData = function(d)
-    {    
-        d.name = $('#ms_name_select').select2('data').map(item => item.id).join(';');
-        d.foreign_id = $('#ms_foreign_id_select').select2('data').map(item => item.id).join(';');
-        d.liturgical_genre = $('#ms_liturgical_genre_select').select2('data').map(item => item.id).join(';');
-        d.contemporary_repository_place = $('#ms_contemporary_repository_place_select').select2('data').map(item => item.id).join(';');
-        d.shelfmark = $('#ms_shelfmark_select').select2('data').map(item => item.id).join(';');
-        //jd.dating = $('#ms_dating_select').select2('data').map(item => item.id).join(';');
-        d.place_of_origin = $('#ms_place_of_origin_select').select2('data').map(item => item.id).join(';');
-        //d.main_script = $('#ms_main_script_select').select2('data').map(item => item.id).join(';');
-        //d.binding_date = $('#ms_binding_date_select').select2('data').map(item => item.id).join(';');
-        //d.how_many_columns_min = $('#ms_how_many_columns_min').val();
-        //d.how_many_columns_max = $('#ms_how_many_columns_max').val();
-        d.how_many_columns = [$('#ms_how_many_columns1').is(":checked") ? '1' : '', $('#ms_how_many_columns2').is(":checked") ? '2' : '', $('#ms_how_many_columns3').is(":checked") ? '3' : ''].filter(Boolean).join(';');
-        d.lines_per_page_min = $('#ms_lines_per_page_min').val();
-        d.lines_per_page_max = $('#ms_lines_per_page_max').val();
-        d.how_many_quires_min = $('#ms_how_many_quires_min').val();
-        d.how_many_quires_max = $('#ms_how_many_quires_max').val();
-        d.decoration_true = $('#decoration_true').is(":checked");
-        d.decoration_false = $('#decoration_false').is(":checked")
-        d.music_notation_true = $('#music_notation_true').is(":checked")
-        d.music_notation_false = $('#music_notation_false').is(":checked")
-        d.digitized_true = $('#digitized_true').is(":checked")
-        d.digitized_false = $('#digitized_false').is(":checked")
-        d.foliation = $('#foliation').is(":checked")
-        d.pagination = $('#pagination').is(":checked")
+    {
+        // Helper: assign only if value is "active" (non-empty string, true, non-zero)
+        function setIfActive(key, value) {
+            if (value === '' || value === false || value === null || value === undefined) return;
+            d[key] = value;
+        }
 
-        d.dating_min = $('#ms_dating_min').val();
-        d.dating_max = $('#ms_dating_max').val();
-        d.dating_years_min = $('#ms_dating_years_min').val();
-        d.dating_years_max = $('#ms_dating_years_max').val();
-        //d.clla_dating_max = $('#clla_dating_max').val();
-        //d.clla_dating_years_min = $('#clla_dating_years_min').val();
-        //d.clla_dating_min = $('#clla_dating_min').val();
-        //d.clla_dating_years_max = $('#clla_dating_years_max').val();
+        // --- Select2 multi-selects (join to ';'-separated id string) ---
+        setIfActive('name',                           $('#ms_name_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('foreign_id',                     $('#ms_foreign_id_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('liturgical_genre',               $('#ms_liturgical_genre_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('contemporary_repository_place',  $('#ms_contemporary_repository_place_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('shelfmark',                      $('#ms_shelfmark_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('place_of_origin',                $('#ms_place_of_origin_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('parchment_colour_select',        $('#parchment_colour_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('main_script_select',             $('#main_script_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('type_of_the_quire_select',       $('#type_of_the_quire_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('script_name_select',             $('#script_name_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('ruling_method_select',           $('#ruling_method_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('pricking_select',                $('#pricking_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_place_of_origin_select', $('#binding_place_of_origin_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_type_select',            $('#binding_type_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_style_select',           $('#binding_style_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_material_select',        $('#binding_material_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_decoration_select',      $('#binding_decoration_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_components_select',      $('#binding_components_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('binding_category_select',        $('#binding_category_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('formula_select',                 $('#formula_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('rubric_select',                  $('#rubric_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('damage_select',                  $('#damage_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('provenance_place_select',        $('#provenance_place_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('provenance_place_countries_select', $('#provenance_place_countries_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('form_of_an_item_select',         $('#form_of_an_item_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('title_select',                   $('#title_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('author_select',                  $('#author_select').select2('data').map(i => i.text).join(';')); // special: .text not .id
+        setIfActive('original_or_added_select',       $('#original_or_added_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('location_on_the_page_select',    $('#location_on_the_page_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('decoration_type_select',         $('#decoration_type_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('decoration_subtype_select',      $('#decoration_subtype_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('size_characteristic_select',     $('#size_characteristic_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('monochrome_or_colour_select',    $('#monochrome_or_colour_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('technique_select',               $('#technique_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('ornamented_text_select',         $('#ornamented_text_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('decoration_subject_select',      $('#decoration_subject_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('decoration_colours_select',      $('#decoration_colours_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('decoration_characteristics_select', $('#decoration_characteristics_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('musicology_type_select',         $('#musicology_type_select').select2('data').map(i => i.id).join(';'));
 
-        d.number_of_parchment_folios_min = $('#number_of_parchment_folios_min').val();
-        d.number_of_parchment_folios_max = $('#number_of_parchment_folios_max').val();
+        // --- Checkboxes: multi-value (columns) ---
+        var colVal = [$('#ms_how_many_columns1').is(':checked') ? '1' : '',
+                      $('#ms_how_many_columns2').is(':checked') ? '2' : '',
+                      $('#ms_how_many_columns3').is(':checked') ? '3' : ''].filter(Boolean).join(';');
+        setIfActive('how_many_columns', colVal);
 
-        d.binding_date_min = $('#ms_binding_date_min').val();
-        d.binding_date_max = $('#ms_binding_date_max').val();
-        d.binding_date_years_min = $('#ms_binding_date_years_min').val();
-        d.binding_date_years_max = $('#ms_binding_date_years_max').val();
+        // --- Boolean checkboxes (only send when checked) ---
+        var boolChecks = [
+            'decoration_true', 'decoration_false',
+            'music_notation_true', 'music_notation_false',
+            'digitized_true', 'digitized_false',
+            'foliation', 'pagination',
+            'paper_leafs_true', 'paper_leafs_false',
+            'watermarks_true', 'watermarks_false',
+            'is_main_text_true', 'is_main_text_false',
+            'is_hand_identified_true', 'is_hand_identified_false',
+            'written_above_the_top_line_true', 'written_above_the_top_line_false',
+            'binding_decoration_true', 'binding_decoration_false',
+            'parchment_shrinkage_true', 'parchment_shrinkage_false',
+            'illegible_text_true', 'illegible_text_false',
+            'ink_corrosion_true', 'ink_corrosion_false',
+            'copper_corrosion_true', 'copper_corrosion_false',
+            'powdering_or_cracking_paint_layer_true', 'powdering_or_cracking_paint_layer_false',
+            'conservation_true', 'conservation_false',
+            'darkening_true', 'darkening_false',
+            'water_staining_true', 'water_staining_false',
+            'historic_repairs_true', 'historic_repairs_false',
+            'musicology_original_true', 'musicology_original_false',
+            'musicology_on_lines_true', 'musicology_on_lines_false',
+        ];
+        boolChecks.forEach(function(id) {
+            if ($('#' + id).is(':checked')) d[id] = true;
+        });
 
-        //New min/max:
-        d.binding_height_min = $('#binding_height_min').val();
-        d.binding_width_min = $('#binding_width_min').val();
-        d.written_space_height_min = $('#written_space_height_min').val();
-        d.written_space_width_min = $('#written_space_width_min').val();
-        d.distance_between_horizontal_ruling_min = $('#distance_between_horizontal_ruling_min').val();
-        d.distance_between_vertical_ruling_min = $('#distance_between_vertical_ruling_min').val();
-        d.ms_how_many_hands_min = $('#ms_how_many_hands_min').val();
-        d.page_size_w_min = $('#page_size_w_min').val();
-        d.page_size_h_min = $('#page_size_h_min').val();
-        d.parchment_thickness_min = $('#parchment_thickness_min').val();
-        d.binding_height_max = $('#binding_height_max').val();
-        d.binding_width_max = $('#binding_width_max').val();
-        d.written_space_height_max = $('#written_space_height_max').val();
-        d.written_space_width_max = $('#written_space_width_max').val();
-        d.distance_between_horizontal_ruling_max = $('#distance_between_horizontal_ruling_max').val();
-        d.distance_between_vertical_ruling_max = $('#distance_between_vertical_ruling_max').val();
-        d.ms_how_many_hands_max = $('#ms_how_many_hands_max').val();
-        d.page_size_w_max = $('#page_size_w_max').val();
-        d.page_size_h_max = $('#page_size_h_max').val();
-        d.parchment_thickness_max = $('#parchment_thickness_max').val();
-        d.block_size_min = $('#block_size_min').val();
-        d.block_size_max = $('#block_size_max').val();
+        // --- Text / number inputs (only send when non-empty) ---
+        var textInputs = [
+            ['lines_per_page_min',                    '#ms_lines_per_page_min'],
+            ['lines_per_page_max',                    '#ms_lines_per_page_max'],
+            ['how_many_quires_min',                   '#ms_how_many_quires_min'],
+            ['how_many_quires_max',                   '#ms_how_many_quires_max'],
+            ['dating_min',                            '#ms_dating_min'],
+            ['dating_max',                            '#ms_dating_max'],
+            ['dating_years_min',                      '#ms_dating_years_min'],
+            ['dating_years_max',                      '#ms_dating_years_max'],
+            ['number_of_parchment_folios_min',        '#number_of_parchment_folios_min'],
+            ['number_of_parchment_folios_max',        '#number_of_parchment_folios_max'],
+            ['binding_date_min',                      '#ms_binding_date_min'],
+            ['binding_date_max',                      '#ms_binding_date_max'],
+            ['binding_date_years_min',                '#ms_binding_date_years_min'],
+            ['binding_date_years_max',                '#ms_binding_date_years_max'],
+            ['binding_height_min',                    '#binding_height_min'],
+            ['binding_height_max',                    '#binding_height_max'],
+            ['binding_width_min',                     '#binding_width_min'],
+            ['binding_width_max',                     '#binding_width_max'],
+            ['written_space_height_min',              '#written_space_height_min'],
+            ['written_space_height_max',              '#written_space_height_max'],
+            ['written_space_width_min',               '#written_space_width_min'],
+            ['written_space_width_max',               '#written_space_width_max'],
+            ['distance_between_horizontal_ruling_min','#distance_between_horizontal_ruling_min'],
+            ['distance_between_horizontal_ruling_max','#distance_between_horizontal_ruling_max'],
+            ['distance_between_vertical_ruling_min',  '#distance_between_vertical_ruling_min'],
+            ['distance_between_vertical_ruling_max',  '#distance_between_vertical_ruling_max'],
+            ['ms_how_many_hands_min',                 '#ms_how_many_hands_min'],
+            ['ms_how_many_hands_max',                 '#ms_how_many_hands_max'],
+            ['page_size_w_min',                       '#page_size_w_min'],
+            ['page_size_w_max',                       '#page_size_w_max'],
+            ['page_size_h_min',                       '#page_size_h_min'],
+            ['page_size_h_max',                       '#page_size_h_max'],
+            ['parchment_thickness_min',               '#parchment_thickness_min'],
+            ['parchment_thickness_max',               '#parchment_thickness_max'],
+            ['block_size_min',                        '#block_size_min'],
+            ['block_size_max',                        '#block_size_max'],
+            ['decoration_size_height_min',            '#decoration_size_height_min'],
+            ['decoration_size_height_max',            '#decoration_size_height_max'],
+            ['decoration_size_width_min',             '#decoration_size_width_min'],
+            ['decoration_size_width_max',             '#decoration_size_width_max'],
+            ['decoration_addition_date_min',          '#decoration_addition_date_min'],
+            ['decoration_addition_date_max',          '#decoration_addition_date_max'],
+            ['decoration_addition_date_years_min',    '#decoration_addition_date_years_min'],
+            ['decoration_addition_date_years_max',    '#decoration_addition_date_years_max'],
+            ['musicology_how_many_lines_min',         '#musicology_how_many_lines_min'],
+            ['musicology_how_many_lines_max',         '#musicology_how_many_lines_max'],
+            ['formula_text',                          '#formula_text'],
+            ['rubric_name_from_ms',                   '#rubric_name_from_ms'],
+        ];
+        textInputs.forEach(function(pair) {
+            setIfActive(pair[0], $(pair[1]).val());
+        });
 
-        //New True/False:
-        d.paper_leafs_true = $('#paper_leafs_true').is(':checked');
-        d.watermarks_true = $('#watermarks_true').is(':checked');
-        d.is_main_text_true = $('#is_main_text_true').is(':checked');
-        d.is_hand_identified_true = $('#is_hand_identified_true').is(':checked');
-        d.written_above_the_top_line_true = $('#written_above_the_top_line_true').is(':checked');
-        d.binding_decoration_true = $('#binding_decoration_true').is(':checked');
-        d.parchment_shrinkage_true = $('#parchment_shrinkage_true').is(':checked');
-        d.illegible_text_true = $('#illegible_text_true').is(':checked');
-        d.ink_corrosion_true = $('#ink_corrosion_true').is(':checked');
-        d.copper_corrosion_true = $('#copper_corrosion_true').is(':checked');
-        d.powdering_or_cracking_paint_layer_true = $('#powdering_or_cracking_paint_layer_true').is(':checked');
-        d.conservation_true = $('#conservation_true').is(':checked');
-        d.paper_leafs_false = $('#paper_leafs_false').is(':checked');
-        d.watermarks_false = $('#watermarks_false').is(':checked');
-        d.is_main_text_false = $('#is_main_text_false').is(':checked');
-        d.is_hand_identified_false = $('#is_hand_identified_false').is(':checked');
-        d.written_above_the_top_line_false = $('#written_above_the_top_line_false').is(':checked');
-        d.binding_decoration_false = $('#binding_decoration_false').is(':checked');
-        d.parchment_shrinkage_false = $('#parchment_shrinkage_false').is(':checked');
-        d.illegible_text_false = $('#illegible_text_false').is(':checked');
-        d.ink_corrosion_false = $('#ink_corrosion_false').is(':checked');
-        d.copper_corrosion_false = $('#copper_corrosion_false').is(':checked');
-        d.powdering_or_cracking_paint_layer_false = $('#powdering_or_cracking_paint_layer_false').is(':checked');
-        d.conservation_false = $('#conservation_false').is(':checked');
-
-        d.darkening_true = $('#darkening_true').is(':checked');
-        d.darkening_false = $('#darkening_false').is(':checked');
-        d.water_staining_true = $('#water_staining_true').is(':checked');
-        d.water_staining_false = $('#water_staining_false').is(':checked');        
-        d.historic_repairs_true = $('#historic_repairs_true').is(':checked');
-        d.historic_repairs_false = $('#historic_repairs_false').is(':checked');
-
-        d.musicology_original_true = $('#musicology_original_true').is(':checked');
-        d.musicology_original_false = $('#musicology_original_false').is(':checked');
-        d.musicology_on_lines_true = $('#musicology_on_lines_true').is(':checked');
-        d.musicology_on_lines_false = $('#musicology_on_lines_false').is(':checked');
-
-        //New Select:
-        d.parchment_colour_select = $('#parchment_colour_select').select2('data').map(item => item.id).join(';');
-        d.main_script_select = $('#main_script_select').select2('data').map(item => item.id).join(';');
-        d.type_of_the_quire_select = $('#type_of_the_quire_select').select2('data').map(item => item.id).join(';');
-        d.script_name_select = $('#script_name_select').select2('data').map(item => item.id).join(';');
-        d.ruling_method_select = $('#ruling_method_select').select2('data').map(item => item.id).join(';');
-        d.pricking_select = $('#pricking_select').select2('data').map(item => item.id).join(';');
-        d.binding_place_of_origin_select = $('#binding_place_of_origin_select').select2('data').map(item => item.id).join(';');
-        d.binding_type_select = $('#binding_type_select').select2('data').map(item => item.id).join(';');
-        d.binding_style_select = $('#binding_style_select').select2('data').map(item => item.id).join(';');
-        d.binding_material_select = $('#binding_material_select').select2('data').map(item => item.id).join(';');
-        d.binding_decoration_select = $('#binding_decoration_select').select2('data').map(item => item.id).join(';');
-        d.binding_components_select = $('#binding_components_select').select2('data').map(item => item.id).join(';');
-        d.binding_category_select = $('#binding_category_select').select2('data').map(item => item.id).join(';');
-        d.formula_select = $('#formula_select').select2('data').map(item => item.id).join(';');
-        d.rubric_select = $('#rubric_select').select2('data').map(item => item.id).join(';');
-        d.damage_select = $('#damage_select').select2('data').map(item => item.id).join(';');
-        d.provenance_place_select = $('#provenance_place_select').select2('data').map(item => item.id).join(';');
-        d.provenance_place_countries_select = $('#provenance_place_countries_select').select2('data').map(item => item.id).join(';');
-        d.form_of_an_item_select = $('#form_of_an_item_select').select2('data').map(item => item.id).join(';');
-
-        d.title_select = $('#title_select').select2('data').map(item => item.id).join(';');
-        //Special case (authors does not have .id)
-        d.author_select = $('#author_select').select2('data').map(item => item.text).join(';');
-
-        //d.clla_liturgical_genre_select = $('#clla_liturgical_genre_select').select2('data').map(item => item.text).join(';');
-        //d.clla_provenance_place_select = $('#clla_provenance_place_select').select2('data').map(item => item.text).join(';');
-
-
-
-        d.original_or_added_select = $('#original_or_added_select').select2('data').map(item => item.id).join(';');
-        d.location_on_the_page_select = $('#location_on_the_page_select').select2('data').map(item => item.id).join(';');
-        d.decoration_type_select = $('#decoration_type_select').select2('data').map(item => item.id).join(';');
-        d.decoration_subtype_select = $('#decoration_subtype_select').select2('data').map(item => item.id).join(';');
-        d.size_characteristic_select = $('#size_characteristic_select').select2('data').map(item => item.id).join(';');
-        d.monochrome_or_colour_select = $('#monochrome_or_colour_select').select2('data').map(item => item.id).join(';');
-        d.technique_select = $('#technique_select').select2('data').map(item => item.id).join(';');
-        d.ornamented_text_select = $('#ornamented_text_select').select2('data').map(item => item.id).join(';');
-        d.decoration_subject_select = $('#decoration_subject_select').select2('data').map(item => item.id).join(';');
-        d.decoration_colours_select = $('#decoration_colours_select').select2('data').map(item => item.id).join(';');
-        d.decoration_characteristics_select = $('#decoration_characteristics_select').select2('data').map(item => item.id).join(';');
-        d.musicology_type_select = $('#musicology_type_select').select2('data').map(item => item.id).join(';');
-
-        d.binding_date_years_max = $('#ms_binding_date_years_max').val();
-
-        
-        d.decoration_size_height_min = $('#decoration_size_height_min').val();
-        d.decoration_size_height_max = $('#decoration_size_height_max').val();
-        d.decoration_size_width_min = $('#decoration_size_width_min').val();
-        d.decoration_size_width_max = $('#decoration_size_width_max').val();
-        d.decoration_addition_date_min = $('#decoration_addition_date_min').val();
-        d.decoration_addition_date_max = $('#decoration_addition_date_max').val();
-        d.decoration_addition_date_years_min = $('#decoration_addition_date_years_min').val();
-        d.decoration_addition_date_years_max = $('#decoration_addition_date_years_max').val();
-
-
-        d.musicology_how_many_lines_min = $('#musicology_how_many_lines_min').val();
-        d.musicology_how_many_lines_max = $('#musicology_how_many_lines_max').val();
-        
-
-        d.formula_text = $('#formula_text').val();
-        d.rubric_name_from_ms = $('#rubric_name_from_ms').val();
-        //d.clla_no = $('#clla_no').val();
-
-        //d.display_as_main_true = $('#display_as_main_true').is(':checked');
-        //d.display_as_main_false = $('#display_as_main_false').is(':checked');
-
-        d.projectId = projectId;
-
-        //d.order_column = 'dating__year_from';
+        // --- Always-send fields (required for DataTables / app logic) ---
+        d.projectId    = projectId;
         d.order_column = $('#sortField').val();
-        d.order_direction = $('.sort-arrow').data('direction') || 'asc'
+        d.order_direction = $('.sort-arrow').data('direction') || 'asc';
     }
     
     var manuscripts_table;
