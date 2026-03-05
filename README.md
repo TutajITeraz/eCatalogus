@@ -86,6 +86,17 @@ DATABASES = {
 
 # Installation
 
+## Configuration
+
+Copy the settings template and fill in your own values:
+```
+cp ecatalogus/settings.template.py ecatalogus/settings.py
+```
+Then edit `ecatalogus/settings.py` and set at minimum:
+- `SECRET_KEY` — generate a new key e.g. with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`
+- `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` — add your domain(s)
+- `DATABASES` — set `NAME`, `USER` and `PASSWORD` for your MariaDB instance
+
 ## Following commands must be executed in the project directory!
 ```
 
@@ -107,6 +118,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+
+# Download front-end JS/CSS libraries (not stored in the repository):
+chmod +x download_libs.sh
+./download_libs.sh
 
 #For a fresh install (no database migration) execute the following operations:
 rm indexerapp/migrations/*

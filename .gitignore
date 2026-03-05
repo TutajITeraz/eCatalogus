@@ -165,9 +165,17 @@ cython_debug/
 #Specific:
 indexerapp/migrations/
 ritus_indexer/settings.py
+ecatalogus/settings.py
 media/
 tailwindcss-linux-x64
 indexerapp/static/tailwindcss
 indexerapp/static/formulas_visualizer/data/coordinates_hdbscan.csv
 indexerapp/static/formulas_visualizer/data/formulas_small_part.csv
 indexerapp/static/formulas_visualizer/data/formulas.csv
+
+# Front-end libraries – downloaded by download_libs.sh, not stored in repo
+indexerapp/static/js/lib/
+indexerapp/static/js/cdn/
+indexerapp/static/css/lib/
+indexerapp/static/css/cdn/
+/backup

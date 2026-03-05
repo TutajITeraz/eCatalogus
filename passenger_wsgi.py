@@ -12,7 +12,7 @@ PROJECT_DIR = "/home2/reboldho/domains/monumenta-poloniae-liturgica.ispan.pl/rit
 sys.path.insert(0, PROJECT_DIR)
 
 # name of the folder with settings.py (replace XXX with the real name, e.g. "ritus" or "monumenta")
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ritus_indexer.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ecatalogus.settings")
 
 from django.core.wsgi import get_wsgi_application
 application = get_wsgi_application()
