@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Liturgica Poloniae (MPL) logo — overlay for static_mpl instance.
+     This file takes precedence over indexerapp/static/img/logo_flat.svg
+     when running with settings_liturgica.py.
+     Edit this file to customise branding for the MPL instance. -->
+
+<!-- Current content: copy of the shared base logo. Replace with MPL-specific artwork. -->
+<svg
+   width="1918"
+   height="240"
+   viewBox="0 0 1918 240"
+   version="1.1"
+   id="svg1"
+   xml:space="preserve"
+   xmlns="http://www.w3.org/2000/svg">
+  <text
+     x="959"
+     y="180"
+     text-anchor="middle"
+     font-family="serif"
+     font-size="160"
+     font-weight="bold"
+     fill="#8B0000"
+     letter-spacing="8">Liturgica Poloniae</text>
+</svg>

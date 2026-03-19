@@ -1,52 +1,38 @@
 var user="";
 
-let loc = window.location.protocol + '//' + window.location.hostname;
+let pageRoot, projectId, foreign_id_name;
 
-let pageRoot=loc;
-let projectId=0;//All
-let foreign_id_name='Manuscripta.pl';
+if (window.SITE_CONFIG) {
+    // Config provided by instance overlay (static_mpl/js/config.js or static_ecatalogus/js/config.js)
+    pageRoot        = window.SITE_CONFIG.pageRoot;
+    projectId       = window.SITE_CONFIG.projectId;
+    foreign_id_name = window.SITE_CONFIG.foreign_id_name || 'foreign id';
+} else {
+    // Fallback: no config.js overlay present — derive from current URL.
+    // Note: window.location.origin preserves the port (unlike hostname alone).
+    const origin = window.location.origin;
 
-if(loc == "https://eclla.hostline.net.pl")
-{
-  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
-  projectId=1;//eCLLA
-}
-else if(loc == "http://127.0.0.1")
-{
-  pageRoot="http://127.0.0.1:8000";
-  projectId=2;//LP
-}
-else if(loc == "https://monumenta-poloniae-liturgica.ispan.pl")
-{
-  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
-  projectId=2;//All
-}
-else if(loc == "https://lp.hostline.net.pl")
-{
-  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
-  projectId=2;//LP
-}
-else if(loc == "http://lp.hostline.net.pl")
-{
-  pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
-  projectId=2;//LP
-}
-else if(loc == "https://liturgicapoloniae.hostline.net.pl")
-    {
-      pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
-      projectId=2;//LP
+    pageRoot        = origin;
+    projectId       = 0;
+    foreign_id_name = 'Manuscripta.pl';
+
+    if (origin === "https://eclla.hostline.net.pl") {
+        pageRoot  = "https://monumenta-poloniae-liturgica.ispan.pl";
+        projectId = 1; // eCLLA
+    } else if (origin === "https://monumenta-poloniae-liturgica.ispan.pl"
+            || origin === "https://lp.hostline.net.pl"
+            || origin === "http://lp.hostline.net.pl"
+            || origin === "https://liturgicapoloniae.hostline.net.pl"
+            || origin === "http://liturgicapoloniae.hostline.net.pl") {
+        pageRoot  = "https://monumenta-poloniae-liturgica.ispan.pl";
+        projectId = 2; // LP
     }
-    else if(loc == "http://liturgicapoloniae.hostline.net.pl")
-    {
-      pageRoot="https://monumenta-poloniae-liturgica.ispan.pl";
-      projectId=2;//LP
-    }
-    
 
-if(projectId==0)
-    foreign_id_name='foreign id';
-else if(projectId==1)
-    foreign_id_name='CLLA no.';
+    if (projectId === 0)
+        foreign_id_name = 'foreign id';
+    else if (projectId === 1)
+        foreign_id_name = 'CLLA no.';
+}
 
 
 window.pageRoot = pageRoot;
