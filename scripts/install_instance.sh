@@ -49,9 +49,12 @@ log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"; }
 ask() {
   local prompt=$1; local default=${2-}
   if command -v whiptail >/dev/null 2>&1; then
-    whiptail --title "Installer" --inputbox "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3
+    local out
+    out=$(whiptail --title "Installer" --inputbox "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3)
+    restore_tty
+    echo "$out"
   else
-    read -rp "$prompt [$default]: " ans
+    read -rp "$prompt [$default]: " ans </dev/tty
     echo "${ans:-$default}"
   fi
 }
@@ -59,9 +62,12 @@ ask() {
 ask_secret() {
   local prompt=$1; local default=${2-}
   if command -v whiptail >/dev/null 2>&1; then
-    whiptail --title "Installer" --passwordbox "$prompt" 10 60 3>&1 1>&2 2>&3
+    local out
+    out=$(whiptail --title "Installer" --passwordbox "$prompt" 10 60 3>&1 1>&2 2>&3)
+    restore_tty
+    echo "$out"
   else
-    read -rsp "$prompt: " ans
+    read -rsp "$prompt: " ans </dev/tty
     echo
     echo "${ans:-$default}"
   fi
@@ -107,6 +113,31 @@ stop_gauge() {
   fi
 }
 
+restore_tty() {
+  # Restore terminal state after whiptail
+  stty sane 2>/dev/null || true
+  tput reset 2>/dev/null || true
+  sleep 0.02
+}
+
+try_git_clone() {
+  local repo=$1; local branch=$2; local dest=$3
+  # Prefer non-interactive SSH (fail fast if no key)
+  if GIT_SSH_COMMAND='ssh -o BatchMode=yes' git clone --branch "$branch" "$repo" "$dest"; then
+    return 0
+  fi
+  # If repo is an SSH github URL and clone failed due to publickey, try HTTPS fallback
+  if [[ "$repo" =~ ^git@github.com:(.+) ]]; then
+    local path=${BASH_REMATCH[1]}
+    local https_repo="https://github.com/${path}"
+    log "SSH clone failed; retrying with HTTPS: $https_repo"
+    if git clone --branch "$branch" "$https_repo" "$dest"; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
 # whiptail menu (multi-screen) wrapper
 show_main_menu() {
   if whiptail_ok; then
@@ -115,6 +146,7 @@ show_main_menu() {
       "2" "Create/Update .env (secrets)" \
       "3" "Create virtualenv only" \
       "4" "Quit" 3>&1 1>&2 2>&3)
+    restore_tty
     echo "$CHOICE"
   else
     echo "1"
@@ -141,7 +173,21 @@ show_config_form() {
     "Preserve files (comma)" 11 1 "${PRESERVE_FILES}" 11 30 50 0 3>&1 1>&2 2>&3)
   # whiptail --form returns newline separated fields; read into variables
   if [[ -n "$form_output" ]]; then
-    IFS=$'\n' read -r DOMAIN DEPLOY_USER REPO_URL GIT_BRANCH APPDIR VENV_PATH SERVICE_SHORTNAME USE_TCP PORT SOCKET_PATH PRESERVE_FILES <<<"$form_output"
+    # read into array to avoid losing values if some fields are empty
+    IFS=$'\n' read -r -a FORM_ARR <<<"$form_output"
+    # assign back only when a field is non-empty, otherwise keep existing value
+    DOMAIN=${FORM_ARR[0]:-$DOMAIN}
+    DEPLOY_USER=${FORM_ARR[1]:-$DEPLOY_USER}
+    REPO_URL=${FORM_ARR[2]:-$REPO_URL}
+    GIT_BRANCH=${FORM_ARR[3]:-$GIT_BRANCH}
+    APPDIR=${FORM_ARR[4]:-$APPDIR}
+    VENV_PATH=${FORM_ARR[5]:-$VENV_PATH}
+    SERVICE_SHORTNAME=${FORM_ARR[6]:-$SERVICE_SHORTNAME}
+    USE_TCP=${FORM_ARR[7]:-$USE_TCP}
+    PORT=${FORM_ARR[8]:-$PORT}
+    SOCKET_PATH=${FORM_ARR[9]:-$SOCKET_PATH}
+    PRESERVE_FILES=${FORM_ARR[10]:-$PRESERVE_FILES}
+    restore_tty
     return 0
   fi
   return 1
@@ -210,6 +256,142 @@ validate_socket() {
   fi
 }
 
+write_settings_module() {
+  local mod_name="ecatalogus.settings_${SERVICE_SHORTNAME}"
+  local target_dir="$APPDIR/ecatalogus"
+  local target_file="$target_dir/settings_${SERVICE_SHORTNAME}.py"
+
+  mkdir -p "$target_dir"
+
+  cat > "$target_file" <<'PY'
+from .settings_base import *
+import os
+
+# Read runtime secrets from environment (APPDIR/.env should be sourced by systemd and scripts)
+SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me')
+DEBUG = os.environ.get('DEBUG', 'False') in ('True', 'true', '1')
+ALLOWED_HOSTS = [h for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h]
+
+DATABASES = {
+    'default': {
+        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.mysql'),
+        'NAME': os.environ.get('DATABASE_NAME', ''),
+        'USER': os.environ.get('DATABASE_USER', ''),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+        'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('DATABASE_PORT', ''),
+    }
+}
+
+PY
+
+  log "Wrote per-instance settings module: $target_file"
+
+  # ensure DJANGO_SETTINGS_MODULE is set in APPDIR/.env
+  if [[ -f "$APPDIR/.env" ]]; then
+    if ! grep -q '^DJANGO_SETTINGS_MODULE=' "$APPDIR/.env"; then
+      echo "DJANGO_SETTINGS_MODULE=${mod_name}" >> "$APPDIR/.env"
+      chmod 600 "$APPDIR/.env" || true
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$APPDIR/.env" 2>/dev/null || true
+      log "Appended DJANGO_SETTINGS_MODULE=${mod_name} to $APPDIR/.env"
+    else
+      sed -i.bak -E "s|^DJANGO_SETTINGS_MODULE=.*|DJANGO_SETTINGS_MODULE=${mod_name}|" "$APPDIR/.env" || true
+      log "Updated DJANGO_SETTINGS_MODULE in $APPDIR/.env"
+    fi
+  else
+    # create minimal .env with DJANGO_SETTINGS_MODULE if missing
+    cat > "$APPDIR/.env" <<EOF
+DJANGO_SETTINGS_MODULE=${mod_name}
+EOF
+    chown "${DEPLOY_USER}:${DEPLOY_USER}" "$APPDIR/.env" 2>/dev/null || true
+    chmod 600 "$APPDIR/.env" || true
+    log "Created $APPDIR/.env with DJANGO_SETTINGS_MODULE=${mod_name}"
+  fi
+}
+
+ensure_ssh_known_host() {
+  # add common git host to known_hosts to avoid interactive prompt
+  local host=${1:-github.com}
+  local ssh_dir
+  ssh_dir="${HOME}/.ssh"
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir" || true
+  local kh="$ssh_dir/known_hosts"
+  if command -v ssh-keyscan >/dev/null 2>&1; then
+    # Only add if not already present
+    if ! grep -q "^$host[ ,]" "$kh" 2>/dev/null; then
+      log "Adding SSH host key for $host to $kh"
+      if [[ "$DRY_RUN" -eq 0 ]]; then
+        ssh-keyscan -t rsa,ecdsa,ed25519 "$host" >> "$kh" 2>/dev/null || true
+        chmod 644 "$kh" || true
+      else
+        log "DRY-RUN: would ssh-keyscan $host >> $kh"
+      fi
+    fi
+  else
+    log "ssh-keyscan not available; if this is the first time connecting to $host you may be prompted to accept its host key."
+  fi
+}
+
+ensure_ssh_key() {
+  # If repo uses SSH and no key exists, offer to generate one
+  local repo=$1
+  if [[ "$repo" =~ ^git@ ]]; then
+    local ssh_dir="$HOME/.ssh"
+    if [[ ! -f "$ssh_dir/id_ed25519" && ! -f "$ssh_dir/id_rsa" ]]; then
+      if whiptail_ok; then
+        if whiptail --title "SSH key" --yesno "No SSH key found in $ssh_dir. Generate a new ed25519 key now? You will need to add its public key to GitHub." 10 70; then
+          restore_tty
+          DO_GEN=1
+        else
+          restore_tty
+          DO_GEN=0
+        fi
+      else
+        read -rp "No SSH key found. Generate now? [y/N]: " yn </dev/tty
+        case "$yn" in [Yy]*) DO_GEN=1 ;; *) DO_GEN=0 ;; esac
+      fi
+
+      if [[ "$DO_GEN" -eq 1 ]]; then
+        mkdir -p "$ssh_dir"; chmod 700 "$ssh_dir"
+        ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -N "" -C "deploy@$(hostname)" || true
+        chmod 600 "$ssh_dir/id_ed25519" || true
+        log "Generated SSH key at $ssh_dir/id_ed25519. Public key:" 
+        cat "$ssh_dir/id_ed25519.pub" || true
+        if whiptail_ok; then
+          whiptail --title "SSH key generated" --msgbox "Public key was printed to stdout. Add it to GitHub (repo deploy key or account SSH key), then continue." 10 70
+          restore_tty
+        else
+          echo "Public key above. Add it to GitHub, then press Enter to continue." </dev/tty
+          read -r _ </dev/tty
+        fi
+      fi
+    fi
+  fi
+}
+
+print_git_ssh_help() {
+  cat >&2 <<'HELP'
+Git clone failed due to SSH/publickey issues.
+Possible remedies:
+  1) Ensure the deploy user has an SSH key and added its public key to GitHub:
+       ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "deploy@host"
+       cat ~/.ssh/id_ed25519.pub
+     Then add the printed key as a Deploy Key (repo) or SSH key (account) on GitHub.
+
+  2) If you prefer HTTPS cloning temporarily, change REPO_URL in your config to:
+       https://github.com/yourorg/ecatalogus.git
+     Note: HTTPS may require a personal access token for private repos.
+
+  3) To avoid host key prompts, run as the deploy user:
+       mkdir -p ~/.ssh && chmod 700 ~/.ssh
+       ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+After adding the key to GitHub, test with:
+       ssh -T git@github.com
+HELP
+}
+
 load_env() {
   if [[ -n "${1-}" && -f "$1" ]]; then
     # shellcheck source=/dev/null
@@ -235,12 +417,14 @@ ensure_app_env() {
 
   if command -v whiptail >/dev/null 2>&1; then
     if whiptail --title "Create .env" --yesno "No ${ENV_FILE} found. Create one now (contains DB credentials and SECRET_KEY)?" 10 60; then
+      restore_tty
       CREATE_ENV=1
     else
+      restore_tty
       CREATE_ENV=0
     fi
   else
-    read -rp "No ${ENV_FILE} found. Create now? [y/N]: " yn
+    read -rp "No ${ENV_FILE} found. Create now? [y/N]: " yn </dev/tty
     case "$yn" in
       [Yy]*) CREATE_ENV=1 ;;
       *) CREATE_ENV=0 ;;
@@ -353,6 +537,14 @@ main() {
     fi
   fi
 
+  # Expand any placeholders (e.g. APPDIR may contain ${DEPLOY_USER} placeholders)
+  APPDIR=$(eval echo "$APPDIR")
+  VENV_PATH=$(eval echo "$VENV_PATH")
+  SOCKET_PATH=$(eval echo "${SOCKET_PATH-}")
+  SOCKET_PATH=$(eval echo "$SOCKET_PATH")
+  PUBLIC_HTML=$(eval echo "${PUBLIC_HTML:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html}")
+  STATIC_DIR=$(eval echo "${STATIC_DIR:-${APPDIR}/static_assets}")
+
   # Validate socket directory, ownership and SELinux advice
   if [[ "${USE_TCP:-0}" != "1" ]]; then
     SOCKET_DIR=$(dirname "$SOCKET_PATH")
@@ -389,19 +581,75 @@ main() {
         log "DRY-RUN: would clone $REPO_URL@$GIT_BRANCH to $APPDIR"
         update_gauge 10 "(dry-run) clone"
       else
-        git clone --branch "$GIT_BRANCH" "$REPO_URL" "$APPDIR"
+        ensure_ssh_known_host
+        ensure_ssh_key "$REPO_URL"
+        if ! try_git_clone "$REPO_URL" "$GIT_BRANCH" "$APPDIR"; then
+          log "git clone failed. Checking for SSH key issues."
+          print_git_ssh_help
+          exit 1
+        fi
         update_gauge 20 "Cloned repository"
       fi
     else
-      log "App directory exists; fetching latest from git."
-      cd "$APPDIR"
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "DRY-RUN: would fetch and reset to origin/$GIT_BRANCH"
-        update_gauge 20 "(dry-run) update"
+      log "App directory exists; checking git repository status."
+      # If the directory exists but isn't a git repo, offer to back it up and clone fresh
+      if [[ ! -d "$APPDIR/.git" ]]; then
+        log "Directory $APPDIR exists but is not a git repository."
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          log "DRY-RUN: would move $APPDIR to ${APPDIR}.bak.", update_gauge 20 "(dry-run) backup and clone"
+          update_gauge 20 "(dry-run) backup and clone"
+        else
+          DO_BACKUP=0
+          if whiptail_ok; then
+            if whiptail --title "Non-git directory" --yesno "Directory $APPDIR exists but is not a git repository. Move it to ${APPDIR}.bak.$(timestamp) and clone fresh from $REPO_URL ?" 12 70; then
+                restore_tty
+                DO_BACKUP=1
+            else
+                restore_tty
+                DO_BACKUP=0
+            fi
+          else
+              read -rp "Directory $APPDIR exists but is not a git repository. Move to backup and clone? [y/N]: " yn </dev/tty
+            case "$yn" in
+              [Yy]*) DO_BACKUP=1 ;;
+              *) DO_BACKUP=0 ;;
+            esac
+          fi
+
+          if [[ "$DO_BACKUP" -eq 1 ]]; then
+            BACKUP_PATH="${APPDIR}.bak.$(timestamp)"
+            log "Backing up $APPDIR -> $BACKUP_PATH"
+            mv "$APPDIR" "$BACKUP_PATH" || { log "Failed to move $APPDIR to $BACKUP_PATH"; exit 1; }
+            mkdir -p "$APPDIR"
+            log "Cloning repository into $APPDIR"
+            ensure_ssh_known_host
+            ensure_ssh_key "$REPO_URL"
+            if ! try_git_clone "$REPO_URL" "$GIT_BRANCH" "$APPDIR"; then
+              log "git clone failed. Checking for SSH key issues."
+              print_git_ssh_help
+              exit 1
+            fi
+            update_gauge 30 "Cloned into fresh directory"
+          else
+            log "User chose not to backup/replace existing directory. Aborting."; exit 1
+          fi
+        fi
       else
-        git fetch --all
-        git reset --hard "origin/$GIT_BRANCH"
-        update_gauge 30 "Fetched latest"
+        log "App directory is a git repository; fetching latest from git."
+        cd "$APPDIR"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+          log "DRY-RUN: would fetch and reset to origin/$GIT_BRANCH"
+          update_gauge 20 "(dry-run) update"
+        else
+          ensure_ssh_known_host
+          if ! git fetch --all; then
+            log "git fetch failed. Checking for SSH key issues."
+            print_git_ssh_help
+            exit 1
+          fi
+          git reset --hard "origin/$GIT_BRANCH"
+          update_gauge 30 "Fetched latest"
+        fi
       fi
     fi
 
@@ -453,7 +701,12 @@ main() {
         ensure_app_env
       fi
 
-      export DJANGO_SETTINGS_MODULE="$DJANGO_SETTINGS_MODULE"
+      # Generate per-instance settings module and ensure DJANGO_SETTINGS_MODULE is set in .env
+      write_settings_module
+
+      # Ensure the DJANGO_SETTINGS_MODULE variable (generated/overwritten by write_settings_module)
+      # is exported for manage.py commands
+      export DJANGO_SETTINGS_MODULE="$(grep -E '^DJANGO_SETTINGS_MODULE=' "$APPDIR/.env" 2>/dev/null | cut -d'=' -f2-)"
       if [[ "$DRY_RUN" -eq 1 ]]; then
         log "DRY-RUN: would run makemigrations/migrate/collectstatic"
         update_gauge 85 "(dry-run) migrations & collectstatic"

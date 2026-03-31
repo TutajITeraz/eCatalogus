@@ -61,6 +61,52 @@ start_gauge() {
   fi
 }
 
+restore_tty() {
+  stty sane 2>/dev/null || true
+  tput reset 2>/dev/null || true
+  sleep 0.02
+}
+
+ensure_ssh_known_host() {
+  local host=${1:-github.com}
+  local ssh_dir="$HOME/.ssh"
+  mkdir -p "$ssh_dir"; chmod 700 "$ssh_dir" || true
+  local kh="$ssh_dir/known_hosts"
+  if command -v ssh-keyscan >/dev/null 2>&1; then
+    if ! grep -q "^$host[ ,]" "$kh" 2>/dev/null; then
+      log "Adding SSH host key for $host to $kh"
+      if [[ "$DRY_RUN" -eq 0 ]]; then
+        ssh-keyscan -t rsa,ecdsa,ed25519 "$host" >> "$kh" 2>/dev/null || true
+        chmod 644 "$kh" || true
+      else
+        log "DRY-RUN: would ssh-keyscan $host >> $kh"
+      fi
+    fi
+  fi
+}
+
+ensure_ssh_key() {
+  local repo=$1
+  if [[ "$repo" =~ ^git@ ]]; then
+    local ssh_dir="$HOME/.ssh"
+    if [[ ! -f "$ssh_dir/id_ed25519" && ! -f "$ssh_dir/id_rsa" ]]; then
+      log "No SSH key found in $ssh_dir. Please generate one and add it to GitHub or use an HTTPS repo URL."
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        log "DRY-RUN: would prompt to generate SSH key"
+      else
+        read -rp "Generate SSH key now? [y/N]: " yn </dev/tty
+        case "$yn" in [Yy]*)
+          mkdir -p "$ssh_dir"; chmod 700 "$ssh_dir"
+          ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -N "" -C "deploy@$(hostname)" || true
+          chmod 600 "$ssh_dir/id_ed25519" || true
+          log "Generated SSH key; public key:"; cat "$ssh_dir/id_ed25519.pub" || true
+          read -rp "Add it to GitHub then press Enter to continue" </dev/tty
+          ;; *) log "Skipping key generation; git operations may fail." ;; esac
+      fi
+    fi
+  fi
+}
+
 # Validate socket ownership and permissions, attempt to fix when possible
 validate_socket() {
   if [[ "${USE_TCP:-0}" == "1" ]]; then
@@ -109,6 +155,39 @@ check_selinux() {
       log "SELinux Enforcing: ensure correct contexts for socket and static/media directories."
     fi
   fi
+}
+
+write_settings_module_if_missing() {
+  local mod_name="ecatalogus.settings_${SERVICE_SHORTNAME}"
+  local target_dir="$APPDIR/ecatalogus"
+  local target_file="$target_dir/settings_${SERVICE_SHORTNAME}.py"
+  if [[ -f "$target_file" ]]; then
+    log "Per-instance settings module exists: $target_file"
+    return 0
+  fi
+  mkdir -p "$target_dir"
+  cat > "$target_file" <<'PY'
+from .settings_base import *
+import os
+
+# Read runtime secrets from environment
+SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me')
+DEBUG = os.environ.get('DEBUG', 'False') in ('True', 'true', '1')
+ALLOWED_HOSTS = [h for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h]
+
+DATABASES = {
+    'default': {
+        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.mysql'),
+        'NAME': os.environ.get('DATABASE_NAME', ''),
+        'USER': os.environ.get('DATABASE_USER', ''),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+        'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('DATABASE_PORT', ''),
+    }
+}
+
+PY
+  log "Generated missing settings module: $target_file"
 }
 update_gauge() {
   local pct=$1; local msg=${2-}
@@ -160,7 +239,14 @@ stop_gauge() {
     log "DRY-RUN: would fetch, checkout and reset branch ${GIT_BRANCH:-main}"
     update_gauge 20 "(dry-run) git fetch"
   else
-    git fetch --all --prune
+    ensure_ssh_known_host
+    ensure_ssh_key "${REPO_URL:-}"
+    # fetch non-interactively (fail fast if no key)
+    if ! GIT_SSH_COMMAND='ssh -o BatchMode=yes' git fetch --all --prune; then
+      log "git fetch failed. If this is an SSH repo, ensure the deploy user has SSH keys and access."
+      echo "If repo is public you can switch to HTTPS URL in config and try again." >&2
+      exit 1
+    fi
     BRANCH_TO_RESET="${GIT_BRANCH:-main}"
     git checkout "$BRANCH_TO_RESET" || true
     git reset --hard "origin/${BRANCH_TO_RESET}"
@@ -184,6 +270,13 @@ stop_gauge() {
       pip install -r requirements.txt || true
     fi
     update_gauge 60 "Installing dependencies"
+    # ensure per-instance settings module exists and DJANGO_SETTINGS_MODULE is set
+    write_settings_module_if_missing
+    if [[ -f "$APPDIR/.env" ]]; then
+      # reload env to pick up DJANGO_SETTINGS_MODULE if generator updated .env
+      # shellcheck source=/dev/null
+      source "$APPDIR/.env"
+    fi
     export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE-ecatalogus.settings}"
     python manage.py makemigrations || true
     update_gauge 75 "Applying migrations"
