@@ -184,3 +184,5 @@ indexerapp/static/css/cdn/
 ecatalogus/settings_mpl.py
 ecatalogus/settings_ecatalogus.py
 indexerapp/static/.DS_Store
+/tmp
+.DS_Store

@@ -260,7 +260,9 @@ class MainInfoAjaxView(View):
         print(request.user);
 
         username = request.user.get_username()
-        groups = list(request.user.groups.values_list('name', flat=True))
+        groups = []
+        if request.user.is_authenticated:
+            groups = list(request.user.groups.values_list('name', flat=True))
         
         # Check if user is a superuser
         is_superuser = request.user.is_superuser
@@ -277,7 +279,6 @@ class MainInfoAjaxView(View):
             'add_bibliography',
             'add_editioncontent',
             'add_formulas',
-            'add_manuscripts',  # Duplicate permission 'add_manuscripts' is listed twice, is this intentional?
             'add_ritenames',
             'add_timereference'
         ]
@@ -286,7 +287,9 @@ class MainInfoAjaxView(View):
         #permissions = {perm: request.user.has_perm(f'app_label.{perm}') for perm in permissions_to_check}
 
         # Check if user has all the specified permissions
-        import_permissions = all(request.user.has_perm(f'app_label.{perm}') for perm in permissions_to_check)
+        import_permissions = request.user.is_authenticated and request.user.has_perms(
+            [f'indexerapp.{perm}' for perm in permissions_to_check]
+        )
 
         # Prepare the data to be returned in the JSON response
         data = {

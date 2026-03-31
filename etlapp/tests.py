@@ -1,0 +1,715 @@
+import csv
+import json
+import tempfile
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
+from uuid import uuid4
+
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.contrib.auth.models import Permission, User
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from indexerapp.models import Bibliography, Content, ContentTopic, Contributors, DeletedRecord, Manuscripts, MassHour, Topic, Type, Watermarks
+
+
+ETL_UI_PERMISSION_CODENAMES = [
+    'add_manuscripts',
+    'add_content',
+    'add_bibliography',
+    'add_editioncontent',
+    'add_formulas',
+    'add_ritenames',
+    'add_timereference',
+]
+
+
+class ETLUIEditorMixin:
+    def create_editor_user(self):
+        user = User.objects.create_user(username='etl-editor', password='secret123A')
+        permissions = Permission.objects.filter(
+            content_type__app_label='indexerapp',
+            codename__in=ETL_UI_PERMISSION_CODENAMES,
+        )
+        user.user_permissions.add(*permissions)
+        return user
+
+
+@override_settings(
+    SITE_NAME='Test Site',
+    ETL_ROLE='master',
+    ETL_MASTER_URL=None,
+    ETL_SLAVE_URLS=['http://127.0.0.1:8080'],
+    ETL_API_TOKEN='test-token',
+)
+class ETLStatusViewTests(SimpleTestCase):
+    def test_status_endpoint_requires_authentication(self):
+        client = APIClient()
+
+        response = client.get(reverse('etl:etl-status'))
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_status_endpoint_returns_instance_metadata(self):
+        client = APIClient()
+
+        response = client.get(reverse('etl:etl-status'), HTTP_AUTHORIZATION='Token test-token')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['site_name'], 'Test Site')
+        self.assertEqual(response.json()['role'], 'master')
+        self.assertTrue(response.json()['has_api_token'])
+
+
+@override_settings(
+    SITE_NAME='Test Site',
+    ETL_ROLE='master',
+    ETL_MASTER_URL=None,
+    ETL_SLAVE_URLS=['http://127.0.0.1:8080'],
+    ETL_API_TOKEN='test-token',
+)
+class ETLDeletedRecordsViewTests(TestCase):
+    def test_deleted_endpoint_returns_category_records_filtered_by_since(self):
+        older = DeletedRecord.objects.create(
+            model_label='indexerapp.Bibliography',
+            category='shared',
+            object_uuid=uuid4(),
+            source_pk='1',
+        )
+        recent = DeletedRecord.objects.create(
+            model_label='indexerapp.Contributors',
+            category='shared',
+            object_uuid=uuid4(),
+            source_pk='2',
+        )
+        DeletedRecord.objects.filter(pk=older.pk).update(deleted_at=timezone.now() - timezone.timedelta(days=2))
+        DeletedRecord.objects.filter(pk=recent.pk).update(deleted_at=timezone.now() - timezone.timedelta(hours=1))
+
+        client = APIClient()
+        response = client.get(
+            reverse('etl:etl-deleted-records', kwargs={'category': 'shared'}),
+            {'since': (timezone.now() - timezone.timedelta(days=1)).isoformat()},
+            HTTP_AUTHORIZATION='Bearer test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['category'], 'shared')
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['results'][0]['model_label'], 'indexerapp.Contributors')
+
+    def test_deleted_endpoint_rejects_invalid_since_value(self):
+        client = APIClient()
+
+        response = client.get(
+            reverse('etl:etl-deleted-records', kwargs={'category': 'shared'}),
+            {'since': 'not-a-date'},
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_deleted_endpoint_rejects_invalid_category(self):
+        client = APIClient()
+
+        response = client.get(
+            reverse('etl:etl-deleted-records', kwargs={'category': 'local'}),
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+@override_settings(
+    SITE_NAME='Test Site',
+    ETL_ROLE='master',
+    ETL_MASTER_URL=None,
+    ETL_SLAVE_URLS=['http://127.0.0.1:8080'],
+    ETL_API_TOKEN='test-token',
+)
+class ETLDeltaExportViewTests(TestCase):
+    def test_main_export_returns_recent_records(self):
+        older = Type.objects.create(short_name='A', name='Alpha')
+        recent = Type.objects.create(short_name='B', name='Beta')
+        Type.objects.filter(pk=older.pk).update(entry_date=timezone.now() - timezone.timedelta(days=3))
+        Type.objects.filter(pk=recent.pk).update(entry_date=timezone.now() - timezone.timedelta(hours=2))
+
+        client = APIClient()
+        response = client.get(
+            reverse('etl:etl-delta-export', kwargs={'category': 'main'}),
+            {'since': (timezone.now() - timezone.timedelta(days=1)).isoformat()},
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['category'], 'main')
+        self.assertEqual(payload['model_count'], 1)
+        self.assertEqual(payload['record_count'], 1)
+        self.assertEqual(payload['models'][0]['model'], 'indexerapp.Type')
+        self.assertEqual(payload['models'][0]['results'][0]['name'], 'Beta')
+        self.assertIsNotNone(payload['models'][0]['results'][0]['uuid'])
+
+    def test_shared_export_returns_versioned_rows(self):
+        bibliography = Bibliography.objects.create(title='Shared row')
+
+        client = APIClient()
+        response = client.get(
+            reverse('etl:etl-delta-export', kwargs={'category': 'shared'}),
+            HTTP_AUTHORIZATION='Bearer test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['category'], 'shared')
+        self.assertEqual(payload['record_count'], 1)
+        exported = payload['models'][0]['results'][0]
+        self.assertEqual(exported['title'], 'Shared row')
+        self.assertEqual(exported['version'], bibliography.version)
+        self.assertIsNotNone(exported['uuid'])
+
+    def test_export_rejects_unsupported_category(self):
+        client = APIClient()
+
+        response = client.get(
+            reverse('etl:etl-delta-export', kwargs={'category': 'ms'}),
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+@override_settings(
+    SITE_NAME='Test Site',
+    ETL_ROLE='master',
+    ETL_MASTER_URL=None,
+    ETL_SLAVE_URLS=['http://127.0.0.1:8080'],
+    ETL_API_TOKEN='test-token',
+)
+class ETLDeltaImportViewTests(TestCase):
+    def test_main_import_creates_records_and_resolves_foreign_keys_by_uuid(self):
+        imported_type_uuid = str(uuid4())
+        imported_mass_hour_uuid = str(uuid4())
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'main'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Type',
+                        'results': [
+                            {
+                                'uuid': imported_type_uuid,
+                                'short_name': 'TP1',
+                                'name': 'Imported Type',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.MassHour',
+                        'results': [
+                            {
+                                'uuid': imported_mass_hour_uuid,
+                                'short_name': 'MH1',
+                                'name': 'Imported MassHour',
+                                'type_uuid': imported_type_uuid,
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        imported_type = Type.objects.get(uuid=imported_type_uuid)
+        imported_mass_hour = MassHour.objects.get(uuid=imported_mass_hour_uuid)
+        self.assertEqual(imported_type.name, 'Imported Type')
+        self.assertEqual(imported_mass_hour.type_id, imported_type.pk)
+        self.assertEqual(response.json()['created'], 2)
+
+    def test_shared_import_updates_when_version_is_newer(self):
+        bibliography = Bibliography.objects.create(title='Old title')
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'shared'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Bibliography',
+                        'results': [
+                            {
+                                'uuid': str(bibliography.uuid),
+                                'title': 'New title',
+                                'author': None,
+                                'shortname': None,
+                                'year': None,
+                                'zotero_id': None,
+                                'hierarchy': None,
+                                'version': bibliography.version + 1,
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    }
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Bearer test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        bibliography.refresh_from_db()
+        self.assertEqual(bibliography.title, 'New title')
+        self.assertEqual(bibliography.version, 2)
+        self.assertEqual(response.json()['updated'], 1)
+
+    def test_shared_import_returns_conflict_for_stale_version(self):
+        bibliography = Bibliography.objects.create(title='Current title')
+        bibliography.title = 'Current title v2'
+        bibliography.save()
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'shared'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Bibliography',
+                        'results': [
+                            {
+                                'uuid': str(bibliography.uuid),
+                                'title': 'Stale title',
+                                'author': None,
+                                'shortname': None,
+                                'year': None,
+                                'zotero_id': None,
+                                'hierarchy': None,
+                                'version': 1,
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    }
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_shared_import_skips_identical_watermark_with_empty_image_field(self):
+        contributor = Contributors.objects.create(
+            initials='AB',
+            first_name='Anna',
+            last_name='Baker',
+        )
+        watermark = Watermarks.objects.create(
+            name='Shared watermark',
+            comment='',
+            watermark_img=None,
+            data_contributor=contributor,
+        )
+        watermark.authors.add(contributor)
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'shared'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Contributors',
+                        'results': [
+                            {
+                                'uuid': str(contributor.uuid),
+                                'initials': contributor.initials,
+                                'first_name': contributor.first_name,
+                                'last_name': contributor.last_name,
+                                'affiliation': contributor.affiliation,
+                                'email': contributor.email,
+                                'url': contributor.url,
+                                'version': contributor.version,
+                                'entry_date': contributor.entry_date.isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.Watermarks',
+                        'results': [
+                            {
+                                'uuid': str(watermark.uuid),
+                                'name': watermark.name,
+                                'external_id': watermark.external_id,
+                                'watermark_img': None,
+                                'comment': watermark.comment,
+                                'entry_date': watermark.entry_date.isoformat(),
+                                'version': watermark.version,
+                                'data_contributor_uuid': str(contributor.uuid),
+                                'authors_uuids': [str(contributor.uuid)],
+                            }
+                        ],
+                    },
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['updated'], 0)
+        self.assertEqual(response.json()['skipped'], 2)
+
+
+@override_settings(
+    SITE_NAME='Test Site',
+    ETL_ROLE='master',
+    ETL_MASTER_URL=None,
+    ETL_SLAVE_URLS=['http://127.0.0.1:8080'],
+    ETL_API_TOKEN='test-token',
+)
+class ETLManuscriptPackageViewTests(TestCase):
+    def test_manuscript_list_returns_sync_metadata(self):
+        manuscript = Manuscripts.objects.create(name='MS One', sync_status='ready')
+
+        client = APIClient()
+        response = client.get(
+            reverse('etl:etl-manuscript-list'),
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['results'][0]['uuid'], str(manuscript.uuid))
+        self.assertEqual(payload['results'][0]['sync_status'], 'ready')
+
+    def test_manuscript_export_returns_package_with_dependent_ms_models(self):
+        manuscript = Manuscripts.objects.create(name='MS Export')
+        content = Content.objects.create(manuscript=manuscript, formula_text='Lorem ipsum')
+        topic = Topic.objects.create(name='Topic A')
+        content_topic = ContentTopic.objects.create(content=content, topic=topic)
+
+        client = APIClient()
+        response = client.get(
+            reverse('etl:etl-manuscript-export', kwargs={'manuscript_uuid': manuscript.uuid}),
+            HTTP_AUTHORIZATION='Bearer test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['category'], 'ms')
+        self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
+        models_by_label = {model_payload['model']: model_payload for model_payload in payload['models']}
+        self.assertIn('indexerapp.Manuscripts', models_by_label)
+        self.assertIn('indexerapp.Content', models_by_label)
+        self.assertIn('indexerapp.ContentTopic', models_by_label)
+        exported_content_topic = models_by_label['indexerapp.ContentTopic']['results'][0]
+        self.assertEqual(exported_content_topic['uuid'], str(content_topic.uuid))
+        self.assertEqual(exported_content_topic['content_uuid'], str(content.uuid))
+
+    def test_manuscript_import_creates_ms_package(self):
+        manuscript_uuid = str(uuid4())
+        content_uuid = str(uuid4())
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-manuscript-import'),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Manuscripts',
+                        'results': [
+                            {
+                                'uuid': manuscript_uuid,
+                                'name': 'Imported manuscript',
+                                'sync_status': 'ready',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.Content',
+                        'results': [
+                            {
+                                'uuid': content_uuid,
+                                'manuscript_uuid': manuscript_uuid,
+                                'formula_text': 'Imported content',
+                                'where_in_ms_from': '1r',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        manuscript = Manuscripts.objects.get(uuid=manuscript_uuid)
+        content = Content.objects.get(uuid=content_uuid)
+        self.assertEqual(manuscript.name, 'Imported manuscript')
+        self.assertEqual(content.manuscript_id, manuscript.pk)
+        self.assertEqual(response.json()['category'], 'ms')
+        self.assertEqual(response.json()['created'], 2)
+
+
+class ExportModelCategoriesCommandTests(TestCase):
+    def test_export_model_categories_writes_expected_columns(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'etl_model_categories.tsv'
+
+            call_command('export_model_categories', output=str(output_path))
+
+            self.assertTrue(output_path.exists())
+            with output_path.open('r', encoding='utf-8', newline='') as handle:
+                rows = list(csv.DictReader(handle, delimiter='\t'))
+
+        self.assertTrue(any(row['model_name'] == 'Manuscripts' for row in rows))
+        manuscripts_row = next(row for row in rows if row['model_name'] == 'Manuscripts')
+        self.assertEqual(manuscripts_row['category'], 'ms')
+        self.assertEqual(manuscripts_row['sync_enabled'], 'yes')
+        self.assertIn('data_contributor', manuscripts_row['foreign_keys'])
+        self.assertIn('dependency_batch', manuscripts_row)
+        self.assertIn('sync_fk_dependencies', manuscripts_row)
+
+        projects_row = next(row for row in rows if row['model_name'] == 'Projects')
+        self.assertEqual(projects_row['category'], 'main')
+        self.assertEqual(projects_row['sync_enabled'], 'yes')
+
+        ms_projects_row = next(row for row in rows if row['model_name'] == 'MSProjects')
+        self.assertEqual(ms_projects_row['category'], 'ms')
+        self.assertEqual(ms_projects_row['sync_enabled'], 'yes')
+
+    def test_export_uuid_fk_plan_writes_sync_foreign_keys(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'etl_uuid_fk_plan.tsv'
+
+            call_command('export_uuid_fk_plan', output=str(output_path))
+
+            self.assertTrue(output_path.exists())
+            with output_path.open('r', encoding='utf-8', newline='') as handle:
+                rows = list(csv.DictReader(handle, delimiter='\t'))
+
+        bibliography_fk = next(
+            row for row in rows
+            if row['model_name'] == 'ManuscriptBibliography' and row['fk_field'] == 'bibliography'
+        )
+        self.assertEqual(bibliography_fk['related_model'], 'Bibliography')
+        self.assertEqual(bibliography_fk['related_has_uuid'], 'yes')
+        self.assertEqual(bibliography_fk['suggested_uuid_field'], 'bibliography_uuid')
+
+        manuscript_fk = next(
+            row for row in rows
+            if row['model_name'] == 'Content' and row['fk_field'] == 'manuscript'
+        )
+        self.assertEqual(manuscript_fk['related_model'], 'Manuscripts')
+        self.assertEqual(manuscript_fk['model_category'], 'ms')
+
+
+class SyncMetadataTests(TestCase):
+    def test_shared_model_update_increments_version(self):
+        bibliography = Bibliography.objects.create(title='Initial title')
+
+        self.assertEqual(bibliography.version, 1)
+
+        bibliography.title = 'Updated title'
+        bibliography.save()
+        bibliography.refresh_from_db()
+
+        self.assertEqual(bibliography.version, 2)
+
+    def test_delete_creates_tombstone_record(self):
+        bibliography = Bibliography.objects.create(title='Delete me')
+        bibliography_uuid = bibliography.uuid
+
+        bibliography.delete()
+
+        tombstone = DeletedRecord.objects.get(model_label='indexerapp.Bibliography', object_uuid=bibliography_uuid)
+        self.assertEqual(tombstone.category, 'shared')
+        self.assertIsNotNone(tombstone.deleted_at)
+
+    def test_generate_uuids_backfills_missing_values(self):
+        bibliography = Bibliography.objects.create(title='Needs UUID', uuid=None)
+        Bibliography.objects.filter(pk=bibliography.pk).update(uuid=None)
+
+        call_command('generate_uuids', '--model', 'Bibliography')
+
+        bibliography.refresh_from_db()
+        self.assertIsNotNone(bibliography.uuid)
+
+    def test_validate_uuid_integrity_reports_success(self):
+        Bibliography.objects.create(title='Healthy row')
+        stdout = StringIO()
+
+        call_command('validate_uuid_integrity', '--model', 'Bibliography', stdout=stdout)
+
+        self.assertIn('status=OK', stdout.getvalue())
+        self.assertIn('validation passed', stdout.getvalue().lower())
+
+    def test_validate_uuid_integrity_can_fail_on_missing_values(self):
+        bibliography = Bibliography.objects.create(title='Broken row')
+        Bibliography.objects.filter(pk=bibliography.pk).update(uuid=None)
+
+        with self.assertRaises(CommandError):
+            call_command('validate_uuid_integrity', '--model', 'Bibliography', '--fail-on-issues')
+
+
+@override_settings(
+    SITE_NAME='Test Site',
+    ETL_ROLE='slave',
+    ETL_MASTER_URL='http://127.0.0.1:9000',
+    ETL_SLAVE_URLS=[],
+    ETL_API_TOKEN='test-token',
+)
+class ETLUIViewTests(ETLUIEditorMixin, TestCase):
+    def test_overview_requires_permissions(self):
+        user = User.objects.create_user(username='viewer', password='secret123A')
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('etl:etl-ui-overview'))
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch('etlapp.views.fetch_remote_etl_json')
+    def test_overview_returns_local_and_peer_status(self, fetch_remote_etl_json_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        fetch_remote_etl_json_mock.return_value = {
+            'site_name': 'Master Node',
+            'role': 'master',
+            'model_category_counts': {'main': 12, 'shared': 8},
+        }
+
+        response = self.client.get(reverse('etl:etl-ui-overview'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['local']['site_name'], 'Test Site')
+        self.assertEqual(payload['local']['role'], 'slave')
+        self.assertEqual(payload['peers'][0]['url'], 'http://127.0.0.1:9000')
+        self.assertTrue(payload['peers'][0]['reachable'])
+        self.assertEqual(payload['peers'][0]['status']['site_name'], 'Master Node')
+
+    @patch('etlapp.views.fetch_remote_etl_json')
+    def test_peer_manuscripts_proxy_returns_remote_payload(self, fetch_remote_etl_json_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        fetch_remote_etl_json_mock.return_value = {
+            'count': 1,
+            'results': [{'uuid': str(uuid4()), 'name': 'Remote MS', 'sync_status': 'ready'}],
+        }
+
+        response = self.client.get(reverse('etl:etl-ui-manuscripts'), {'peer': 'master'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['peer']['id'], 'master')
+        self.assertEqual(payload['payload']['count'], 1)
+        self.assertEqual(payload['payload']['results'][0]['name'], 'Remote MS')
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_pull_category_imports_remote_rows_and_applies_deletions(self, fetch_remote_etl_json_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+
+        deleted_type = Type.objects.create(short_name='DEL', name='Delete me')
+
+        fetch_remote_etl_json_mock.side_effect = [
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Type',
+                        'results': [
+                            {
+                                'uuid': str(uuid4()),
+                                'short_name': 'NEW',
+                                'name': 'Imported type',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    }
+                ]
+            },
+            {
+                'category': 'main',
+                'results': [
+                    {
+                        'model_label': 'indexerapp.Type',
+                        'category': 'main',
+                        'object_uuid': str(deleted_type.uuid),
+                        'source_pk': str(deleted_type.pk),
+                        'deleted_at': timezone.now().isoformat(),
+                    }
+                ],
+            },
+        ]
+
+        response = self.client.post(
+            reverse('etl:etl-ui-pull-category'),
+            data=json.dumps({'peer': 'master', 'category': 'main'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Type.objects.filter(short_name='NEW', name='Imported type').exists())
+        self.assertFalse(Type.objects.filter(pk=deleted_type.pk).exists())
+        payload = response.json()
+        self.assertEqual(payload['result']['import_summary']['created'], 1)
+        self.assertEqual(payload['result']['delete_summary']['deleted'], 1)
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_pull_manuscript_imports_remote_package(self, fetch_remote_etl_json_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        manuscript_uuid = str(uuid4())
+        content_uuid = str(uuid4())
+
+        fetch_remote_etl_json_mock.return_value = {
+            'models': [
+                {
+                    'model': 'indexerapp.Manuscripts',
+                    'results': [
+                        {
+                            'uuid': manuscript_uuid,
+                            'name': 'Remote manuscript',
+                            'sync_status': 'ready',
+                            'entry_date': timezone.now().isoformat(),
+                        }
+                    ],
+                },
+                {
+                    'model': 'indexerapp.Content',
+                    'results': [
+                        {
+                            'uuid': content_uuid,
+                            'manuscript_uuid': manuscript_uuid,
+                            'formula_text': 'Remote content',
+                            'where_in_ms_from': '2r',
+                            'entry_date': timezone.now().isoformat(),
+                        }
+                    ],
+                },
+            ]
+        }
+
+        response = self.client.post(
+            reverse('etl:etl-ui-pull-manuscript'),
+            data=json.dumps({'peer': 'master', 'manuscript_uuid': manuscript_uuid}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        manuscript = Manuscripts.objects.get(uuid=manuscript_uuid)
+        content = Content.objects.get(uuid=content_uuid)
+        self.assertEqual(manuscript.name, 'Remote manuscript')
+        self.assertEqual(content.manuscript_id, manuscript.pk)
+        self.assertEqual(response.json()['result']['import_summary']['created'], 2)

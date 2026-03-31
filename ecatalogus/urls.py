@@ -15,6 +15,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include,path
+from etlapp import urls as etl_urls
 from indexerapp import views
 
 #from indexerapp import views #nie wiem czy to zgodne ze sztuką
@@ -256,6 +257,7 @@ urlpatterns = [
     #path('ms_music_notation/<int:pk>/', views.MSMusicNotationView.as_view(), name='ms_music_notation'),
     #path('ms_content/<int:pk>/', views.MSContentView.as_view(), name='ms_content_view'),
     path('api/', include(router.urls)),
+    path('api/etl/', include((etl_urls, 'etlapp'), namespace='etl')),
 
     path('export/content/<int:manuscript_id>/', views.ContentCSVExportView.as_view(), name='content_csv_export'),
     path('delete/content/<int:manuscript_id>/', views.DeleteContentView.as_view(), name='delete_content'),
@@ -273,7 +275,6 @@ urlpatterns = [
     path('improve_our_data/', views.ImproveOurDataFormView.as_view(), name='improve_our_data_form'),
     path('ms-gallery/', views.MSGalleryView.as_view(), name='ms_gallery'),
 ]
-
 
 #if settings.DEBUG:
 #        urlpatterns += static(settings.MEDIA_URL,

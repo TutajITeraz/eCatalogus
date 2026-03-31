@@ -1,0 +1,81 @@
+Kompletne rozwiązanie Replikacji danych z API ETL (Extract Transform, Load)
+
+Chcę mieć jedno repozytorium kodu.
+
+Systemy:
+    1. GŁÓWNY: eCatalogus (główny system do którego trafia tylko to, co jest zaakceptowane)
+    2. PODSYSTEMY:
+        - eclla
+        - LiturgicaPoloniae
+        - Limbo
+        - ...(i inne w przyszłości)
+
+Podział danych:
+	1. Dane pod kuratorium eCatalogus: (main) (dane, które są synchronizowane tylko w jedną stronę tj. z eCatalogus do podsystemów)
+        formulas, 
+        funtions, 
+        sections, 
+        colors, 
+        ryty...	
+        Daty (z automatu wypełnione)
+        Potencjalnie wolimy nasze jedno
+
+	2. Dane charakterystyczne dla manuskryptu (ms) (dane, które są synchronizowane tylko w jedną stronę z podsystemów do Głównego systemu. Zawsze jako cała paczka eksprtujemy cały manuksrypt wraz z podtabelami i gdy będzie on gotowy administrator eCatalogus może go zaimportować w specjalnym panelu)
+        main info, 
+        quires, 
+        layout, 
+        decorations ....	
+
+	3. Dane współdzielone (shared) ( mogą zostać dodane w jednym podsystemie, zsychronizowane z głównym systemem, a potem użyte (stworzone relacje) w innym)
+        Hands			
+
+
+Propozycja realizacji:
+    - Przejście na UUID (aby dane tworzone w podsystemach nie miały ID które mogłyby się kłócić z id które w tym samym czasie ktoś tworzy w innym podsystemie a zsynchronizuje je np. dopiero za miesiąc)
+    - Usunięcie rekordu w Bazie Podrzędnej nie powinno automatycznie usuwać go z Bazy Głównej, ponieważ Baza Główna jest Źródłem Prawdy. Zamiast fizycznego usuwania, stosuj Soft Delete (Usuwanie Logiczne): Dodaj pole is_deleted (Boolean) do wszystkich synchronizowanych modeli.
+    - Aktualizację najlepiej rozwiązać za pomocą Wersjonowania Danych (Data Versioning) oraz Audytu Zmian. Wersjonowanie: Do modeli dodaj pole version (Integer). Za każdym razem, gdy rekord jest aktualizowany w Bazie Podrzędnej, jego version jest inkrementowany.Proces ETL: Porównuje $UUID$ i $version$ między bazami. Baza Główna akceptuje tylko rekordy z wyższym $version$.
+    - Przenoszenie Manuskryptu jako Całość aby zachować spójność relacyjną. 
+    - W przypadku tabel wspólnych jeśli przy synchronizacji jest różnica - należy zapytać użytkownika co chce zrobić.
+
+Każdy Manuskrypt w bazie podrzędnej musi mieć status: in_preparation / ready / synchronized / updated / deleted (zastanawiam się czy status updated jest potrzebny)
+Twórca głównej bazy eCatalogus w panelu migracji musi mieć możliwość widoku listy wszystkich manuskryptów wraz z ich statusem żeby widział jakie ma zaimportować / które są zmienione, które zostały usunięte w bazie podrzędnej. Powinien dla każdej widzieć status w bazie podrzędnej i dla każdej widzieć status w bazie głównej albo datę ostatniej aktualizacji, albo wersję...
+
+Wszyskie importy i eksporty muszą być dostępne przez GUI i przez api (do odpalania przez CRON).
+
+Na razie niczego nie implementuj. 
+Plan działań:
+        - powyższy podział danych jest niekompletny, na podstawie models.py wygeneruj w osobnym pliku tabelę wszystkich modeli w formacie tsv, jako pierwsza kolumna oznaczając typ (main/shared/ms), na podstawie analizy relacji spróbuj okerślić samemu co należy do której kategorii. Ja tę tabelę ręcznie sprawdzę zanim przejdziemy do kolejnych kroków.
+        - przeanalizuj powyższy plan i daj znać co o nim myślisz. Czy ma słabe punkty? Czy możesz zasugerować jakieś ulepszenie?
+        - rozważ użycie django-import-export plugin - czy to jest zasadne w tym przypadku?
+        po mojej akceptacji:
+        - Stworzenie i przetestowanie api (lokalnie)
+        - stworzenie i przetestowanie gui (lokalnie)
+
+Wszystko jest uruchamiane przez .venv
+Serwer będzie cały czas uruchomiony przeze mnie (runserver) więc nie włączaj go ponownie!
+
+
+Chcę zamienić PK na UUID. Musi być jakaś komenda w commands która to wykona. Pamiętaj, że będę musiał to samo uruchomić na kilku zewnętrzych bazach więc może trzeba to rozbić na kroki. np. najpierw dodać pole UUID, bez usuwania ID, potem nadać wszystkiemu UUID jedną komendą, potem zsynchronizować wszystkie relacje używając UUID, a dopiero potem gdy baza będzie w całości używać relacji UUID usuniemy id. Wszystkie widoki, które komunikują się za pomocą id też muszą przejść na uuid. Na razie bym nie usuwał id, ale gdy wszystko zacznie już działać sam wydam Ci jasną komendę, że masz usunąć ID. 
+
+
+Projekt ma migracje w indexerapp/migrations.
+Po prostu jeszcze go nie zainicjalizowałem. Do katalogu backup/ispan_mpl.sql wrzuciłem dump bazy, którą chcę zaimportować. Myślę, że to ważne, bo chcę mieć wszystkie dane do ćwiczenia tego przenoszenia.
+
+W ogóle docelowo chcę trzymać różne instacje w jednym repo tylko np. żeby miało osobne ritus_indexer/settings.py i żeby część plików w static mogła się różnić (bo same views, serializers, models, będzie identyczne dla wszystkich instancji), jedynie settings (domena) i niektóre static będą inne. Ale nie chcę trzymać drugiej kopii wszystkich static, tylko różnicowo.
+
+Używaj Incremental load - Przenosisz tylko nowe / zmienione rekordy (zamiast za każdym razem wszystkiego)
+Używaj Upsert - Update + Insert = jeśli rekord istnieje → aktualizuj, jeśli nie → dodaj
+
+Rozważ czy warto użyć Celery / rq / dramatiqNarzędzia do uruchamiania zadań w tle (żeby długi import nie blokował przeglądarki)
+
+Użyj django-import-export a także django-import-export-extensions (Import/export resources in the background via Celery), Support drf-spectacular generated API schema.
+Co myślisz o takim podejściu? Nie chę ręcznie implementować DRF dla 100 modeli.
+Kilka widoków customowych widoków API powinno wystarczyć. 
+
+W ogóle docelowo chcę trzymać różne instacje w jednym repo tylko np. żeby miało osobne ritus_indexer/settings.py i żeby część plików w static mogła się różnić (bo same views, serializers, models, będzie identyczne dla wszystkich instancji), jedynie settings (domena) i niektóre static będą inne. Ale nie chcę trzymać drugiej kopii wszystkich static, tylko różnicowo.
+
+LiturgicaPoloniae to w tym momencie ten sam projekt, ale docelowo on będzie podsystemem Slave, bo gdy uruchomię główny eCatalogus (master), to wtedy zaimportuje dane z jednego do drugiego.
+
+Natomiast każda z instancji może zarówno zachowywać się jako master i jako slave w zależności od konfiguracji w settings. Tam chcę podawać po prostu adres mastera (lub pusty, jeśli to ja jestem masterem) i adres wszystkich slave.
+
+Na razie kod jest jeden.

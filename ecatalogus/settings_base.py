@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'indexerapp.apps.IndexerappConfig',
+    'etlapp.apps.EtlappConfig',
     'data_browser',
     'admin_searchable_dropdown',
     # 'jquery',
@@ -138,4 +139,9 @@ CACHES = {
 
 # Site identity — override per instance
 SITE_NAME = 'eCatalogus'
+ETL_ROLE = 'undefined'
+ETL_MASTER_URL = None
+ETL_SLAVE_URLS = []
+ETL_PEER_TOKENS = {}
+ETL_API_TOKEN = os.getenv('ETL_API_TOKEN', '')
 SITE_SUBTITLE = ''

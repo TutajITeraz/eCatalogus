@@ -1,0 +1,31 @@
+[Unit]
+Description=Gunicorn daemon for {SERVICE_SHORTNAME}
+After=network.target
+
+[Service]
+User={DEPLOY_USER}
+Group={DEPLOY_USER}
+WorkingDirectory={APPDIR}
+EnvironmentFile={ENV_FILE}
+Environment="PATH={VENV_PATH}/bin"
+Environment="DJANGO_SETTINGS_MODULE={DJANGO_SETTINGS_MODULE}"
+ExecStart={VENV_PATH}/bin/gunicorn \
+    --workers {WORKERS} \
+    --timeout 300 \
+    --limit-request-line 0 \
+    --limit-request-fields 100 \
+    {BIND} \
+    {WSGI_MODULE}:application
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+# Notes:
+# - Replace {BIND} with either:
+#     --bind unix:{SOCKET_PATH}
+#   or
+#     --bind 0.0.0.0:{PORT}
+# - {ENV_FILE} should point to a non-git file with secrets (for example {APPDIR}/.env).

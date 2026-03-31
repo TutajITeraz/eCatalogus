@@ -20,6 +20,15 @@ import os
 
 from Levenshtein import distance
 
+
+MANUSCRIPT_SYNC_STATUS_CHOICES = [
+    ("in_preparation", "in preparation"),
+    ("ready", "ready"),
+    ("synchronized", "synchronized"),
+    ("updated", "updated"),
+    ("deleted", "deleted"),
+]
+
 def toRoman(num):
     if not num:
         return ""
@@ -48,6 +57,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 class DecorationTypes(models.Model):
     name = models.CharField(max_length=128)
     parent_type = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -59,6 +70,8 @@ class DecorationTypes(models.Model):
 
 class DecorationTechniques(models.Model):
     name = models.CharField(max_length=128)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -70,6 +83,8 @@ class DecorationTechniques(models.Model):
 
 class Characteristics(models.Model):
     name = models.CharField(max_length=128)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -81,6 +96,8 @@ class Characteristics(models.Model):
 
 class Subjects(models.Model):
     name = models.CharField(max_length=128)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -93,6 +110,8 @@ class Subjects(models.Model):
 class Colours(models.Model):
     name = models.CharField(max_length=128)
     rgb = models.CharField(max_length=8, blank=True, null=True)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
     
     parent_colour = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
 
@@ -107,6 +126,8 @@ class Colours(models.Model):
 
 class FeastRanks(models.Model):
     name = models.CharField(max_length=128)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -118,6 +139,7 @@ class FeastRanks(models.Model):
 
 #[ ] TODO Uwzględnić  verbose name przy wyświetlaniu w view
 class Calendar(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_calendar')
     where_in_ms_from = models.CharField(max_length=32, default="")
     where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
@@ -172,8 +194,10 @@ class Calendar(models.Model):
         return self.latin_name
 
 class DecorationSubjects(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     decoration = models.ForeignKey('Decoration', models.DO_NOTHING, related_name='decoration_subjects')
     subject = models.ForeignKey('Subjects', models.DO_NOTHING, related_name='decoration_subject')
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -185,8 +209,10 @@ class DecorationSubjects(models.Model):
 
 
 class DecorationColours(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     decoration = models.ForeignKey('Decoration', models.DO_NOTHING, related_name='decoration_colours')
     colour = models.ForeignKey('Colours', models.DO_NOTHING, related_name='decoration_colour')
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -197,8 +223,10 @@ class DecorationColours(models.Model):
         return str(self.decoration) +" / "+ str(self.colour)
 
 class DecorationCharacteristics(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     decoration = models.ForeignKey('Decoration', models.DO_NOTHING, related_name='decoration_characteristics')
     characteristics = models.ForeignKey('Characteristics', models.DO_NOTHING, related_name='decoration_characteristics')
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -209,6 +237,7 @@ class DecorationCharacteristics(models.Model):
         return str(self.decoration) +" / "+ str(self.characteristics)
 
 class Decoration(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_decorations')
     original_or_added = models.CharField(max_length=10,choices=[("ORIGINAL", "original"),("ADDED", "added")], blank=True, null=True)
     date_of_the_addition = models.ForeignKey('TimeReference', models.DO_NOTHING, related_name='decoration_dating', blank=True, null=True)
@@ -264,8 +293,10 @@ class Decoration(models.Model):
         return name
 
 class ManuscriptBibliography(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     bibliography = models.ForeignKey('Bibliography', models.DO_NOTHING)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_bibliography')
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -281,12 +312,15 @@ class ManuscriptBibliography(models.Model):
         return name
 
 class Bibliography(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     title = models.CharField(max_length=128)
     author = models.CharField(max_length=128,blank=True, null=True)
     shortname = models.CharField(max_length=5,blank=True, null=True)
     year = models.IntegerField(blank=True, null=True)
     zotero_id = models.CharField(max_length=128,blank=True, null=True)
     hierarchy = models.IntegerField(blank=True, null=True)
+    version = models.PositiveIntegerField(default=1)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -322,6 +356,7 @@ class AttributeDebate(models.Model):
         return str(self.field_name) + self.text + ' by '+ str(self.bibliography)
 
 class Condition(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_condition')
     damage = models.CharField(max_length=10,choices=[("very", "very damaged"),("average", "average damaged"),("slightly","slightly damaged")], blank=True, null=True)
 
@@ -351,6 +386,7 @@ class Condition(models.Model):
         return str(self.manuscript) + ' (condition)'
 
 class EditionContent(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     bibliography = models.ForeignKey('Bibliography', models.DO_NOTHING)
     formula = models.ForeignKey('Formulas', models.DO_NOTHING, blank=True, null=True)
     rubric_name_standarized = models.ForeignKey('RiteNames', models.DO_NOTHING, null=True, blank=True)
@@ -389,6 +425,8 @@ class EditionContent(models.Model):
 class Sections(models.Model):
     name = models.CharField(max_length=128)
     parent_section = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -401,6 +439,8 @@ class Sections(models.Model):
 class ContentFunctions(models.Model):
     name = models.CharField(max_length=128)
     parent_function = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -411,12 +451,15 @@ class ContentFunctions(models.Model):
         return self.name
 
 class Contributors(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     initials = models.CharField(max_length=4)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     affiliation = models.CharField(max_length=100,null=True, blank=True)
     email = models.EmailField(null=True, blank=True)
     url = models.URLField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'contributors'
@@ -455,6 +498,7 @@ class Profile(models.Model):
     edit_mode = models.BooleanField(default=False)
 
 class Content(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
 
     def calc_last_sequence():
         # Znajdź maksymalną wartość 'pole_liczbowe' wśród wszystkich obiektów tego samego typu
@@ -575,11 +619,13 @@ class Content(models.Model):
         return txt
 
 class TimeReference(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     time_description = models.CharField(max_length=64)
     century_from = models.IntegerField()
     century_to = models.IntegerField()
     year_from = models.IntegerField()
     year_to = models.IntegerField()
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -596,7 +642,9 @@ class TimeReference(models.Model):
         return txt
 
 class LiturgicalGenres(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     title = models.CharField(max_length=128)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -614,8 +662,10 @@ class LiturgicalGenres(models.Model):
 
 #it is like alternative names for genres
 class LiturgicalGenresNames(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     genre = models.ForeignKey(LiturgicalGenres, models.DO_NOTHING)
     title = models.CharField(max_length=128)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -632,6 +682,7 @@ class LiturgicalGenresNames(models.Model):
         return txt
 
 class Places(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     longitude = models.FloatField(validators=[MinValueValidator(-180.0), MaxValueValidator(180.0)], blank=True, null=True)
     latitude = models.FloatField(validators=[MinValueValidator(-90.0), MaxValueValidator(90.0)], blank=True, null=True)
 
@@ -661,6 +712,7 @@ class Places(models.Model):
     region_historic_latin = models.CharField(max_length=64, blank=True, null=True)
     city_historic_latin = models.CharField(max_length=64, blank=True, null=True)
     repository_historic_latin = models.CharField(max_length=255, blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -718,6 +770,8 @@ class Places(models.Model):
     
 class ScriptNames(models.Model):
     name = models.CharField(max_length=128)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -746,6 +800,7 @@ class ImproveOurDataEntry(models.Model):
 
 
 class Manuscripts(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=255)
     rism_id = models.CharField(max_length=255, blank=True, null=True)
     foreign_id = models.CharField(max_length=255, blank=True, null=True)
@@ -792,6 +847,7 @@ class Manuscripts(models.Model):
     where_in_connected_ms = models.TextField(blank=True, null=True)
 
     display_as_main = models.BooleanField(null=True)
+    sync_status = models.CharField(max_length=20, choices=MANUSCRIPT_SYNC_STATUS_CHOICES, default='in_preparation')
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
@@ -900,7 +956,9 @@ class Manuscripts(models.Model):
 
                 
 class Projects(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=64, default="Project Name")
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -911,8 +969,10 @@ class Projects(models.Model):
 
 
 class MSProjects(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_projects')
     project = models.ForeignKey(Projects, models.DO_NOTHING)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -928,10 +988,12 @@ class Image(models.Model):
     - image: original uploaded image
     - thumbnail: generated thumbnail JPEG
     """
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='images')
     name = models.CharField(max_length=255, blank=True, null=True)
     image = models.ImageField(upload_to='images/gallery/', blank=True, null=True)
     thumbnail = models.ImageField(upload_to='images/thumbnails/', blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'images'
@@ -1004,6 +1066,7 @@ class Image(models.Model):
             self.generate_thumbnail(save=True)
 
 class Clla(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_clla')
 
     clla_no = models.CharField(max_length=255, blank=True, null=True)
@@ -1017,6 +1080,7 @@ class Clla(models.Model):
 
     authors = models.CharField(max_length=128, blank=True, default="Klaus Gamber", null=True)
     data_contributor  = models.CharField(max_length=512, default="Quirin Rosenberger", blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
 
     class Meta:
@@ -1030,6 +1094,7 @@ class Clla(models.Model):
         return txt
 
 class Layouts(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_layouts')
     name = models.CharField(max_length=32, blank=True, null=True)
     where_in_ms_from = models.CharField(max_length=32, default="")
@@ -1074,6 +1139,7 @@ class Layouts(models.Model):
         return txt
 
 class Codicology(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, on_delete=models.CASCADE, related_name='ms_codicology')
     
     #should be visible in main manuscript description too:
@@ -1117,6 +1183,7 @@ class Codicology(models.Model):
 
 
 class Quires(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_quires')
 
     sequence_of_the_quire = models.PositiveIntegerField()
@@ -1151,12 +1218,14 @@ class Quires(models.Model):
 
 
 class Watermarks(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=255)
     external_id = models.IntegerField(blank=True, null=True)
     watermark_img = models.ImageField(upload_to='images/', blank=True, null=True)
     comment = models.TextField(blank=True, null=True)
 
     entry_date = models.DateTimeField(auto_now=True)
+    version = models.PositiveIntegerField(default=1)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
     data_contributor = models.ForeignKey('Contributors', models.DO_NOTHING, related_name='%(class)s_contributors', null=True, blank=True)
 
@@ -1176,6 +1245,8 @@ class Watermarks(models.Model):
 
 class MusicNotationNames(models.Model):
     name = models.CharField(max_length=50)
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -1192,6 +1263,7 @@ class MusicNotationNames(models.Model):
         return txt 
 
 class ManuscriptMusicNotations(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_music_notation')
 
     music_notation_name = models.ForeignKey(MusicNotationNames, models.DO_NOTHING)
@@ -1227,6 +1299,7 @@ class ManuscriptMusicNotations(models.Model):
 
 
 class Origins(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_origins')
 
     origins_date = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True)
@@ -1249,6 +1322,7 @@ class Origins(models.Model):
 
 
 class Provenance(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     #MANUSCRIPT ID	DATE FROM	DATE TO	PLACE	TIMELINE SEQUENCE	COMMENTS
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_provenance')
 
@@ -1276,6 +1350,8 @@ class Provenance(models.Model):
 
 class BindingTypes(models.Model):
     name = models.CharField(max_length=64) 
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'binding_types'
@@ -1286,6 +1362,8 @@ class BindingTypes(models.Model):
 
 class BindingStyles(models.Model):
     name = models.CharField(max_length=64) 
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'binding_styles'
@@ -1296,6 +1374,8 @@ class BindingStyles(models.Model):
 #######
 class BindingMaterials(models.Model):
     name = models.CharField(max_length=64) 
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'binding_materials'
@@ -1306,8 +1386,10 @@ class BindingMaterials(models.Model):
 
 # []TODO sprawdzić wszędzie gdzie jest models czy nie warto zrobić CASCADE! 
 class ManuscriptBindingMaterials(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding_materials')
     material = models.ForeignKey(BindingMaterials, models.CASCADE)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'manuscript_binding_materials'
@@ -1319,6 +1401,8 @@ class ManuscriptBindingMaterials(models.Model):
 
 class BindingDecorationTypes(models.Model):
     name = models.CharField(max_length=64) 
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'binding_decoration_types'
@@ -1328,8 +1412,10 @@ class BindingDecorationTypes(models.Model):
         return self.name
 
 class ManuscriptBindingDecorations(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding_decorations')
     decoration = models.ForeignKey(BindingDecorationTypes, models.CASCADE)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'manuscript_binding_decorations'
@@ -1340,6 +1426,8 @@ class ManuscriptBindingDecorations(models.Model):
 
 class BindingComponents(models.Model):
     name = models.CharField(max_length=64) 
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'binding_components'
@@ -1349,8 +1437,10 @@ class BindingComponents(models.Model):
         return self.name
 
 class ManuscriptBindingComponents(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding_components')
     component = models.ForeignKey(BindingComponents, models.CASCADE)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'manuscript_binding_components'
@@ -1360,6 +1450,7 @@ class ManuscriptBindingComponents(models.Model):
         return str(self.manuscript)  + '/' + str(self.component)
 
 class Binding(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding')
 
     max_height = models.PositiveIntegerField(blank=True, null=True)
@@ -1395,10 +1486,13 @@ class Binding(models.Model):
 
 
 class Hands(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     rism = models.CharField(max_length=50,blank=True, null=True)
     dating = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True)
     name = models.CharField(max_length=64,blank=True, null=True)
     is_identified = models.BooleanField(null=True)
+    version = models.PositiveIntegerField(default=1)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'hands'
@@ -1415,6 +1509,7 @@ class Hands(models.Model):
 
 
 class ManuscriptHands(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_hands')
 
     hand = models.ForeignKey(Hands, models.DO_NOTHING)
@@ -1450,10 +1545,12 @@ class ManuscriptHands(models.Model):
         return txt
 
 class ManuscriptWatermarks(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_watermarks')
 
     watermark = models.ForeignKey(Watermarks, models.DO_NOTHING)
     where_in_manuscript = models.CharField(max_length=255)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -1471,9 +1568,11 @@ class ManuscriptWatermarks(models.Model):
 
 
 class Traditions(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=100)
     color_rgb = models.CharField(max_length=8, blank=True, null=True)
     genre = models.ForeignKey(LiturgicalGenres, models.DO_NOTHING, blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'traditions'
@@ -1483,11 +1582,13 @@ class Traditions(models.Model):
         return self.name
 
 class Formulas(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     co_no = models.CharField(max_length=50)
     text = models.TextField(blank=True, null=True)
     tradition = models.ManyToManyField('Traditions', related_name='%(class)s_traditions', blank=True)
     translation_en = models.TextField(blank=True, null=True)
     translation_pl = models.TextField(blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
 
     class Meta:
@@ -1506,9 +1607,11 @@ class Formulas(models.Model):
 
 
 class ManuscriptGenres(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_genres')
 
     genre = models.ForeignKey(LiturgicalGenres, models.DO_NOTHING)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -1525,12 +1628,14 @@ class ManuscriptGenres(models.Model):
         return txt
 
 class RiteNames(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
 
     name = models.CharField(max_length=128, unique=True)
     english_translation = models.CharField(max_length=128,  blank=True, null=True)
     section = models.ForeignKey('Sections', models.DO_NOTHING,  blank=True, null=True)
     votive = models.BooleanField(null=True)
     ceremony = models.ForeignKey('Ceremony', models.DO_NOTHING,  blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
         #managed = False
@@ -1586,8 +1691,10 @@ class Rites(models.Model):
 
 # Column A
 class Type(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     short_name = models.CharField(max_length=8, unique=True)#max 28
     name = models.CharField(max_length=16, unique=True)#max 65
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return "("+self.short_name + ") " + self.name
@@ -1600,10 +1707,12 @@ class Type(models.Model):
 
 # Column C
 class SeasonMonth(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=30, unique=True)#max 65
     kind = models.CharField(max_length=12,choices=[("S", "season"),("M", "month")], blank=True, null=True)
     types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
 
     def __str__(self):
@@ -1617,9 +1726,11 @@ class SeasonMonth(models.Model):
 
 # Column D
 class Week(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=75, unique=True)#max 65
     types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.short_name + " " + self.name
@@ -1631,10 +1742,12 @@ class Week(models.Model):
 
 # Column E
 class Day(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     part = models.CharField(max_length=2,choices=[("T", "temporal"),("S", "sanctoral")], blank=True, null=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=65, unique=True)#max 65
     types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.short_name + " " + self.name
@@ -1647,9 +1760,11 @@ class Day(models.Model):
 
 # Column H
 class MassHour(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=80, unique=True)#max 65
     type = models.ForeignKey('Type', models.DO_NOTHING, blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.short_name + " " + self.name
@@ -1661,8 +1776,10 @@ class MassHour(models.Model):
 
 # Column L
 class Layer(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=30, unique=True)#max 65
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.short_name + " " + self.name
@@ -1674,10 +1791,12 @@ class Layer(models.Model):
 
 # Column I
 class Genre(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     short_name = models.CharField(max_length=28, unique=True)#max 28
     name = models.CharField(max_length=100, unique=True)#max 65
     types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
     layers = models.ManyToManyField('Layer', related_name='%(class)s_layers', blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return "("+self.short_name + ") " + self.name
@@ -1689,10 +1808,12 @@ class Genre(models.Model):
 
 
 class Topic(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=64, blank=True, null=True)
     section = models.ForeignKey('Sections', models.DO_NOTHING,  blank=True, null=True) #oryginalne kind
     votive = models.BooleanField(null=True)
     parent = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name or "Unnamed Topic"
@@ -1704,9 +1825,11 @@ class Topic(models.Model):
 
 # Column I
 class Ceremony(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=40, blank=True, null=True)
     latin_keywords = models.CharField(max_length=400, blank=True)
     short_description = models.TextField(blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name or "Unnamed Ceremony"
@@ -1718,8 +1841,10 @@ class Ceremony(models.Model):
 
 
 class ContentTopic(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     content = models.ForeignKey('Content', models.CASCADE, related_name='content_topics')
     topic = models.ForeignKey('Topic', models.CASCADE, related_name='topic_contents')
+    entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.content} - {self.topic}"
@@ -1731,6 +1856,7 @@ class ContentTopic(models.Model):
 
 
 class TextStandarization(models.Model):
+    uuid = models.UUIDField(db_index=True, null=True, blank=True)
     usu_id = models.CharField(max_length=10, blank=True, null=True)
     cantus_id = models.CharField(max_length=10, blank=True, null=True)
     co_no = models.CharField(max_length=10, blank=True, null=True)
@@ -1738,6 +1864,24 @@ class TextStandarization(models.Model):
 
     standard_incipit = models.CharField(max_length=64, blank=True, null=True)
     standard_full_text = models.TextField(blank=True, null=True)
+
+    entry_date = models.DateTimeField(auto_now=True)
+
+
+class DeletedRecord(models.Model):
+    model_label = models.CharField(max_length=128)
+    category = models.CharField(max_length=16)
+    object_uuid = models.UUIDField(db_index=True)
+    source_pk = models.CharField(max_length=64, blank=True, null=True)
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'etl_deleted_records'
+        verbose_name = 'ETL Deleted Record'
+        verbose_name_plural = 'ETL Deleted Records'
+        constraints = [
+            models.UniqueConstraint(fields=['model_label', 'object_uuid'], name='etl_deleted_records_model_uuid_uniq'),
+        ]
     
 
 class AIQuery(models.Model):

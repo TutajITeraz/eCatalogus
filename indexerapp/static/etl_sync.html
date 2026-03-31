@@ -1,0 +1,70 @@
+<script src="/static/js/etl_sync.js"></script>
+
+<div x-init="etl_sync_init()" class="px-2 pb-8">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-4 mb-6">
+        <div>
+            <h1 class="text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left">ETL sync</h1>
+            <p class="text-[#3d4b5c] text-sm sm:text-base mt-2">Synchronize reference dictionaries and manuscript packages from a configured ETL peer into the current instance.</p>
+        </div>
+        <button id="etl-refresh-overview" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Refresh overview</button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-5 mb-6">
+        <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4">
+            <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-3">Current instance</h2>
+            <div id="etl-local-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"></div>
+        </section>
+        <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4">
+            <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-3">Peer selection</h2>
+            <label for="etl-peer-select" class="block text-sm font-semibold text-[#3d4b5c] mb-2">Configured ETL peer</label>
+            <select id="etl-peer-select" class="w-full border border-[#d9c8bb] rounded px-3 py-2 bg-white mb-3"></select>
+            <div id="etl-peer-status" class="text-sm text-[#3d4b5c] min-h-[48px]"></div>
+        </section>
+    </div>
+
+    <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4 mb-6">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-2">Reference data pull</h2>
+                <p class="text-sm text-[#3d4b5c]">Use an optional ISO date or datetime to limit imported deltas.</p>
+            </div>
+            <div class="w-full lg:w-[320px]">
+                <label for="etl-since" class="block text-sm font-semibold text-[#3d4b5c] mb-2">Since</label>
+                <input id="etl-since" type="text" placeholder="2025-01-31 or 2025-01-31T10:30:00Z" class="w-full border border-[#d9c8bb] rounded px-3 py-2 bg-white" />
+            </div>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-3 mt-4">
+            <button data-category="main" class="etl-sync-category py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull main dictionaries</button>
+            <button data-category="shared" class="etl-sync-category py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull shared dictionaries</button>
+        </div>
+    </section>
+
+    <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4 mb-6">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4">
+            <div>
+                <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-2">Manuscript packages</h2>
+                <p class="text-sm text-[#3d4b5c]">Browse manuscripts available on the selected peer and import the chosen package into the current instance.</p>
+            </div>
+            <button id="etl-load-manuscripts" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Load peer manuscripts</button>
+        </div>
+
+        <table id="etl-manuscripts-table" class="display w-full">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>RISM</th>
+                    <th>UUID</th>
+                    <th>Sync status</th>
+                    <th>Updated</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4">
+        <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-3">Operation log</h2>
+        <div id="etl-log" class="bg-[#fff] border border-[#eadfd6] rounded p-3 min-h-[120px] text-sm text-[#203040] whitespace-pre-wrap"></div>
+    </section>
+</div>
