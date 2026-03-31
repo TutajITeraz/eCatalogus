@@ -1,7 +1,3 @@
-echo "Using config from ${CFG_PATH:-$DEFAULT_ENV}"
-echo "Logging to $LOG_FILE"
-echo "Install complete. Review $LOG_FILE and $SCRIPT_DIR/config/${DOMAIN}.env"
-timestamp() { date +%Y%m%d-%H%M%S; }
 #!/usr/bin/env bash
 set -euo pipefail
 
