@@ -2888,8 +2888,44 @@ manuscript_init = function () {
 
     window.goToCanvasById = goToCanvasById;
 
+    // Navigate gallery (lightGallery) to the slide whose name matches the given folio label.
+    // Falls back to a fuzzy match (label is contained in name or vice versa).
+    function goToGalleryByLabel(label) {
+        if (!window.galleryInstance || !window.galleryDynamicEl) {
+            console.warn('Gallery not initialised yet');
+            return;
+        }
+        const items = window.galleryDynamicEl;
+        // Exact match first
+        let idx = items.findIndex(item => item.name === label);
+        // Fuzzy match: label contained in name or name contained in label (case-insensitive)
+        if (idx === -1) {
+            const lowerLabel = label.toLowerCase();
+            idx = items.findIndex(item => item.name &&
+                (item.name.toLowerCase().includes(lowerLabel) || lowerLabel.includes(item.name.toLowerCase()))
+            );
+        }
+        if (idx !== -1) {
+            window.galleryInstance.slide(idx);
+        } else {
+            console.warn(`Gallery: no image with name matching "${label}"`);
+        }
+    }
+    window.goToGalleryByLabel = goToGalleryByLabel;
+
     // Funkcja do przełączania się na kanwę na podstawie etykiety
     function goToCanvasByLabel(label) {
+        // If the gallery is active (IIIF manifest not shown), navigate in lightGallery
+        const miradorEl = document.getElementById('my-mirador');
+        const galleryEl = document.getElementById('manuscript-gallery');
+        const miradorVisible = miradorEl && miradorEl.style.display !== 'none' && miradorEl.offsetParent !== null;
+        const galleryVisible = galleryEl && galleryEl.offsetParent !== null;
+
+        if (!miradorVisible && galleryVisible) {
+            goToGalleryByLabel(label);
+            return;
+        }
+        // Default: Mirador IIIF navigation
       const index = findCanvasIndexByLabel(label);
       if (index !== null) {
         goToCanvasById(index);
@@ -3051,7 +3087,8 @@ async function init_gallery() {
                 src: item.image_url,
                 thumb: item.thumbnail_url || item.image_url,
                 subHtml: `<h4>${escapeHtml(item.name || 'Image')}</h4>`,
-                imageId: item.id
+                imageId: item.id,
+                name: item.name  // preserve name for goToGalleryByLabel lookup
             }));
 
             const instance = lightGallery(container, {
@@ -3065,10 +3102,28 @@ async function init_gallery() {
                 slideDelay: 400,
                 plugins: [lgZoom, lgThumbnail],
                 thumbnail: true,
+                // Zoom settings
                 zoom: true,
+                scale: 0.25,           // small step per click → incremental zoom
+                infiniteZoom: true,    // allow zooming past natural size
+                showZoomInOutIcons: true, // show +/- toolbar buttons
                 autoplay: false
             });
             instance.openGallery();
+
+            // Store globally so goToCanvasByLabel can navigate it
+            window.galleryInstance = instance;
+            window.galleryDynamicEl = dynamicEl;
+
+            // Scroll-to-zoom: lightGallery has no built-in scroll zoom, so we
+            // trigger clicks on the +/- toolbar buttons that the zoom plugin renders.
+            container.addEventListener('wheel', function (e) {
+                e.preventDefault();
+                // The zoom plugin appends buttons with id = lgId + '-lg-zoom-in' / '-lg-zoom-out'
+                const btnId = e.deltaY < 0 ? 'lg-zoom-in' : 'lg-zoom-out';
+                const btn = container.querySelector(`.${btnId}`);
+                if (btn) btn.click();
+            }, { passive: false });
 
         } else {
             attempts++;
