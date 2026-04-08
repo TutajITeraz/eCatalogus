@@ -1,91 +1,111 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install_instance.sh
-# Consolidated interactive installer for a Django instance using git, virtualenv and Gunicorn.
-# Uses whiptail when available; falls back to stdin prompts. Renders deploy/gunicorn_${SERVICE_SHORTNAME}.service
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-DEFAULT_ENV=${SCRIPT_DIR}/config/example.env
+DEFAULT_ENV="${SCRIPT_DIR}/config/example.env"
 
-# CLI flags
 INSTALL_UNIT=0
 DRY_RUN=0
+NON_INTERACTIVE=0
+EDIT_CONFIG=0
+CFG_ARG=""
+CONFIG_SOURCE=""
+ACTION=""
+CONFIG_WAS_PROVIDED=0
+LOG_FILE=""
+GAUGE_PID=""
+GAUGE_PIPE=""
+TMP_PRESERVE=""
+PYTHON_BIN=""
+ENV_FILE=""
+SYSTEM_PYTHON_BIN=""
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [config.env] [--install-unit] [--dry-run]
-  --install-unit   Install and enable generated systemd unit (requires root or sudo)
-  --dry-run        Show actions without making changes
-  -h|--help        Show this help
-Examples:
-  # Interactive install using repo config example
-  $(basename "$0") scripts/config/example.env
+Usage: $(basename "$0") [config.env] [--install-unit] [--dry-run] [--action full|env|venv] [--non-interactive] [--edit-config]
 
-  # Non-interactive using an existing per-domain config and install unit as root
-  sudo $(basename "$0") scripts/config/ecatalogus.ispan.pl.env --install-unit
-
-  # Dry-run for testing
-  $(basename "$0") scripts/config/ecatalogus.ispan.pl.env --dry-run
+Options:
+  --install-unit     Install and enable generated systemd unit (requires root or sudo)
+  --dry-run          Show actions without making changes
+  --action VALUE     Action to run: full, env, or venv
+  --non-interactive  Do not show menus or prompts; requires a complete config file
+  --edit-config      Re-open interactive config editing even when a config file is provided
+  -h, --help         Show this help
 EOF
 }
 
-while (( "$#" )); do
-  case "$1" in
-    --install-unit)
-      INSTALL_UNIT=1; shift ;;
-    --dry-run)
-      DRY_RUN=1; shift ;;
-    -h|--help)
-      usage; exit 0 ;;
-    *) break ;;
-  esac
-done
-
 timestamp() { date +%Y%m%d-%H%M%S; }
-
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"; }
+warn() { log "WARNING: $*"; }
+die() { log "ERROR: $*"; exit 1; }
 
-ask() {
-  local prompt=$1; local default=${2-}
-  if command -v whiptail >/dev/null 2>&1; then
-    local out
-    out=$(whiptail --title "Installer" --inputbox "$prompt" 10 60 "$default" 3>&1 1>&2 2>&3)
-    restore_tty
-    echo "$out"
-  else
-    read -rp "$prompt [$default]: " ans </dev/tty
-    echo "${ans:-$default}"
+cleanup() {
+  stop_gauge
+  if [[ -n "$TMP_PRESERVE" && -d "$TMP_PRESERVE" ]]; then
+    rm -rf "$TMP_PRESERVE"
   fi
 }
 
-ask_secret() {
-  local prompt=$1; local default=${2-}
-  if command -v whiptail >/dev/null 2>&1; then
-    local out
-    out=$(whiptail --title "Installer" --passwordbox "$prompt" 10 60 3>&1 1>&2 2>&3)
-    restore_tty
-    echo "$out"
-  else
-    read -rsp "$prompt: " ans </dev/tty
-    echo
-    echo "${ans:-$default}"
-  fi
+trap cleanup EXIT
+
+parse_args() {
+  while (($#)); do
+    case "$1" in
+      --install-unit)
+        INSTALL_UNIT=1
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      --non-interactive)
+        NON_INTERACTIVE=1
+        shift
+        ;;
+      --edit-config)
+        EDIT_CONFIG=1
+        shift
+        ;;
+      --action)
+        [[ $# -ge 2 ]] || die "--action requires a value"
+        ACTION="$2"
+        shift 2
+        ;;
+      --action=*)
+        ACTION="${1#*=}"
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --*)
+        die "Unknown option: $1"
+        ;;
+      *)
+        if [[ -z "$CFG_ARG" ]]; then
+          CFG_ARG="$1"
+          CONFIG_WAS_PROVIDED=1
+          shift
+        else
+          die "Unexpected extra argument: $1"
+        fi
+        ;;
+    esac
+  done
 }
 
-is_port_free() {
-  local port=$1
-  if command -v ss >/dev/null 2>&1; then
-    ss -ltn "sport = :$port" | grep -q LISTEN && return 1 || return 0
-  elif command -v lsof >/dev/null 2>&1; then
-    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 && return 1 || return 0
-  else
-    return 1
-  fi
+whiptail_ok() {
+  command -v whiptail >/dev/null 2>&1 && [[ "$NON_INTERACTIVE" -eq 0 ]]
 }
 
-# whiptail/gauge helpers
-whiptail_ok() { command -v whiptail >/dev/null 2>&1; }
+restore_tty() {
+  stty sane 2>/dev/null || true
+  tput reset 2>/dev/null || true
+  sleep 0.02
+}
+
 start_gauge() {
   if whiptail_ok; then
     GAUGE_PIPE=$(mktemp -u)
@@ -95,710 +115,770 @@ start_gauge() {
     exec 3> "$GAUGE_PIPE"
   fi
 }
+
 update_gauge() {
-  local pct=$1; local msg=${2-}
-  if [[ -n "${GAUGE_PID-}" ]]; then
+  local pct=$1
+  local msg=${2-}
+  if [[ -n "$GAUGE_PID" ]]; then
     echo "$pct" >&3
     echo "$msg" >&3
   else
-    log "PROGRESS: $pct% - $msg"
+    log "PROGRESS: ${pct}% - ${msg}"
   fi
 }
+
 stop_gauge() {
-  if [[ -n "${GAUGE_PID-}" ]]; then
-    exec 3>&-
+  if [[ -n "$GAUGE_PID" ]]; then
+    exec 3>&- || true
     wait "$GAUGE_PID" 2>/dev/null || true
     rm -f "$GAUGE_PIPE" 2>/dev/null || true
-    unset GAUGE_PID
+    GAUGE_PID=""
+    GAUGE_PIPE=""
   fi
 }
 
-restore_tty() {
-  # Restore terminal state after whiptail
-  stty sane 2>/dev/null || true
-  tput reset 2>/dev/null || true
-  sleep 0.02
+ask() {
+  local prompt=$1
+  local default=${2-}
+  if whiptail_ok; then
+    local out
+    out=$(whiptail --title "Installer" --inputbox "$prompt" 10 70 "$default" 3>&1 1>&2 2>&3) || return 1
+    restore_tty
+    printf '%s\n' "$out"
+  elif [[ "$NON_INTERACTIVE" -eq 1 ]]; then
+    [[ -n "$default" ]] || return 1
+    printf '%s\n' "$default"
+  else
+    local ans
+    read -rp "$prompt [${default}]: " ans </dev/tty || return 1
+    printf '%s\n' "${ans:-$default}"
+  fi
 }
 
-try_git_clone() {
-  local repo=$1; local branch=$2; local dest=$3
-  # Prefer non-interactive SSH (fail fast if no key)
-  if GIT_SSH_COMMAND='ssh -o BatchMode=yes' git clone --branch "$branch" "$repo" "$dest"; then
-    return 0
+ask_secret() {
+  local prompt=$1
+  local default=${2-}
+  if whiptail_ok; then
+    local out
+    out=$(whiptail --title "Installer" --passwordbox "$prompt" 10 70 3>&1 1>&2 2>&3) || return 1
+    restore_tty
+    printf '%s\n' "${out:-$default}"
+  elif [[ "$NON_INTERACTIVE" -eq 1 ]]; then
+    [[ -n "$default" ]] || return 1
+    printf '%s\n' "$default"
+  else
+    local ans
+    read -rsp "$prompt: " ans </dev/tty || return 1
+    echo
+    printf '%s\n' "${ans:-$default}"
   fi
-  # If repo is an SSH github URL and clone failed due to publickey, try HTTPS fallback
-  if [[ "$repo" =~ ^git@github.com:(.+) ]]; then
-    local path=${BASH_REMATCH[1]}
-    local https_repo="https://github.com/${path}"
-    log "SSH clone failed; retrying with HTTPS: $https_repo"
-    if git clone --branch "$branch" "$https_repo" "$dest"; then
+}
+
+confirm() {
+  local prompt=$1
+  if whiptail_ok; then
+    if whiptail --title "Installer" --yesno "$prompt" 10 70; then
+      restore_tty
       return 0
     fi
-  fi
-  return 1
-}
-
-# whiptail menu (multi-screen) wrapper
-show_main_menu() {
-  if whiptail_ok; then
-    CHOICE=$(whiptail --title "Installer Menu" --menu "Choose action" 15 60 4 \
-      "1" "Full install (clone, venv, migrate, collectstatic)" \
-      "2" "Create/Update .env (secrets)" \
-      "3" "Create virtualenv only" \
-      "4" "Quit" 3>&1 1>&2 2>&3)
     restore_tty
-    echo "$CHOICE"
+    return 1
+  fi
+
+  if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
+    return 1
+  fi
+
+  local yn
+  read -rp "$prompt [y/N]: " yn </dev/tty || return 1
+  [[ "$yn" =~ ^[Yy]$ ]]
+}
+
+show_main_menu() {
+  if [[ -n "$ACTION" ]]; then
+    printf '%s\n' "$ACTION"
+    return 0
+  fi
+
+  if whiptail_ok; then
+    local choice
+    choice=$(whiptail --title "Installer" --menu "Choose action" 15 70 4 \
+      "full" "Full install or update" \
+      "env" "Create or update APPDIR/.env" \
+      "venv" "Create virtualenv only" \
+      "quit" "Quit" 3>&1 1>&2 2>&3) || return 1
+    restore_tty
+    printf '%s\n' "$choice"
   else
-    echo "1"
+    printf '%s\n' "full"
   fi
 }
 
-# multi-field config form using whiptail --form
 show_config_form() {
   if ! whiptail_ok; then
     return 1
   fi
-  local form_output
-  form_output=$(whiptail --title "Instance configuration" --form "Edit fields (TAB to move)" 20 80 12 \
-    "Domain" 1 1 "${DOMAIN}" 1 30 50 0 \
-    "Deploy user" 2 1 "${DEPLOY_USER}" 2 30 50 0 \
-    "Repository URL" 3 1 "${REPO_URL}" 3 30 50 0 \
-    "Git branch" 4 1 "${GIT_BRANCH}" 4 30 50 0 \
-    "App dir" 5 1 "${APPDIR}" 5 30 50 0 \
-    "Venv path" 6 1 "${VENV_PATH}" 6 30 50 0 \
-    "Service shortname" 7 1 "${SERVICE_SHORTNAME}" 7 30 50 0 \
-    "Use TCP (0/1)" 8 1 "${USE_TCP}" 8 30 50 0 \
-    "Port" 9 1 "${PORT}" 9 30 50 0 \
-    "Socket path" 10 1 "${SOCKET_PATH}" 10 30 50 0 \
-    "Preserve files (comma)" 11 1 "${PRESERVE_FILES}" 11 30 50 0 3>&1 1>&2 2>&3)
-  # whiptail --form returns newline separated fields; read into variables
-  if [[ -n "$form_output" ]]; then
-    # read into array to avoid losing values if some fields are empty
-    IFS=$'\n' read -r -a FORM_ARR <<<"$form_output"
-    # assign back only when a field is non-empty, otherwise keep existing value
-    DOMAIN=${FORM_ARR[0]:-$DOMAIN}
-    DEPLOY_USER=${FORM_ARR[1]:-$DEPLOY_USER}
-    REPO_URL=${FORM_ARR[2]:-$REPO_URL}
-    GIT_BRANCH=${FORM_ARR[3]:-$GIT_BRANCH}
-    APPDIR=${FORM_ARR[4]:-$APPDIR}
-    VENV_PATH=${FORM_ARR[5]:-$VENV_PATH}
-    SERVICE_SHORTNAME=${FORM_ARR[6]:-$SERVICE_SHORTNAME}
-    USE_TCP=${FORM_ARR[7]:-$USE_TCP}
-    PORT=${FORM_ARR[8]:-$PORT}
-    SOCKET_PATH=${FORM_ARR[9]:-$SOCKET_PATH}
-    PRESERVE_FILES=${FORM_ARR[10]:-$PRESERVE_FILES}
-    restore_tty
-    return 0
-  fi
-  return 1
+
+  local form_arr=()
+  local status=0
+  mapfile -t form_arr < <(
+    whiptail --title "Instance configuration" --form "Edit fields (TAB to move)" 20 90 12 \
+      "Domain" 1 1 "${DOMAIN}" 1 30 55 0 \
+      "Deploy user" 2 1 "${DEPLOY_USER}" 2 30 55 0 \
+      "Repository URL" 3 1 "${REPO_URL}" 3 30 55 0 \
+      "Git branch" 4 1 "${GIT_BRANCH}" 4 30 55 0 \
+      "App dir" 5 1 "${APPDIR}" 5 30 55 0 \
+      "Venv path" 6 1 "${VENV_PATH}" 6 30 55 0 \
+      "Service shortname" 7 1 "${SERVICE_SHORTNAME}" 7 30 55 0 \
+      "Use TCP (0/1)" 8 1 "${USE_TCP}" 8 30 55 0 \
+      "Port" 9 1 "${PORT}" 9 30 55 0 \
+      "Socket path" 10 1 "${SOCKET_PATH}" 10 30 55 0 \
+      "Preserve files (comma)" 11 1 "${PRESERVE_FILES}" 11 30 55 0 3>&1 1>&2 2>&3
+  ) || status=$?
+  restore_tty
+
+  [[ "$status" -eq 0 ]] || return 1
+  [[ "${#form_arr[@]}" -eq 11 ]] || die "Configuration form returned ${#form_arr[@]} fields; expected 11."
+
+  DOMAIN=${form_arr[0]}
+  DEPLOY_USER=${form_arr[1]}
+  REPO_URL=${form_arr[2]}
+  GIT_BRANCH=${form_arr[3]}
+  APPDIR=${form_arr[4]}
+  VENV_PATH=${form_arr[5]}
+  SERVICE_SHORTNAME=${form_arr[6]}
+  USE_TCP=${form_arr[7]}
+  PORT=${form_arr[8]}
+  SOCKET_PATH=${form_arr[9]}
+  PRESERVE_FILES=${form_arr[10]}
 }
 
-# SELinux helper: warn if enforcing and provide suggested commands
-check_selinux() {
-  if command -v getenforce >/dev/null 2>&1; then
-    local se
-    se=$(getenforce 2>/dev/null || true)
-    if [[ "$se" == "Enforcing" ]]; then
-      log "SELinux appears to be enforcing on this host. You may need to set proper file contexts for socket and media/static dirs."
-      log "Suggested commands (run as root):"
-      log "  semanage fcontext -a -t httpd_var_run_t '${SOCKET_PATH}' || true"
-      log "  restorecon -v '${SOCKET_PATH}' || true"
-      log "  semanage fcontext -a -t httpd_sys_content_t '${APPDIR}/media(/.*)?' || true"
-      log "  restorecon -R -v '${APPDIR}/media' || true"
-    fi
-  fi
-}
-
-# Validate socket ownership and permissions, attempt to fix when possible
-validate_socket() {
-  if [[ "${USE_TCP:-0}" == "1" ]]; then
-    return 0
-  fi
-  local sock=$SOCKET_PATH
-  local sdir
-  sdir=$(dirname "$sock")
-  # ensure socket dir exists
-  if [[ ! -d "$sdir" ]]; then
-    log "Creating socket directory $sdir"
-    if [[ "$DRY_RUN" -eq 0 ]]; then
-      mkdir -p "$sdir"
-    fi
-  fi
-  # ensure ownership
-  if [[ "$DRY_RUN" -eq 0 ]]; then
-    if chown "${DEPLOY_USER}:${DEPLOY_USER}" "$sdir" 2>/dev/null; then
-      log "Set owner of $sdir to ${DEPLOY_USER}:${DEPLOY_USER}"
-    fi
-    chmod 755 "$sdir" 2>/dev/null || true
+load_config() {
+  local candidate=""
+  if [[ -n "$CFG_ARG" ]]; then
+    candidate="$CFG_ARG"
   else
-    log "DRY-RUN: would chown $sdir to ${DEPLOY_USER} and chmod 755"
+    candidate="$DEFAULT_ENV"
   fi
 
-  # If socket exists, check owner/perm and remove stale socket if not used
-  if [[ -e "$sock" ]]; then
-    if [[ -S "$sock" ]]; then
-      # check ownership
-      owner=$(stat -c '%U' "$sock" 2>/dev/null || stat -f '%Su' "$sock" 2>/dev/null || true)
-      if [[ "$owner" != "${DEPLOY_USER}" ]]; then
-        log "Socket $sock owner is $owner, expected ${DEPLOY_USER}. Attempting fix."
-        if [[ "$DRY_RUN" -eq 0 ]]; then
-          chown ${DEPLOY_USER}:${DEPLOY_USER} "$sock" 2>/dev/null || true
-          chmod 660 "$sock" 2>/dev/null || true
-        fi
-      fi
-    else
-      # file exists but not a socket - warn and optionally remove
-      log "Warning: $sock exists but is not a socket. Backing up and removing."
-      if [[ "$DRY_RUN" -eq 0 ]]; then
-        mv "$sock" "${sock}.bak.$(timestamp)" 2>/dev/null || true
-      fi
-    fi
+  [[ -f "$candidate" ]] || die "Config file not found: $candidate"
+  CONFIG_SOURCE="$candidate"
+  # shellcheck source=/dev/null
+  source "$candidate"
+}
+
+expand_template_value() {
+  local value=${1-}
+  eval "printf '%s' \"$value\""
+}
+
+canonical_repo_url() {
+  local url=$1
+  url=${url%.git}
+  printf '%s\n' "$url"
+}
+
+normalize_repo_url() {
+  if [[ "$REPO_URL" =~ ^https://github.com/[^[:space:]]+$ && "$REPO_URL" != *.git ]]; then
+    REPO_URL="${REPO_URL}.git"
   fi
 }
 
-write_settings_module() {
-  local mod_name="ecatalogus.settings_${SERVICE_SHORTNAME}"
-  local target_dir="$APPDIR/ecatalogus"
-  local target_file="$target_dir/settings_${SERVICE_SHORTNAME}.py"
+resolve_config() {
+  DOMAIN=${DOMAIN:-}
+  DEPLOY_USER=${DEPLOY_USER:-}
+  REPO_URL=${REPO_URL:-}
+  GIT_BRANCH=${GIT_BRANCH:-main}
+  SERVICE_SHORTNAME=${SERVICE_SHORTNAME:-}
+  USE_TCP=${USE_TCP:-0}
+  PORT=${PORT:-}
+  SOCKET_PATH=${SOCKET_PATH:-}
+  PRESERVE_FILES=${PRESERVE_FILES:-}
+  PYTHON_BIN=${PYTHON_BIN:-}
+  TCP_BIND_HOST=${TCP_BIND_HOST:-127.0.0.1}
 
-  mkdir -p "$target_dir"
-
-  cat > "$target_file" <<'PY'
-from .settings_base import *
-import os
-
-# Read runtime secrets from environment (APPDIR/.env should be sourced by systemd and scripts)
-SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me')
-DEBUG = os.environ.get('DEBUG', 'False') in ('True', 'true', '1')
-ALLOWED_HOSTS = [h for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h]
-
-DATABASES = {
-    'default': {
-        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.mysql'),
-        'NAME': os.environ.get('DATABASE_NAME', ''),
-        'USER': os.environ.get('DATABASE_USER', ''),
-        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
-        'HOST': os.environ.get('DATABASE_HOST', '127.0.0.1'),
-        'PORT': os.environ.get('DATABASE_PORT', ''),
-    }
-}
-
-PY
-
-  log "Wrote per-instance settings module: $target_file"
-
-  # ensure DJANGO_SETTINGS_MODULE is set in APPDIR/.env
-  if [[ -f "$APPDIR/.env" ]]; then
-    if ! grep -q '^DJANGO_SETTINGS_MODULE=' "$APPDIR/.env"; then
-      echo "DJANGO_SETTINGS_MODULE=${mod_name}" >> "$APPDIR/.env"
-      chmod 600 "$APPDIR/.env" || true
-      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$APPDIR/.env" 2>/dev/null || true
-      log "Appended DJANGO_SETTINGS_MODULE=${mod_name} to $APPDIR/.env"
-    else
-      sed -i.bak -E "s|^DJANGO_SETTINGS_MODULE=.*|DJANGO_SETTINGS_MODULE=${mod_name}|" "$APPDIR/.env" || true
-      log "Updated DJANGO_SETTINGS_MODULE in $APPDIR/.env"
-    fi
-  else
-    # create minimal .env with DJANGO_SETTINGS_MODULE if missing
-    cat > "$APPDIR/.env" <<EOF
-DJANGO_SETTINGS_MODULE=${mod_name}
-EOF
-    chown "${DEPLOY_USER}:${DEPLOY_USER}" "$APPDIR/.env" 2>/dev/null || true
-    chmod 600 "$APPDIR/.env" || true
-    log "Created $APPDIR/.env with DJANGO_SETTINGS_MODULE=${mod_name}"
-  fi
-}
-
-ensure_ssh_known_host() {
-  # add common git host to known_hosts to avoid interactive prompt
-  local host=${1:-github.com}
-  local ssh_dir
-  ssh_dir="${HOME}/.ssh"
-  mkdir -p "$ssh_dir"
-  chmod 700 "$ssh_dir" || true
-  local kh="$ssh_dir/known_hosts"
-  if command -v ssh-keyscan >/dev/null 2>&1; then
-    # Only add if not already present
-    if ! grep -q "^$host[ ,]" "$kh" 2>/dev/null; then
-      log "Adding SSH host key for $host to $kh"
-      if [[ "$DRY_RUN" -eq 0 ]]; then
-        ssh-keyscan -t rsa,ecdsa,ed25519 "$host" >> "$kh" 2>/dev/null || true
-        chmod 644 "$kh" || true
-      else
-        log "DRY-RUN: would ssh-keyscan $host >> $kh"
-      fi
-    fi
-  else
-    log "ssh-keyscan not available; if this is the first time connecting to $host you may be prompted to accept its host key."
-  fi
-}
-
-ensure_ssh_key() {
-  # If repo uses SSH and no key exists, offer to generate one
-  local repo=$1
-  if [[ "$repo" =~ ^git@ ]]; then
-    local ssh_dir="$HOME/.ssh"
-    if [[ ! -f "$ssh_dir/id_ed25519" && ! -f "$ssh_dir/id_rsa" ]]; then
-      if whiptail_ok; then
-        if whiptail --title "SSH key" --yesno "No SSH key found in $ssh_dir. Generate a new ed25519 key now? You will need to add its public key to GitHub." 10 70; then
-          restore_tty
-          DO_GEN=1
-        else
-          restore_tty
-          DO_GEN=0
-        fi
-      else
-        read -rp "No SSH key found. Generate now? [y/N]: " yn </dev/tty
-        case "$yn" in [Yy]*) DO_GEN=1 ;; *) DO_GEN=0 ;; esac
-      fi
-
-      if [[ "$DO_GEN" -eq 1 ]]; then
-        mkdir -p "$ssh_dir"; chmod 700 "$ssh_dir"
-        ssh-keygen -t ed25519 -f "$ssh_dir/id_ed25519" -N "" -C "deploy@$(hostname)" || true
-        chmod 600 "$ssh_dir/id_ed25519" || true
-        log "Generated SSH key at $ssh_dir/id_ed25519. Public key:" 
-        cat "$ssh_dir/id_ed25519.pub" || true
-        if whiptail_ok; then
-          whiptail --title "SSH key generated" --msgbox "Public key was printed to stdout. Add it to GitHub (repo deploy key or account SSH key), then continue." 10 70
-          restore_tty
-        else
-          echo "Public key above. Add it to GitHub, then press Enter to continue." </dev/tty
-          read -r _ </dev/tty
-        fi
-      fi
-    fi
-  fi
-}
-
-print_git_ssh_help() {
-  cat >&2 <<'HELP'
-Git clone failed due to SSH/publickey issues.
-Possible remedies:
-  1) Ensure the deploy user has an SSH key and added its public key to GitHub:
-       ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "deploy@host"
-       cat ~/.ssh/id_ed25519.pub
-     Then add the printed key as a Deploy Key (repo) or SSH key (account) on GitHub.
-
-  2) If you prefer HTTPS cloning temporarily, change REPO_URL in your config to:
-       https://github.com/yourorg/ecatalogus.git
-     Note: HTTPS may require a personal access token for private repos.
-
-  3) To avoid host key prompts, run as the deploy user:
-       mkdir -p ~/.ssh && chmod 700 ~/.ssh
-       ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-After adding the key to GitHub, test with:
-       ssh -T git@github.com
-HELP
-}
-
-load_env() {
-  if [[ -n "${1-}" && -f "$1" ]]; then
-    # shellcheck source=/dev/null
-    source "$1"
-  elif [[ -f "$DEFAULT_ENV" ]]; then
-    # shellcheck source=/dev/null
-    source "$DEFAULT_ENV"
-  else
-    echo "No config file found and no defaults available." >&2
-    exit 1
-  fi
-}
-
-ensure_app_env() {
-  # If APPDIR/.env exists, source it. Otherwise offer to create it interactively (secrets only).
-  ENV_FILE="$APPDIR/.env"
-  if [[ -f "$ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$ENV_FILE"
-    log "Sourced secrets from $ENV_FILE"
-    return 0
-  fi
-
-  if command -v whiptail >/dev/null 2>&1; then
-    if whiptail --title "Create .env" --yesno "No ${ENV_FILE} found. Create one now (contains DB credentials and SECRET_KEY)?" 10 60; then
-      restore_tty
-      CREATE_ENV=1
-    else
-      restore_tty
-      CREATE_ENV=0
-    fi
-  else
-    read -rp "No ${ENV_FILE} found. Create now? [y/N]: " yn </dev/tty
-    case "$yn" in
-      [Yy]*) CREATE_ENV=1 ;;
-      *) CREATE_ENV=0 ;;
-    esac
-  fi
-
-  if [[ "$CREATE_ENV" -eq 1 ]]; then
-    DB_NAME=$(ask "Database name" "${DATABASE_NAME-}")
-    DB_USER=$(ask "Database user" "${DATABASE_USER-}")
-    DB_PASSWORD=$(ask_secret "Database password")
-    DB_HOST=$(ask "Database host" "${DATABASE_HOST:-127.0.0.1}")
-    DB_PORT=$(ask "Database port" "${DATABASE_PORT:-5432}")
-    SECRET_KEY_INPUT=$(ask_secret "Django SECRET_KEY (leave empty to generate)")
-    if [[ -z "$SECRET_KEY_INPUT" ]]; then
-      SECRET_KEY_INPUT=$(python3 - <<PY
-import secrets
-print(secrets.token_urlsafe(50))
-PY
-)
-    fi
-    ALLOWED_HOSTS_INPUT=$(ask "ALLOWED_HOSTS (comma-separated)" "${ALLOWED_HOSTS-}")
-
-    cat > "$ENV_FILE" <<EOF
-# secrets for instance (do not commit)
-DATABASE_NAME=${DB_NAME}
-DATABASE_USER=${DB_USER}
-DATABASE_PASSWORD='${DB_PASSWORD}'
-DATABASE_HOST=${DB_HOST}
-DATABASE_PORT=${DB_PORT}
-SECRET_KEY='${SECRET_KEY_INPUT}'
-ALLOWED_HOSTS='${ALLOWED_HOSTS_INPUT}'
-EOF
-    chown ${DEPLOY_USER}:${DEPLOY_USER} "$ENV_FILE" 2>/dev/null || true
-    chmod 600 "$ENV_FILE"
-    # shellcheck source=/dev/null
-    source "$ENV_FILE"
-    log "Created and sourced $ENV_FILE"
-  else
-    log "Skipping creation of $ENV_FILE; remember to create it before running manage commands."
-  fi
-}
-
-render_service() {
-  local out="$1"
-  local tmpl="$SCRIPT_DIR/../deploy/gunicorn.service.template"
-  if [[ ! -f "$tmpl" ]]; then
-    echo "Service template $tmpl not found; skipping rendering." >&2
-    return 0
-  fi
-  sed -e "s|{SERVICE_SHORTNAME}|${SERVICE_SHORTNAME}|g" \
-      -e "s|{APPDIR}|${APPDIR}|g" \
-      -e "s|{VENV_PATH}|${VENV_PATH}|g" \
-      -e "s|{SOCKET_PATH}|${SOCKET_PATH-}|g" \
-      -e "s|{PORT}|${PORT-}|g" \
-      -e "s|{DJANGO_SETTINGS_MODULE}|${DJANGO_SETTINGS_MODULE}|g" \
-      -e "s|{BIND}|${BIND-}|g" \
-      -e "s|{ENV_FILE}|${ENV_FILE_PATH-}|g" \
-      -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
-      -e "s|{WORKERS}|3|g" \
-      -e "s|{WSGI_MODULE}|ecatalogus.wsgi|g" \
-      "$tmpl" > "$out"
-}
-
-main() {
-  local cfg_arg=${1-}
-  load_env "$cfg_arg"
-
-  log "Using configuration from ${cfg_arg:-$DEFAULT_ENV}"
-  # Interactive menu and overrides (whiptail or stdin)
-  MENU_CHOICE=$(show_main_menu)
-  if [[ "$MENU_CHOICE" == "2" ]]; then
-    ensure_app_env
-    echo "Created/updated .env (if requested). Exiting."; exit 0
-  elif [[ "$MENU_CHOICE" == "3" ]]; then
-    # create virtualenv only
-    APPDIR=$(ask "Application directory" "$APPDIR")
-    VENV_PATH=$(ask "Virtualenv path" "${VENV_PATH:-$APPDIR/.venv}")
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      log "DRY-RUN: would create venv at $VENV_PATH"
-      exit 0
-    else
-      mkdir -p "$APPDIR"
-      python3.11 -m venv "$VENV_PATH"
-      echo "Virtualenv created at $VENV_PATH"; exit 0
-    fi
-  elif [[ "$MENU_CHOICE" == "4" ]]; then
-    echo "Aborted by user."; exit 0
-  fi
-
-  # Prefer multi-field form when whiptail is available
-  if whiptail_ok && show_config_form; then
-    log "Configuration updated via form"
-  else
-    DOMAIN=$(ask "Domain" "$DOMAIN")
-    DEPLOY_USER=$(ask "Deploy user" "$DEPLOY_USER")
-    REPO_URL=$(ask "Repository URL (git)" "$REPO_URL")
-    GIT_BRANCH=$(ask "Git branch" "$GIT_BRANCH")
-    APPDIR=$(ask "Application directory" "$APPDIR")
-    VENV_PATH=$(ask "Virtualenv path" "${VENV_PATH:-$APPDIR/.venv}")
-    SERVICE_SHORTNAME=$(ask "Service shortname (no 'gunicorn_' prefix)" "${SERVICE_SHORTNAME}")
-    USE_TCP=$(ask "Use TCP (1) or Unix socket (0)" "${USE_TCP:-0}")
-    if [[ "$USE_TCP" == "1" ]]; then
-      PORT=$(ask "Port to bind Gunicorn to" "${PORT}")
-      if ! is_port_free "$PORT"; then
-        echo "Port $PORT appears to be in use. Pick another port." >&2
-        exit 1
-      fi
-    else
-      SOCKET_PATH=$(ask "Socket path" "${SOCKET_PATH:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html/gunicorn.sock}")
-    fi
-  fi
-
-  # Expand any placeholders (e.g. APPDIR may contain ${DEPLOY_USER} placeholders)
-  APPDIR=$(eval echo "$APPDIR")
-  VENV_PATH=$(eval echo "$VENV_PATH")
-  SOCKET_PATH=$(eval echo "${SOCKET_PATH-}")
-  SOCKET_PATH=$(eval echo "$SOCKET_PATH")
-  PUBLIC_HTML=$(eval echo "${PUBLIC_HTML:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html}")
-  STATIC_DIR=$(eval echo "${STATIC_DIR:-${APPDIR}/static_assets}")
-
-  # Validate socket directory, ownership and SELinux advice
-  if [[ "${USE_TCP:-0}" != "1" ]]; then
-    SOCKET_DIR=$(dirname "$SOCKET_PATH")
-    if [[ ! -d "$SOCKET_DIR" ]]; then
-      log "Socket directory $SOCKET_DIR does not exist. Creating."
-      if [[ "$DRY_RUN" -eq 0 ]]; then
-        mkdir -p "$SOCKET_DIR"
-      fi
-    fi
-    validate_socket || true
-    check_selinux || true
-  fi
-
+  APPDIR=${APPDIR:-/home/${DEPLOY_USER}/domains/${DOMAIN}/ecatalogus}
+  VENV_PATH=${VENV_PATH:-${APPDIR}/.venv}
   STATIC_DIR=${STATIC_DIR:-${APPDIR}/static_assets}
   PUBLIC_HTML=${PUBLIC_HTML:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html}
   LOG_DIR=${LOG_DIR:-${APPDIR}/logs}
   DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ecatalogus.settings}
 
-  mkdir -p "$LOG_DIR"
-  LOG_FILE="$LOG_DIR/install_$(timestamp).log"
+  normalize_repo_url
 
-  {
-    log "=== Install started: $(date) ==="
-    log "APPDIR=$APPDIR"
-    log "REPO_URL=$REPO_URL"
-
-    start_gauge
-    update_gauge 5 "Preparing application directory"
-
-    if [[ ! -d "$APPDIR" || -z "$(ls -A "$APPDIR" 2>/dev/null)" ]]; then
-      log "Application directory $APPDIR is missing or empty. Will clone repository."
-      mkdir -p "$APPDIR"
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "DRY-RUN: would clone $REPO_URL@$GIT_BRANCH to $APPDIR"
-        update_gauge 10 "(dry-run) clone"
-      else
-        ensure_ssh_known_host
-        ensure_ssh_key "$REPO_URL"
-        if ! try_git_clone "$REPO_URL" "$GIT_BRANCH" "$APPDIR"; then
-          log "git clone failed. Checking for SSH key issues."
-          print_git_ssh_help
-          exit 1
-        fi
-        update_gauge 20 "Cloned repository"
-      fi
-    else
-      log "App directory exists; checking git repository status."
-      # If the directory exists but isn't a git repo, offer to back it up and clone fresh
-      if [[ ! -d "$APPDIR/.git" ]]; then
-        log "Directory $APPDIR exists but is not a git repository."
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-          log "DRY-RUN: would move $APPDIR to ${APPDIR}.bak.", update_gauge 20 "(dry-run) backup and clone"
-          update_gauge 20 "(dry-run) backup and clone"
-        else
-          DO_BACKUP=0
-          if whiptail_ok; then
-            if whiptail --title "Non-git directory" --yesno "Directory $APPDIR exists but is not a git repository. Move it to ${APPDIR}.bak.$(timestamp) and clone fresh from $REPO_URL ?" 12 70; then
-                restore_tty
-                DO_BACKUP=1
-            else
-                restore_tty
-                DO_BACKUP=0
-            fi
-          else
-              read -rp "Directory $APPDIR exists but is not a git repository. Move to backup and clone? [y/N]: " yn </dev/tty
-            case "$yn" in
-              [Yy]*) DO_BACKUP=1 ;;
-              *) DO_BACKUP=0 ;;
-            esac
-          fi
-
-          if [[ "$DO_BACKUP" -eq 1 ]]; then
-            BACKUP_PATH="${APPDIR}.bak.$(timestamp)"
-            log "Backing up $APPDIR -> $BACKUP_PATH"
-            mv "$APPDIR" "$BACKUP_PATH" || { log "Failed to move $APPDIR to $BACKUP_PATH"; exit 1; }
-            mkdir -p "$APPDIR"
-            log "Cloning repository into $APPDIR"
-            ensure_ssh_known_host
-            ensure_ssh_key "$REPO_URL"
-            if ! try_git_clone "$REPO_URL" "$GIT_BRANCH" "$APPDIR"; then
-              log "git clone failed. Checking for SSH key issues."
-              print_git_ssh_help
-              exit 1
-            fi
-            update_gauge 30 "Cloned into fresh directory"
-          else
-            log "User chose not to backup/replace existing directory. Aborting."; exit 1
-          fi
-        fi
-      else
-        log "App directory is a git repository; fetching latest from git."
-        cd "$APPDIR"
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-          log "DRY-RUN: would fetch and reset to origin/$GIT_BRANCH"
-          update_gauge 20 "(dry-run) update"
-        else
-          ensure_ssh_known_host
-          if ! git fetch --all; then
-            log "git fetch failed. Checking for SSH key issues."
-            print_git_ssh_help
-            exit 1
-          fi
-          git reset --hard "origin/$GIT_BRANCH"
-          update_gauge 30 "Fetched latest"
-        fi
-      fi
-    fi
-
-    cd "$APPDIR"
-
-    if [[ ! -d "$VENV_PATH" ]]; then
-      log "Creating virtualenv at $VENV_PATH"
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "DRY-RUN: would create virtualenv at $VENV_PATH"
-        update_gauge 35 "(dry-run) create venv"
-      else
-        python3.11 -m venv "$VENV_PATH"
-        update_gauge 45 "Virtualenv created"
-      fi
-    fi
-
-    # activate and install
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      log "DRY-RUN: would activate venv and install requirements"
-      update_gauge 55 "(dry-run) install deps"
-    else
-      # shellcheck source=/dev/null
-      source "$VENV_PATH/bin/activate"
-      pip install --upgrade pip
-      if [[ -f requirements.txt ]]; then
-        pip install -r requirements.txt || true
-      fi
-      update_gauge 70 "Dependencies installed"
-    fi
-
-    # Preserve local files if any listed
-    IFS=',' read -ra PRESERVE <<< "${PRESERVE_FILES-}"
-    TMP_PRESERVE=$(mktemp -d)
-    for f in "${PRESERVE[@]}"; do
-      ftrim=$(echo "$f" | xargs)
-      if [[ -n "$ftrim" && -f "$APPDIR/$ftrim" ]]; then
-        mkdir -p "$TMP_PRESERVE/$(dirname "$ftrim")"
-        cp -a "$APPDIR/$ftrim" "$TMP_PRESERVE/$ftrim"
-      fi
-    done
-
-    # Run migrations and collectstatic
-      # Source instance secrets if present (APPDIR/.env)
-      if [[ -f "$APPDIR/.env" ]]; then
-        # shellcheck source=/dev/null
-        source "$APPDIR/.env"
-        log "Sourced $APPDIR/.env"
-      else
-        ensure_app_env
-      fi
-
-      # Generate per-instance settings module and ensure DJANGO_SETTINGS_MODULE is set in .env
-      write_settings_module
-
-      # Ensure the DJANGO_SETTINGS_MODULE variable (generated/overwritten by write_settings_module)
-      # is exported for manage.py commands
-      export DJANGO_SETTINGS_MODULE="$(grep -E '^DJANGO_SETTINGS_MODULE=' "$APPDIR/.env" 2>/dev/null | cut -d'=' -f2-)"
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "DRY-RUN: would run makemigrations/migrate/collectstatic"
-        update_gauge 85 "(dry-run) migrations & collectstatic"
-      else
-        update_gauge 80 "Running makemigrations"
-        python manage.py makemigrations || true
-        update_gauge 85 "Applying migrations"
-        python manage.py migrate --noinput
-        update_gauge 90 "Collecting static files"
-        python manage.py collectstatic --noinput
-        update_gauge 95 "Finalizing"
-      fi
-
-    # Restore preserved files (keep local config)
-    if [[ -d "$TMP_PRESERVE" ]]; then
-      cp -a "$TMP_PRESERVE/"* "$APPDIR/" 2>/dev/null || true
-      rm -rf "$TMP_PRESERVE"
-    fi
-
-    # Create symlinks in public_html
-    mkdir -p "$PUBLIC_HTML"
-    ln -sf "$APPDIR/media" "$PUBLIC_HTML/media"
-    ln -sf "$APPDIR/static_assets" "$PUBLIC_HTML/static"
-
-    # Write back a copy of the config for future runs
-    mkdir -p "$SCRIPT_DIR/config"
-    OUT_CONF="$SCRIPT_DIR/config/${DOMAIN}.env"
-    cat > "$OUT_CONF" <<EOF
-DOMAIN=$DOMAIN
-DEPLOY_USER=$DEPLOY_USER
-REPO_URL=$REPO_URL
-GIT_BRANCH=$GIT_BRANCH
-APPDIR=$APPDIR
-VENV_PATH=$VENV_PATH
-SERVICE_SHORTNAME=$SERVICE_SHORTNAME
-USE_TCP=$USE_TCP
-PORT=$PORT
-SOCKET_PATH=${SOCKET_PATH-}
-STATIC_DIR=$STATIC_DIR
-PUBLIC_HTML=$PUBLIC_HTML
-LOG_DIR=$LOG_DIR
-DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
-PRESERVE_FILES=${PRESERVE_FILES-}
-EOF
-
-    log "Saved config to $OUT_CONF"
-
-    # Prepare render variables and render service template into deploy/ for review
-    mkdir -p "$SCRIPT_DIR/../deploy"
-    SERVICE_OUT="$SCRIPT_DIR/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
-    # choose bind
-    if [[ "${USE_TCP:-0}" == "1" ]]; then
-      BIND="--bind 0.0.0.0:${PORT}"
-    else
-      BIND="--bind unix:${SOCKET_PATH}"
-    fi
-    ENV_FILE_PATH="${APPDIR}/.env"
-    render_service "$SERVICE_OUT" && log "Wrote service template to $SERVICE_OUT"
-
-    if [[ "$INSTALL_UNIT" -eq 1 ]]; then
-      TARGET_UNIT="/etc/systemd/system/gunicorn_${SERVICE_SHORTNAME}.service"
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "DRY-RUN: would install $SERVICE_OUT to $TARGET_UNIT and enable service"
-        update_gauge 98 "(dry-run) render/install unit"
-        stop_gauge
-      else
-        update_gauge 98 "Installing unit (may require sudo)"
-        if [[ $EUID -eq 0 ]]; then
-          cp -f "$SERVICE_OUT" "$TARGET_UNIT"
-          systemctl daemon-reload
-          systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service" || true
-          log "Installed and enabled $TARGET_UNIT as root"
-        else
-          if sudo -n true 2>/dev/null; then
-            sudo cp -f "$SERVICE_OUT" "$TARGET_UNIT"
-            sudo systemctl daemon-reload
-            sudo systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service" || true
-            log "Installed and enabled $TARGET_UNIT via sudo"
-          else
-            log "--install-unit requested but no sudo/root available. Generated unit is at $SERVICE_OUT"
-          fi
-        fi
-        stop_gauge
-      fi
-    fi
-
-    log "=== Install finished: $(date) ==="
-  } 2>&1 | tee "$LOG_FILE"
-
-  echo "Install complete. Review $LOG_FILE and $OUT_CONF"
-  echo "To install the systemd unit as root, copy deploy/gunicorn_${SERVICE_SHORTNAME}.service to /etc/systemd/system/ and run:" \
-       "sudo systemctl daemon-reload && sudo systemctl enable --now gunicorn_${SERVICE_SHORTNAME}.service"
+  APPDIR=$(expand_template_value "$APPDIR")
+  VENV_PATH=$(expand_template_value "$VENV_PATH")
+  STATIC_DIR=$(expand_template_value "$STATIC_DIR")
+  PUBLIC_HTML=$(expand_template_value "$PUBLIC_HTML")
+  LOG_DIR=$(expand_template_value "$LOG_DIR")
+  SOCKET_PATH=$(expand_template_value "$SOCKET_PATH")
 }
 
-main "${1-}"
+validate_required() {
+  local missing=()
+  local name
+  for name in DOMAIN DEPLOY_USER REPO_URL GIT_BRANCH APPDIR VENV_PATH SERVICE_SHORTNAME PUBLIC_HTML LOG_DIR DJANGO_SETTINGS_MODULE; do
+    [[ -n "${!name:-}" ]] || missing+=("$name")
+  done
+  if ((${#missing[@]})); then
+    die "Missing required config values: ${missing[*]}"
+  fi
+
+  [[ "$USE_TCP" =~ ^[01]$ ]] || die "USE_TCP must be 0 or 1"
+  [[ "$APPDIR" = /* ]] || die "APPDIR must be an absolute path"
+  [[ "$VENV_PATH" = /* ]] || die "VENV_PATH must be an absolute path"
+  [[ "$PUBLIC_HTML" = /* ]] || die "PUBLIC_HTML must be an absolute path"
+  [[ "$LOG_DIR" = /* ]] || die "LOG_DIR must be an absolute path"
+  [[ "$STATIC_DIR" = /* ]] || die "STATIC_DIR must be an absolute path"
+  [[ "$SERVICE_SHORTNAME" =~ ^[A-Za-z0-9_.-]+$ ]] || die "SERVICE_SHORTNAME contains unsupported characters"
+
+  if [[ "$USE_TCP" -eq 1 ]]; then
+    [[ -n "$PORT" ]] || die "PORT is required when USE_TCP=1"
+    [[ "$PORT" =~ ^[0-9]+$ ]] || die "PORT must be numeric"
+    ((PORT >= 1 && PORT <= 65535)) || die "PORT must be between 1 and 65535"
+  else
+    [[ -n "$SOCKET_PATH" ]] || die "SOCKET_PATH is required when USE_TCP=0"
+    [[ "$SOCKET_PATH" = /* ]] || die "SOCKET_PATH must be an absolute path"
+  fi
+}
+
+ensure_required_commands() {
+  local cmd
+  for cmd in git sed awk cp mv mkdir ln tee; do
+    command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
+  done
+}
+
+select_system_python() {
+  local candidate
+  if [[ -n "$PYTHON_BIN" ]]; then
+    command -v "$PYTHON_BIN" >/dev/null 2>&1 || die "Configured PYTHON_BIN not found: $PYTHON_BIN"
+    SYSTEM_PYTHON_BIN=$PYTHON_BIN
+    return 0
+  fi
+  for candidate in python3.13 python3.12 python3.11 python3; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      SYSTEM_PYTHON_BIN=$candidate
+      return 0
+    fi
+  done
+  die "No suitable Python interpreter found. Set PYTHON_BIN in the config file."
+}
+
+is_port_free() {
+  local port=$1
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn "sport = :$port" | grep -q LISTEN && return 1 || return 0
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 && return 1 || return 0
+  else
+    warn "Neither ss nor lsof is available; skipping port availability check"
+    return 0
+  fi
+}
+
+ensure_ssh_known_host() {
+  local repo_host=${1:-github.com}
+  local ssh_dir="${HOME}/.ssh"
+  local known_hosts="${ssh_dir}/known_hosts"
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir" || true
+  if command -v ssh-keyscan >/dev/null 2>&1; then
+    if ! grep -q "^${repo_host}[ ,]" "$known_hosts" 2>/dev/null; then
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        log "DRY-RUN: would add SSH host key for ${repo_host}"
+      else
+        ssh-keyscan -t rsa,ecdsa,ed25519 "$repo_host" >> "$known_hosts" 2>/dev/null || true
+        chmod 644 "$known_hosts" || true
+      fi
+    fi
+  fi
+}
+
+ensure_ssh_key() {
+  local repo=$1
+  local ssh_dir="${HOME}/.ssh"
+  if [[ ! "$repo" =~ ^git@ ]]; then
+    return 0
+  fi
+  if [[ -f "${ssh_dir}/id_ed25519" || -f "${ssh_dir}/id_rsa" ]]; then
+    return 0
+  fi
+  confirm "No SSH key found in ${ssh_dir}. Generate one now?" || die "SSH repository requires a deploy key, and none is available."
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would generate SSH key in ${ssh_dir}"
+    return 0
+  fi
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir"
+  ssh-keygen -t ed25519 -f "${ssh_dir}/id_ed25519" -N "" -C "deploy@$(hostname)"
+  chmod 600 "${ssh_dir}/id_ed25519" || true
+  log "Generated SSH key. Add this public key to the git host before rerunning:"
+  cat "${ssh_dir}/id_ed25519.pub"
+  die "SSH key generated but not yet authorized on the git host."
+}
+
+prepare_logging() {
+  mkdir -p "$LOG_DIR"
+  LOG_FILE="${LOG_DIR}/install_$(timestamp).log"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+  log "Using configuration from ${CONFIG_SOURCE}"
+}
+
+build_preserve_paths() {
+  PRESERVE_PATHS=()
+  local item
+  IFS=',' read -r -a raw_paths <<< "$PRESERVE_FILES"
+  for item in "${raw_paths[@]}"; do
+    item=$(printf '%s' "$item" | awk '{$1=$1; print}')
+    [[ -n "$item" ]] && PRESERVE_PATHS+=("$item")
+  done
+  if [[ -n "$CONFIG_SOURCE" ]]; then
+    local config_abs
+    config_abs=$(cd "$(dirname "$CONFIG_SOURCE")" && pwd)/$(basename "$CONFIG_SOURCE")
+    if [[ "$config_abs" == "$APPDIR"/* ]]; then
+      PRESERVE_PATHS+=("${config_abs#${APPDIR}/}")
+    fi
+  fi
+}
+
+path_is_preserved() {
+  local path=$1
+  local item
+  for item in "${PRESERVE_PATHS[@]}"; do
+    [[ -z "$item" ]] && continue
+    if [[ "$item" == */ ]]; then
+      [[ "$path" == "$item"* ]] && return 0
+    else
+      [[ "$path" == "$item" ]] && return 0
+    fi
+  done
+  return 1
+}
+
+backup_preserved_files() {
+  TMP_PRESERVE=$(mktemp -d)
+  local rel_path
+  for rel_path in "${PRESERVE_PATHS[@]}"; do
+    if [[ -e "${APPDIR}/${rel_path}" ]]; then
+      mkdir -p "${TMP_PRESERVE}/$(dirname "$rel_path")"
+      cp -a "${APPDIR}/${rel_path}" "${TMP_PRESERVE}/${rel_path}"
+    fi
+  done
+}
+
+restore_preserved_files() {
+  if [[ -n "$TMP_PRESERVE" && -d "$TMP_PRESERVE" ]]; then
+    if find "$TMP_PRESERVE" -mindepth 1 -print -quit | grep -q .; then
+      cp -a "${TMP_PRESERVE}/." "$APPDIR/"
+    fi
+  fi
+}
+
+guard_unexpected_git_changes() {
+  local unexpected=()
+  local line
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    line=${line:3}
+    if path_is_preserved "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
+      continue
+    fi
+    unexpected+=("$line")
+  done < <(git status --porcelain --untracked-files=all)
+  if ((${#unexpected[@]})); then
+    printf '%s\n' "${unexpected[@]}" | sed 's/^/ - /'
+    die "Repository has unexpected local changes. Commit them, remove them, or add them to PRESERVE_FILES before running the installer."
+  fi
+}
+
+clone_repository() {
+  local repo=$1
+  mkdir -p "$(dirname "$APPDIR")"
+  if [[ "$repo" =~ ^git@([^:]+): ]]; then
+    ensure_ssh_known_host "${BASH_REMATCH[1]}"
+    ensure_ssh_key "$repo"
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would clone ${repo} branch ${GIT_BRANCH} into ${APPDIR}"
+    return 0
+  fi
+  git clone --branch "$GIT_BRANCH" --single-branch "$repo" "$APPDIR"
+}
+
+update_repository() {
+  cd "$APPDIR"
+  local origin_url
+  origin_url=$(git remote get-url origin)
+  if [[ "$(canonical_repo_url "$origin_url")" != "$(canonical_repo_url "$REPO_URL")" ]]; then
+    die "Configured REPO_URL (${REPO_URL}) does not match origin remote (${origin_url}). Refusing to update the wrong repository."
+  fi
+  build_preserve_paths
+  guard_unexpected_git_changes
+  backup_preserved_files
+  if [[ "$REPO_URL" =~ ^git@([^:]+): ]]; then
+    ensure_ssh_known_host "${BASH_REMATCH[1]}"
+    ensure_ssh_key "$REPO_URL"
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would fetch origin ${GIT_BRANCH} and reset working tree"
+    return 0
+  fi
+  git fetch --prune origin "$GIT_BRANCH"
+  git checkout -B "$GIT_BRANCH" "origin/${GIT_BRANCH}"
+  git reset --hard "origin/${GIT_BRANCH}"
+  restore_preserved_files
+}
+
+prepare_repository() {
+  if [[ "$USE_TCP" -eq 1 ]] && ! is_port_free "$PORT"; then
+    die "Port ${PORT} is already in use."
+  fi
+  if [[ ! -d "$APPDIR" ]]; then
+    log "Application directory does not exist; cloning repository"
+    clone_repository "$REPO_URL"
+    return 0
+  fi
+  if [[ -z "$(ls -A "$APPDIR" 2>/dev/null)" ]]; then
+    log "Application directory exists but is empty; cloning repository"
+    clone_repository "$REPO_URL"
+    return 0
+  fi
+  if [[ ! -d "$APPDIR/.git" ]]; then
+    local backup_path="${APPDIR}.bak.$(timestamp)"
+    confirm "${APPDIR} exists but is not a git repository. Move it to ${backup_path} and clone a fresh checkout?" || die "Refusing to overwrite a non-git application directory."
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log "DRY-RUN: would move ${APPDIR} to ${backup_path} and clone a fresh checkout"
+      return 0
+    fi
+    mv "$APPDIR" "$backup_path"
+    clone_repository "$REPO_URL"
+    return 0
+  fi
+  log "Application directory already contains a git checkout; updating in place"
+  update_repository
+}
+
+ensure_socket_directory() {
+  if [[ "$USE_TCP" -eq 1 ]]; then
+    return 0
+  fi
+  local socket_dir
+  socket_dir=$(dirname "$SOCKET_PATH")
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would ensure socket directory ${socket_dir} exists and is owned by ${DEPLOY_USER}"
+    return 0
+  fi
+  mkdir -p "$socket_dir"
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "$socket_dir" 2>/dev/null || true
+  chmod 755 "$socket_dir" 2>/dev/null || true
+}
+
+ensure_virtualenv() {
+  if [[ -x "${VENV_PATH}/bin/python" ]]; then
+    return 0
+  fi
+  select_system_python
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would create virtualenv at ${VENV_PATH} with ${SYSTEM_PYTHON_BIN}"
+    return 0
+  fi
+  mkdir -p "$(dirname "$VENV_PATH")"
+  "$SYSTEM_PYTHON_BIN" -m venv "$VENV_PATH"
+}
+
+ensure_runtime_env() {
+  ENV_FILE="${APPDIR}/.env"
+  if [[ -f "$ENV_FILE" ]]; then
+    return 0
+  fi
+  if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
+    die "Runtime env file is missing: ${ENV_FILE}"
+  fi
+  confirm "Runtime env file ${ENV_FILE} does not exist. Create it now?" || die "Runtime env file is required."
+  local secret_key allowed_hosts db_name db_user db_password db_host db_port
+  secret_key=$(ask_secret "Django SECRET_KEY (leave empty to auto-generate)" "") || die "SECRET_KEY prompt cancelled"
+  if [[ -z "$secret_key" ]]; then
+    secret_key=$(
+      python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(50))
+PY
+    )
+  fi
+  allowed_hosts=$(ask "ALLOWED_HOSTS (comma-separated)" "${DOMAIN},127.0.0.1,localhost") || die "ALLOWED_HOSTS prompt cancelled"
+  db_name=$(ask "Database name (optional if settings module hardcodes it)" "") || die "Database name prompt cancelled"
+  db_user=$(ask "Database user (optional)" "") || die "Database user prompt cancelled"
+  db_password=$(ask_secret "Database password (optional)" "") || die "Database password prompt cancelled"
+  db_host=$(ask "Database host" "127.0.0.1") || die "Database host prompt cancelled"
+  db_port=$(ask "Database port" "3306") || die "Database port prompt cancelled"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would create ${ENV_FILE}"
+    return 0
+  fi
+  mkdir -p "$APPDIR"
+  cat > "$ENV_FILE" <<EOF
+DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+SECRET_KEY='${secret_key}'
+ALLOWED_HOSTS='${allowed_hosts}'
+DATABASE_NAME='${db_name}'
+DATABASE_USER='${db_user}'
+DATABASE_PASSWORD='${db_password}'
+DATABASE_HOST='${db_host}'
+DATABASE_PORT='${db_port}'
+EOF
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+  chmod 600 "$ENV_FILE"
+}
+
+load_runtime_env() {
+  ENV_FILE="${APPDIR}/.env"
+  [[ -f "$ENV_FILE" ]] || die "Runtime env file is missing: ${ENV_FILE}"
+  set -a
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  set +a
+  export DJANGO_SETTINGS_MODULE
+}
+
+validate_settings_module() {
+  local venv_python="${VENV_PATH}/bin/python"
+  [[ -x "$venv_python" ]] || die "Virtualenv Python not found: ${venv_python}"
+  PYTHONPATH="$APPDIR" "$venv_python" - <<PY
+import importlib
+import sys
+
+module_name = ${DJANGO_SETTINGS_MODULE@Q}
+try:
+    importlib.import_module(module_name)
+except Exception as exc:
+    print(f"Failed to import {module_name}: {exc}", file=sys.stderr)
+    raise
+PY
+}
+
+install_dependencies() {
+  local venv_python="${VENV_PATH}/bin/python"
+  local venv_pip="${VENV_PATH}/bin/pip"
+  [[ -x "$venv_pip" ]] || die "Virtualenv pip not found: ${venv_pip}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would upgrade pip and install requirements.txt"
+    return 0
+  fi
+  "$venv_python" -m pip install --upgrade pip
+  if [[ -f "${APPDIR}/requirements.txt" ]]; then
+    "$venv_pip" install -r "${APPDIR}/requirements.txt"
+  else
+    warn "requirements.txt not found in ${APPDIR}; skipping dependency installation"
+  fi
+}
+
+run_manage() {
+  local venv_python="${VENV_PATH}/bin/python"
+  [[ -x "$venv_python" ]] || die "Virtualenv Python not found: ${venv_python}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would run manage.py $*"
+    return 0
+  fi
+  (
+    cd "$APPDIR"
+    "$venv_python" manage.py "$@"
+  )
+}
+
+link_public_assets() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would refresh media/static symlinks under ${PUBLIC_HTML}"
+    return 0
+  fi
+  mkdir -p "$PUBLIC_HTML" "$APPDIR/media" "$STATIC_DIR"
+  ln -sfn "$APPDIR/media" "$PUBLIC_HTML/media"
+  ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"
+}
+
+save_effective_config() {
+  local out_conf="${SCRIPT_DIR}/config/${DOMAIN}.env"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would save effective config to ${out_conf}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/config"
+  cat > "$out_conf" <<EOF
+DOMAIN=${DOMAIN}
+DEPLOY_USER=${DEPLOY_USER}
+REPO_URL=${REPO_URL}
+GIT_BRANCH=${GIT_BRANCH}
+APPDIR=${APPDIR}
+VENV_PATH=${VENV_PATH}
+SERVICE_SHORTNAME=${SERVICE_SHORTNAME}
+USE_TCP=${USE_TCP}
+PORT=${PORT}
+SOCKET_PATH=${SOCKET_PATH}
+STATIC_DIR=${STATIC_DIR}
+PUBLIC_HTML=${PUBLIC_HTML}
+LOG_DIR=${LOG_DIR}
+DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+PRESERVE_FILES=${PRESERVE_FILES}
+PYTHON_BIN=${PYTHON_BIN}
+TCP_BIND_HOST=${TCP_BIND_HOST}
+EOF
+  log "Saved effective config to ${out_conf}"
+}
+
+render_service() {
+  local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
+  local template="${SCRIPT_DIR}/../deploy/gunicorn.service.template"
+  local bind_arg=""
+  [[ -f "$template" ]] || die "Service template not found: ${template}"
+  if [[ "$USE_TCP" -eq 1 ]]; then
+    bind_arg="--bind ${TCP_BIND_HOST}:${PORT}"
+  else
+    bind_arg="--bind unix:${SOCKET_PATH}"
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render systemd unit to ${service_out}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/../deploy"
+  sed -e "s|{SERVICE_SHORTNAME}|${SERVICE_SHORTNAME}|g" \
+      -e "s|{APPDIR}|${APPDIR}|g" \
+      -e "s|{VENV_PATH}|${VENV_PATH}|g" \
+      -e "s|{SOCKET_PATH}|${SOCKET_PATH}|g" \
+      -e "s|{PORT}|${PORT}|g" \
+      -e "s|{DJANGO_SETTINGS_MODULE}|${DJANGO_SETTINGS_MODULE}|g" \
+      -e "s|{BIND}|${bind_arg}|g" \
+      -e "s|{ENV_FILE}|${ENV_FILE}|g" \
+      -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
+      -e "s|{WORKERS}|3|g" \
+      -e "s|{WSGI_MODULE}|ecatalogus.wsgi|g" \
+      "$template" > "$service_out"
+  log "Rendered systemd unit to ${service_out}"
+}
+
+install_unit_file() {
+  [[ "$INSTALL_UNIT" -eq 1 ]] || return 0
+  local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
+  local target_unit="/etc/systemd/system/gunicorn_${SERVICE_SHORTNAME}.service"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would install ${service_out} to ${target_unit} and enable the service"
+    return 0
+  fi
+  [[ -f "$service_out" ]] || die "Rendered service file not found: ${service_out}"
+  if [[ $EUID -eq 0 ]]; then
+    cp -f "$service_out" "$target_unit"
+    systemctl daemon-reload
+    systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+    return 0
+  fi
+  if sudo -n true 2>/dev/null; then
+    sudo cp -f "$service_out" "$target_unit"
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+    return 0
+  fi
+  die "--install-unit was requested but root or passwordless sudo is not available."
+}
+
+prompt_for_missing_config_if_needed() {
+  if [[ "$CONFIG_WAS_PROVIDED" -eq 1 && "$EDIT_CONFIG" -eq 0 ]]; then
+    return 0
+  fi
+  if show_config_form; then
+    return 0
+  fi
+  if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
+    return 0
+  fi
+  DOMAIN=$(ask "Domain" "$DOMAIN") || die "Domain prompt cancelled"
+  DEPLOY_USER=$(ask "Deploy user" "$DEPLOY_USER") || die "Deploy user prompt cancelled"
+  REPO_URL=$(ask "Repository URL" "$REPO_URL") || die "Repository URL prompt cancelled"
+  GIT_BRANCH=$(ask "Git branch" "$GIT_BRANCH") || die "Git branch prompt cancelled"
+  APPDIR=$(ask "Application directory" "$APPDIR") || die "Application directory prompt cancelled"
+  VENV_PATH=$(ask "Virtualenv path" "$VENV_PATH") || die "Virtualenv prompt cancelled"
+  SERVICE_SHORTNAME=$(ask "Service shortname" "$SERVICE_SHORTNAME") || die "Service shortname prompt cancelled"
+  USE_TCP=$(ask "Use TCP (1) or Unix socket (0)" "$USE_TCP") || die "Use TCP prompt cancelled"
+  if [[ "$USE_TCP" == "1" ]]; then
+    PORT=$(ask "Port" "$PORT") || die "Port prompt cancelled"
+  else
+    SOCKET_PATH=$(ask "Socket path" "$SOCKET_PATH") || die "Socket path prompt cancelled"
+  fi
+  PRESERVE_FILES=$(ask "Preserve files (comma-separated)" "$PRESERVE_FILES") || die "Preserve files prompt cancelled"
+}
+
+run_action_env() {
+  ensure_runtime_env
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    log "Runtime env is ready at ${APPDIR}/.env"
+  fi
+}
+
+run_action_venv() {
+  ensure_virtualenv
+  log "Virtualenv is ready at ${VENV_PATH}"
+}
+
+run_action_full() {
+  ensure_socket_directory
+  update_gauge 5 "Preparing repository"
+  prepare_repository
+  update_gauge 25 "Preparing virtualenv"
+  ensure_virtualenv
+  update_gauge 40 "Ensuring runtime env"
+  ensure_runtime_env
+  load_runtime_env
+  update_gauge 50 "Installing dependencies"
+  install_dependencies
+  update_gauge 65 "Validating settings"
+  validate_settings_module
+  update_gauge 75 "Running Django checks"
+  run_manage check
+  update_gauge 85 "Applying migrations"
+  run_manage migrate --noinput
+  update_gauge 92 "Collecting static files"
+  run_manage collectstatic --noinput
+  update_gauge 96 "Refreshing symlinks"
+  link_public_assets
+  update_gauge 98 "Rendering service unit"
+  save_effective_config
+  render_service
+  install_unit_file
+  update_gauge 100 "Completed"
+}
+
+main() {
+  parse_args "$@"
+  ensure_required_commands
+  load_config
+  log "Using configuration from ${CONFIG_SOURCE}"
+  prompt_for_missing_config_if_needed
+  resolve_config
+  validate_required
+  prepare_logging
+  if ! ACTION=$(show_main_menu); then
+    log "Aborted by user"
+    exit 0
+  fi
+  case "$ACTION" in
+    full|"")
+      start_gauge
+      run_action_full
+      ;;
+    env)
+      run_action_env
+      ;;
+    venv)
+      run_action_venv
+      ;;
+    quit)
+      log "Aborted by user"
+      exit 0
+      ;;
+    *)
+      die "Unsupported action: ${ACTION}"
+      ;;
+  esac
+  log "Install finished successfully"
+  [[ -n "$LOG_FILE" ]] && log "Install log: ${LOG_FILE}"
+}
+
+main "$@"
