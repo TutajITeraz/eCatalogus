@@ -8,6 +8,7 @@ INSTALL_UNIT=0
 DRY_RUN=0
 NON_INTERACTIVE=0
 EDIT_CONFIG=0
+FORCE_RESET=0
 CFG_ARG=""
 CONFIG_SOURCE=""
 ACTION=""
@@ -22,7 +23,7 @@ SYSTEM_PYTHON_BIN=""
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [config.env] [--install-unit] [--dry-run] [--action full|env|venv] [--non-interactive] [--edit-config]
+Usage: $(basename "$0") [config.env] [--install-unit] [--dry-run] [--action full|env|venv] [--non-interactive] [--edit-config] [--force-reset]
 
 Options:
   --install-unit     Install and enable generated systemd unit (requires root or sudo)
@@ -30,6 +31,7 @@ Options:
   --action VALUE     Action to run: full, env, or venv
   --non-interactive  Do not show menus or prompts; requires a complete config file
   --edit-config      Re-open interactive config editing even when a config file is provided
+  --force-reset      Discard unpreserved local git changes before updating from origin
   -h, --help         Show this help
 EOF
 }
@@ -65,6 +67,10 @@ parse_args() {
         ;;
       --edit-config)
         EDIT_CONFIG=1
+        shift
+        ;;
+      --force-reset)
+        FORCE_RESET=1
         shift
         ;;
       --action)
@@ -476,6 +482,10 @@ restore_preserved_files() {
 }
 
 guard_unexpected_git_changes() {
+  if [[ "$FORCE_RESET" -eq 1 ]]; then
+    return 0
+  fi
+
   local unexpected=()
   local line
   while IFS= read -r line; do
@@ -488,7 +498,7 @@ guard_unexpected_git_changes() {
   done < <(git status --porcelain --untracked-files=all)
   if ((${#unexpected[@]})); then
     printf '%s\n' "${unexpected[@]}" | sed 's/^/ - /'
-    die "Repository has unexpected local changes. Commit them, remove them, or add them to PRESERVE_FILES before running the installer."
+    die "Repository has unexpected local changes. Commit them, remove them, add them to PRESERVE_FILES, or rerun with --force-reset to discard them."
   fi
 }
 
@@ -524,6 +534,11 @@ update_repository() {
     log "DRY-RUN: would fetch origin ${GIT_BRANCH} and reset working tree"
     return 0
   fi
+
+  if [[ "$FORCE_RESET" -eq 1 ]]; then
+    warn "--force-reset enabled; discarding unpreserved local changes before updating from origin"
+  fi
+
   git fetch --prune origin "$GIT_BRANCH"
   git checkout -B "$GIT_BRANCH" "origin/${GIT_BRANCH}"
   git reset --hard "origin/${GIT_BRANCH}"

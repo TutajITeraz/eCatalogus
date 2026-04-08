@@ -6,6 +6,7 @@ DEFAULT_ENV="${SCRIPT_DIR}/config/example.env"
 
 DRY_RUN=0
 NON_INTERACTIVE=0
+FORCE_RESET=0
 CFG_ARG=""
 CONFIG_SOURCE=""
 LOG_FILE=""
@@ -13,7 +14,7 @@ TMP_PRESERVE=""
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [config.env] [--dry-run] [--non-interactive]
+Usage: $(basename "$0") [config.env] [--dry-run] [--non-interactive] [--force-reset]
 EOF
 }
 
@@ -39,6 +40,10 @@ parse_args() {
         ;;
       --non-interactive)
         NON_INTERACTIVE=1
+        shift
+        ;;
+      --force-reset)
+        FORCE_RESET=1
         shift
         ;;
       -h|--help)
@@ -169,6 +174,10 @@ restore_preserved_files() {
 }
 
 guard_unexpected_git_changes() {
+  if [[ "$FORCE_RESET" -eq 1 ]]; then
+    return 0
+  fi
+
   local unexpected=()
   local line
   while IFS= read -r line; do
@@ -182,7 +191,7 @@ guard_unexpected_git_changes() {
 
   if ((${#unexpected[@]})); then
     printf '%s\n' "${unexpected[@]}" | sed 's/^/ - /'
-    die "Repository has unexpected local changes. Resolve them before running deploy_update.sh."
+    die "Repository has unexpected local changes. Resolve them or rerun with --force-reset to discard them."
   fi
 }
 
@@ -263,6 +272,9 @@ main() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would fetch origin ${GIT_BRANCH} and reset working tree"
   else
+    if [[ "$FORCE_RESET" -eq 1 ]]; then
+      warn "--force-reset enabled; discarding unpreserved local changes before updating from origin"
+    fi
     git fetch --prune origin "$GIT_BRANCH"
     git checkout -B "$GIT_BRANCH" "origin/${GIT_BRANCH}"
     git reset --hard "origin/${GIT_BRANCH}"
