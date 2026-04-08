@@ -196,7 +196,7 @@ confirm() {
 
 show_main_menu() {
   if [[ -n "$ACTION" ]]; then
-    printf '%s\n' "$ACTION"
+    ACTION_SELECTED="$ACTION"
     return 0
   fi
 
@@ -208,9 +208,9 @@ show_main_menu() {
       "venv" "Create virtualenv only" \
       "quit" "Quit" 3>&1 1>&2 2>&3) || return 1
     restore_tty
-    printf '%s\n' "$choice"
+    ACTION_SELECTED="$choice"
   else
-    printf '%s\n' "full"
+    ACTION_SELECTED="full"
   fi
 }
 
@@ -419,7 +419,7 @@ ensure_ssh_key() {
 }
 
 prepare_logging() {
-  mkdir -p "$LOG_DIR"
+  mkdir -p "$LOG_DIR" || die "Cannot create log directory: ${LOG_DIR}"
   LOG_FILE="${LOG_DIR}/install_$(timestamp).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
   log "Using configuration from ${CONFIG_SOURCE}"
@@ -854,10 +854,12 @@ main() {
   resolve_config
   validate_required
   prepare_logging
-  if ! ACTION=$(show_main_menu); then
+  if ! show_main_menu; then
     log "Aborted by user"
     exit 0
   fi
+  ACTION="$ACTION_SELECTED"
+  log "Selected action: ${ACTION}"
   case "$ACTION" in
     full|"")
       start_gauge
