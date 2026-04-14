@@ -7,9 +7,10 @@ User={DEPLOY_USER}
 Group={DEPLOY_USER}
 WorkingDirectory={APPDIR}
 EnvironmentFile={ENV_FILE}
-Environment="PATH={VENV_PATH}/bin"
+Environment="PATH={PATH}"
+Environment="PYTHONPATH={PYTHONPATH}"
 Environment="DJANGO_SETTINGS_MODULE={DJANGO_SETTINGS_MODULE}"
-ExecStart={VENV_PATH}/bin/gunicorn \
+ExecStart={GUNICORN_BIN} \
     --workers {WORKERS} \
     --timeout 300 \
     --limit-request-line 0 \

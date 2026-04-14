@@ -68,3 +68,4 @@ typing_extensions==4.12.2
 urllib3==2.0.7
 whitenoise==6.6.0
 django-simple-captcha
+gunicorn==25.3.0

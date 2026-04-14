@@ -651,8 +651,66 @@ DATABASE_PASSWORD='${db_password}'
 DATABASE_HOST='${db_host}'
 DATABASE_PORT='${db_port}'
 EOF
+  # Ask for admin account to create (DJANGO_SUPERUSER_* env vars)
+  if [[ "$NON_INTERACTIVE" -eq 0 ]]; then
+    admin_user=$(ask "Django admin username (leave empty to skip creating admin)" "admin") || die "Admin username prompt cancelled"
+    if [[ -n "$admin_user" ]]; then
+      admin_email=$(ask "Django admin email (optional)" "") || die "Admin email prompt cancelled"
+      admin_pass=$(ask_secret "Django admin password (leave empty to create interactively later)" "") || die "Admin password prompt cancelled"
+    fi
+  else
+    admin_user=""
+    admin_email=""
+    admin_pass=""
+  fi
+  if [[ -n "$admin_user" ]]; then
+    cat >> "$ENV_FILE" <<EOF
+DJANGO_SUPERUSER_USERNAME='${admin_user}'
+DJANGO_SUPERUSER_EMAIL='${admin_email}'
+DJANGO_SUPERUSER_PASSWORD='${admin_pass}'
+EOF
+  fi
   chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
   chmod 600 "$ENV_FILE"
+}
+
+create_admin_user() {
+  # Create Django superuser if DJANGO_SUPERUSER_USERNAME and DJANGO_SUPERUSER_PASSWORD set in env
+  local venv_python="${VENV_PATH}/bin/python"
+  [[ -x "$venv_python" ]] || { warn "Virtualenv python not found; cannot create admin user"; return 0; }
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    warn "Runtime env not found; skipping admin creation"
+    return 0
+  fi
+  # Load env to pick up DJANGO_SUPERUSER_* values
+  # shellcheck source=/dev/null
+  source "${ENV_FILE}"
+  if [[ -z "${DJANGO_SUPERUSER_USERNAME:-}" || -z "${DJANGO_SUPERUSER_PASSWORD:-}" ]]; then
+    log "DJANGO_SUPERUSER_* not set or incomplete; skipping automatic superuser creation"
+    return 0
+  fi
+  (
+    cd "${APPDIR}"
+    PYTHONPATH="${APPDIR}" "$venv_python" - <<PY
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', os.getenv('DJANGO_SETTINGS_MODULE','${DJANGO_SETTINGS_MODULE}'))
+import django
+django.setup()
+from django.contrib.auth import get_user_model
+User = get_user_model()
+username = os.getenv('DJANGO_SUPERUSER_USERNAME')
+email = os.getenv('DJANGO_SUPERUSER_EMAIL','')
+password = os.getenv('DJANGO_SUPERUSER_PASSWORD')
+if not username or not password:
+    print('No superuser credentials provided; skipping')
+else:
+    if User.objects.filter(username=username).exists():
+        print('Superuser exists; skipping')
+    else:
+        User.objects.create_superuser(username=username, email=email, password=password)
+        print('Superuser created')
+PY
+  )
 }
 
 load_runtime_env() {
@@ -694,6 +752,13 @@ install_dependencies() {
     "$venv_pip" install -r "${APPDIR}/requirements.txt"
   else
     warn "requirements.txt not found in ${APPDIR}; skipping dependency installation"
+  fi
+  # ensure gunicorn is available inside the venv (prefer project-local runtime)
+  if ! "$venv_python" -c 'import importlib,sys
+import importlib.util
+sys.exit(0 if importlib.util.find_spec("gunicorn") else 1)'; then
+    log "gunicorn not found in venv; installing gunicorn into venv"
+    "$venv_pip" install gunicorn
   fi
 }
 
@@ -764,6 +829,30 @@ render_service() {
     return 0
   fi
   mkdir -p "${SCRIPT_DIR}/../deploy"
+  # choose gunicorn binary: prefer venv, fall back to system gunicorn
+  local chosen_gunicorn path_val
+  if [[ -x "${VENV_PATH}/bin/gunicorn" ]]; then
+    chosen_gunicorn="${VENV_PATH}/bin/gunicorn"
+    path_val="${VENV_PATH}/bin"
+  else
+    if command -v gunicorn >/dev/null 2>&1; then
+      chosen_gunicorn=$(command -v gunicorn)
+      path_val=$(dirname "$chosen_gunicorn")
+    else
+      die "No gunicorn binary found in ${VENV_PATH}/bin and no system gunicorn available. Install gunicorn or create virtualenv."
+    fi
+  fi
+  # compute PYTHONPATH: always include APPDIR; if venv exists, add its site-packages
+  local py_path
+  py_path="${APPDIR}"
+  if [[ -x "${VENV_PATH}/bin/python" ]]; then
+    # attempt to discover site-packages path from venv python
+    local venv_site
+    venv_site=$("${VENV_PATH}/bin/python" -c 'import site, sys; s=site.getsitepackages(); print(s[0] if s else "")' 2>/dev/null || true)
+    if [[ -n "$venv_site" ]]; then
+      py_path="${APPDIR}:$venv_site"
+    fi
+  fi
   sed -e "s|{SERVICE_SHORTNAME}|${SERVICE_SHORTNAME}|g" \
       -e "s|{APPDIR}|${APPDIR}|g" \
       -e "s|{VENV_PATH}|${VENV_PATH}|g" \
@@ -775,8 +864,90 @@ render_service() {
       -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
       -e "s|{WORKERS}|3|g" \
       -e "s|{WSGI_MODULE}|ecatalogus.wsgi|g" \
+      -e "s|{GUNICORN_BIN}|${chosen_gunicorn}|g" \
+      -e "s|{PATH}|${path_val}|g" \
+      -e "s|{PYTHONPATH}|${py_path}|g" \
       "$template" > "$service_out"
   log "Rendered systemd unit to ${service_out}"
+}
+
+render_nginx_snippet() {
+  local out_snippet="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render DirectAdmin nginx CUSTOM3 snippet to ${out_snippet}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/../deploy"
+  cat > "$out_snippet" <<EOF
+location = /favicon.ico {
+    access_log off;
+    log_not_found off;
+}
+
+location /static/ {
+    alias ${PUBLIC_HTML}/static/;
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+}
+
+location /media/ {
+    alias ${APPDIR}/media/;
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+
+    # Optional: large file handling and range requests
+    sendfile on;
+    tcp_nopush on;
+}
+
+location / {
+    proxy_pass http://unix:${PUBLIC_HTML}/gunicorn.sock;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+}
+EOF
+  log "Rendered DirectAdmin nginx CUSTOM3 snippet to ${out_snippet}"
+}
+
+install_directadmin_snippet() {
+  local snippet_src="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
+  [[ -f "$snippet_src" ]] || die "Nginx snippet not found: ${snippet_src}"
+
+  # If running as root, try to copy into DirectAdmin user domain folder
+  if [[ $EUID -eq 0 ]]; then
+    local da_user_dir="/usr/local/directadmin/data/users/${DEPLOY_USER}/domains"
+    local target_file="${da_user_dir}/${DOMAIN}.conf"
+    if [[ -d "${da_user_dir}" ]]; then
+      mkdir -p "${da_user_dir}"
+      if [[ -f "${target_file}" ]]; then
+        cp -a "${target_file}" "${target_file}.bak_$(timestamp)" || true
+      fi
+      # Append CUSTOM3 marker and snippet (DirectAdmin UI uses specific format; we append as CUSTOM3)
+      printf "\n# CUSTOM3 (added by installer)\n" >> "${target_file}"
+      cat "$snippet_src" >> "${target_file}"
+      log "Appended CUSTOM3 snippet into ${target_file}"
+
+      # Try to run DirectAdmin custombuild rewrite_confs if available
+      if [[ -x "/usr/local/directadmin/custombuild/build" ]]; then
+        /usr/local/directadmin/custombuild/build rewrite_confs || warn "custombuild rewrite_confs failed"
+      elif [[ -x "/usr/local/directadmin/scripts/rewrite_confs.sh" ]]; then
+        /usr/local/directadmin/scripts/rewrite_confs.sh || warn "rewrite_confs.sh failed"
+      else
+        warn "Could not find DirectAdmin build script; you may need to run 'build rewrite_confs' manually"
+      fi
+      return 0
+    else
+      warn "DirectAdmin user domains directory not found: ${da_user_dir}; not installing snippet automatically"
+    fi
+  else
+    log "Not running as root — saved DirectAdmin nginx snippet to ${snippet_src}. To install it manually, copy its contents into the DirectAdmin Custom HTTPD Configurations (CUSTOM3) for domain ${DOMAIN} and run the DirectAdmin build rewrite_confs command as root."
+  fi
 }
 
 install_unit_file() {
@@ -800,7 +971,16 @@ install_unit_file() {
     sudo systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
     return 0
   fi
-  die "--install-unit was requested but root or passwordless sudo is not available."
+  # Not running as root and no passwordless sudo: do not fail, print manual instructions instead
+  warn "--install-unit was requested but root or passwordless sudo is not available. The service file was rendered but not installed."
+  log "To install the service as root, run the following commands on the server as root or via sudo:"
+  cat <<CMDS
+cp "${service_out}" "${target_unit}"
+systemctl daemon-reload
+systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+journalctl -u "gunicorn_${SERVICE_SHORTNAME}" -f
+CMDS
+  return 0
 }
 
 prompt_for_missing_config_if_needed() {
@@ -858,6 +1038,8 @@ run_action_full() {
   run_manage check
   update_gauge 85 "Applying migrations"
   run_manage migrate --noinput
+  # Attempt to create admin user if credentials were provided in .env
+  create_admin_user
   update_gauge 92 "Collecting static files"
   run_manage collectstatic --noinput
   update_gauge 96 "Refreshing symlinks"
@@ -866,6 +1048,21 @@ run_action_full() {
   save_effective_config
   render_service
   install_unit_file
+  # Render DirectAdmin nginx CUSTOM3 snippet and attempt install when running as root
+  render_nginx_snippet
+  install_directadmin_snippet
+  # If the systemd unit was not installed automatically, print manual instructions
+  if [[ "$INSTALL_UNIT" -ne 1 ]]; then
+    local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
+    log "Systemd unit was rendered to: ${service_out}"
+    log "To install and start the unit as root, run the following commands:"
+    cat <<'CMDS'
+cp /home/ispan/domains/ecatalogus.ispan.pl/ecatalogus/deploy/gunicorn_ecatalogus.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now gunicorn_ecatalogus.service
+journalctl -u gunicorn_ecatalogus -f
+CMDS
+  fi
   update_gauge 100 "Completed"
 }
 

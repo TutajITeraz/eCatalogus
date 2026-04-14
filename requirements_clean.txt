@@ -67,3 +67,4 @@ tqdm
 typing_extensions
 urllib3
 whitenoise
+gunicorn
