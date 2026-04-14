@@ -878,7 +878,7 @@ render_nginx_snippet() {
     return 0
   fi
   mkdir -p "${SCRIPT_DIR}/../deploy"
-  cat > "$out_snippet" <<EOF
+  cat > "$out_snippet" <<'EOF'
 location = /favicon.ico {
     access_log off;
     log_not_found off;
