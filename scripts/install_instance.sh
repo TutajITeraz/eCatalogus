@@ -103,7 +103,8 @@ parse_args() {
 }
 
 whiptail_ok() {
-  command -v whiptail >/dev/null 2>&1 && [[ "$NON_INTERACTIVE" -eq 0 ]]
+  # Only use whiptail when available and when stdout is a terminal
+  command -v whiptail >/dev/null 2>&1 && [[ "$NON_INTERACTIVE" -eq 0 ]] && [[ -t 1 ]]
 }
 
 restore_tty() {
@@ -498,6 +499,8 @@ guard_unexpected_git_changes() {
   done < <(git status --porcelain --untracked-files=all)
   if ((${#unexpected[@]})); then
     printf '%s\n' "${unexpected[@]}" | sed 's/^/ - /'
+      # ensure terminal is sane before aborting so user can see the message
+      restore_tty
     die "Repository has unexpected local changes. Commit them, remove them, add them to PRESERVE_FILES, or rerun with --force-reset to discard them."
   fi
 }
@@ -537,6 +540,12 @@ update_repository() {
 
   if [[ "$FORCE_RESET" -eq 1 ]]; then
     warn "--force-reset enabled; discarding unpreserved local changes before updating from origin"
+    # try a non-interactive hard reset and clean to discard local changes that would block checkout
+    git fetch --prune origin "$GIT_BRANCH"
+    git reset --hard "origin/${GIT_BRANCH}"
+    git clean -fd
+    restore_preserved_files
+    return 0
   fi
 
   git fetch --prune origin "$GIT_BRANCH"
@@ -864,11 +873,14 @@ main() {
   parse_args "$@"
   ensure_required_commands
   load_config
-  log "Using configuration from ${CONFIG_SOURCE}"
+  # resolve template values so APPDIR/VENV_PATH/etc are available for prompts and logging
+  resolve_config
   prompt_for_missing_config_if_needed
+  # re-resolve in case the interactive prompts changed template values
   resolve_config
   validate_required
   prepare_logging
+  log "Using configuration from ${CONFIG_SOURCE}"
   if ! show_main_menu; then
     log "Aborted by user"
     exit 0

@@ -4357,7 +4357,7 @@ class ContentCSVExportView(View):
                 foliation(content.where_in_ms_to),
                 content.digital_page_number,
                 content.rubric_name_from_ms,
-                content.rite.id if content.rite else "",
+                content.rubric.id if content.rubric else "",
                 content.rubric_sequence,
                 content.original_or_added,
                 content.biblical_reference,
