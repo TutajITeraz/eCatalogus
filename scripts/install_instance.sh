@@ -41,6 +41,14 @@ log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"; }
 warn() { log "WARNING: $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
+sanitize() {
+  # Remove CR and LF characters which may be present when reading from prompts
+  local v=${1-}
+  v="${v//$'\r'/}"
+  v="${v//$'\n'/}"
+  printf '%s' "$v"
+}
+
 cleanup() {
   stop_gauge
   if [[ -n "$TMP_PRESERVE" && -d "$TMP_PRESERVE" ]]; then
@@ -638,6 +646,14 @@ PY
   db_password=$(ask_secret "Database password (optional)" "") || die "Database password prompt cancelled"
   db_host=$(ask "Database host" "127.0.0.1") || die "Database host prompt cancelled"
   db_port=$(ask "Database port" "3306") || die "Database port prompt cancelled"
+  # sanitize inputs to remove accidental newlines from prompts
+  secret_key=$(sanitize "$secret_key")
+  allowed_hosts=$(sanitize "$allowed_hosts")
+  db_name=$(sanitize "$db_name")
+  db_user=$(sanitize "$db_user")
+  db_password=$(sanitize "$db_password")
+  db_host=$(sanitize "$db_host")
+  db_port=$(sanitize "$db_port")
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would create ${ENV_FILE}"
     return 0
@@ -666,6 +682,9 @@ EOF
     admin_pass=""
   fi
   if [[ -n "$admin_user" ]]; then
+    admin_user=$(sanitize "$admin_user")
+    admin_email=$(sanitize "$admin_email")
+    admin_pass=$(sanitize "$admin_pass")
     cat >> "$ENV_FILE" <<EOF
 DJANGO_SUPERUSER_USERNAME='${admin_user}'
 DJANGO_SUPERUSER_EMAIL='${admin_email}'
@@ -782,9 +801,31 @@ link_public_assets() {
     log "DRY-RUN: would refresh media/static symlinks under ${PUBLIC_HTML}"
     return 0
   fi
-  mkdir -p "$PUBLIC_HTML" "$APPDIR/media" "$STATIC_DIR"
-  ln -sfn "$APPDIR/media" "$PUBLIC_HTML/media"
-  ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"
+  # Ensure directories exist
+  mkdir -p "$PUBLIC_HTML"
+  mkdir -p "$APPDIR/media" "$STATIC_DIR"
+
+  # Create/replace symlinks (use absolute paths to avoid confusion)
+  if ln -sfn "$APPDIR/media" "$PUBLIC_HTML/media"; then
+    log "Linked ${PUBLIC_HTML}/media -> ${APPDIR}/media"
+  else
+    warn "Failed to link ${PUBLIC_HTML}/media -> ${APPDIR}/media"
+  fi
+
+  if ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"; then
+    log "Linked ${PUBLIC_HTML}/static -> ${STATIC_DIR}"
+  else
+    warn "Failed to link ${PUBLIC_HTML}/static -> ${STATIC_DIR}"
+  fi
+
+  # Ensure ownership and reasonable permissions on targets
+  if chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "$APPDIR/media" "$STATIC_DIR" 2>/dev/null; then
+    log "Set owner ${DEPLOY_USER}:${DEPLOY_USER} on media and static directories"
+  fi
+  if chown -h "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML/media" "$PUBLIC_HTML/static" 2>/dev/null; then
+    log "Set symlink owner for public_html entries"
+  fi
+  chmod -R u+rwX,g+rX,o+rX "$APPDIR/media" "$STATIC_DIR" 2>/dev/null || true
 }
 
 save_effective_config() {

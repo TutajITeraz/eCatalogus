@@ -11,30 +11,52 @@ CSS_LIB_DIR="$ROOT_DIR/indexerapp/static/css/lib"
 CSS_CDN_DIR="$ROOT_DIR/indexerapp/static/css/cdn"
 mkdir -p "$JS_LIB_DIR"
 mkdir -p "$CSS_LIB_DIR"
+mkdir -p "$JS_CDN_DIR"
+mkdir -p "$CSS_CDN_DIR"
 
 echo "Saving JS  libs into: $JS_LIB_DIR"  >&2
 echo "Saving CSS libs into: $CSS_LIB_DIR" >&2
 
 # Helper: download URL to target path if file missing or empty
 fetch() {
-  local url="$1"; shift
-  local target="$1"; shift
+      local url="$1"; shift
+      local target="$1"; shift
 
-  if [ -s "$target" ]; then
-    echo "[skip] $target already exists" >&2
-    return 0
-  fi
+      if [ -s "$target" ]; then
+            echo "[skip] $target already exists" >&2
+            return 0
+      fi
 
-  echo "[get ] $(basename "$target")  ←  $url" >&2
-  if curl -L --show-error --silent "$url" -o "$target"; then
-    if head -c 200 "$target" | grep -qi '<!doctype\|not found\|404'; then
-      echo "[warn] Got error page for $(basename "$target"), removing." >&2
-      rm -f "$target"
-    fi
-  else
-    echo "[warn] curl failed for $(basename "$target")" >&2
-    rm -f "$target"
-  fi
+      echo "[get ] $(basename "$target")  ←  $url" >&2
+      if curl -L --show-error --silent "$url" -o "$target"; then
+            if head -c 200 "$target" | grep -qi '<!doctype\|not found\|404'; then
+                  echo "[warn] Got error page for $(basename \"$target\"), removing." >&2
+                  rm -f "$target"
+            fi
+      else
+            echo "[warn] curl failed for $(basename \"$target\")" >&2
+            rm -f "$target"
+      fi
+
+      # If we downloaded a JS file, attempt to fetch its source map (common convention: add .map)
+      case "$url" in
+            *.js)
+                  map_url="${url}.map"
+                  map_target="${target}.map"
+                  if [ ! -s "$map_target" ]; then
+                        echo "[get ] $(basename \"$map_target\")  ←  $map_url" >&2
+                        if curl -L --show-error --silent "$map_url" -o "$map_target"; then
+                              if head -c 200 "$map_target" | grep -qi '<!doctype\|not found\|404'; then
+                                    echo "[warn] Got error page for $(basename \"$map_target\"), removing." >&2
+                                    rm -f "$map_target"
+                              fi
+                        else
+                              rm -f "$map_target"
+                        fi
+                  fi
+                  ;;
+            *) ;;
+      esac
 }
 
 
