@@ -243,9 +243,11 @@ show_config_form() {
       "Preserve files (comma)" 11 1 "${PRESERVE_FILES}" 11 30 55 0 3>&1 1>&2 2>&3
   ) || status=$?
   restore_tty
-
   [[ "$status" -eq 0 ]] || return 1
-  [[ "${#form_arr[@]}" -eq 11 ]] || die "Configuration form returned ${#form_arr[@]} fields; expected 11."
+  if [[ "${#form_arr[@]}" -ne 11 ]]; then
+    warn "Configuration form returned ${#form_arr[@]} fields; expected 11. Falling back to sequential prompts."
+    return 1
+  fi
 
   DOMAIN=${form_arr[0]}
   DEPLOY_USER=${form_arr[1]}
