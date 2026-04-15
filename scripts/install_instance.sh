@@ -41,6 +41,35 @@ log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"; }
 warn() { log "WARNING: $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
+upsert_env_value() {
+  local file=$1
+  local key=$2
+  local value=$3
+  local tmp
+
+  tmp=$(mktemp)
+  if [[ -f "$file" ]]; then
+    awk -v key="$key" -v value="$value" '
+      BEGIN { updated = 0 }
+      $0 ~ "^" key "=" {
+        print key "=" value
+        updated = 1
+        next
+      }
+      { print }
+      END {
+        if (!updated) {
+          print key "=" value
+        }
+      }
+    ' "$file" > "$tmp"
+  else
+    printf '%s=%s\n' "$key" "$value" > "$tmp"
+  fi
+
+  mv "$tmp" "$file"
+}
+
 sanitize() {
   # Remove CR and LF characters which may be present when reading from prompts
   local v=${1-}
@@ -624,6 +653,13 @@ ensure_virtualenv() {
 ensure_runtime_env() {
   ENV_FILE="${APPDIR}/.env"
   if [[ -f "$ENV_FILE" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log "DRY-RUN: would ensure DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE} in ${ENV_FILE}"
+      return 0
+    fi
+    upsert_env_value "$ENV_FILE" "DJANGO_SETTINGS_MODULE" "${DJANGO_SETTINGS_MODULE}"
+    chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+    chmod 600 "$ENV_FILE"
     return 0
   fi
   if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
@@ -734,13 +770,127 @@ PY
   )
 }
 
+render_instance_settings_files() {
+  local settings_dir="${APPDIR}/ecatalogus"
+  local module_name="${DJANGO_SETTINGS_MODULE##*.}"
+  local settings_file="${settings_dir}/${module_name}.py"
+  local alias_file="${settings_dir}/settings.py"
+  local overlay_dir=""
+  local site_name=""
+  local etl_role=""
+  local etl_master_url="None"
+  local etl_slave_urls="[]"
+  local etl_peers="{}"
+  local default_db_name=""
+  local default_allowed_hosts="${DOMAIN},127.0.0.1,localhost"
+  local default_csrf_origins="https://${DOMAIN},http://${DOMAIN},https://127.0.0.1,http://127.0.0.1"
+  local default_cors_origins="https://${DOMAIN},http://${DOMAIN},http://localhost:3000,http://localhost:8000"
+
+  case "$module_name" in
+    settings_ecatalogus)
+      overlay_dir="static_ecatalogus"
+      site_name="eCatalogus"
+      etl_role="master"
+      etl_master_url="None"
+      etl_slave_urls="[os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080')]"
+      etl_peers="{os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080'): os.getenv('ETL_MPL_API_TOKEN', 'mpl-token-change-me')}"
+      default_db_name="ecatalogus"
+      ;;
+    settings_mpl)
+      overlay_dir="static_mpl"
+      site_name="Liturgica Poloniae"
+      etl_role="slave"
+      etl_master_url="os.getenv('ETL_MASTER_URL', 'http://127.0.0.1:8000')"
+      etl_slave_urls="[]"
+      etl_peers="{ETL_MASTER_URL: os.getenv('ETL_MASTER_API_TOKEN', 'ecatalogus-main-token-change-me')}"
+      default_db_name="mpl"
+      ;;
+    *)
+      warn "No managed instance settings template for ${DJANGO_SETTINGS_MODULE}; skipping settings file rendering"
+      return 0
+      ;;
+  esac
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render ${settings_file} and ${alias_file}"
+    return 0
+  fi
+
+  mkdir -p "$settings_dir"
+  cat > "$settings_file" <<EOF
+"""Managed by scripts/install_instance.sh for ${DOMAIN}."""
+
+from .settings_base import *
+
+
+def _csv_env(name, default=""):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
+
+
+def _bool_env(name, default="0"):
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+SECRET_KEY = os.getenv('SECRET_KEY', '${module_name}-secret-key-change-me')
+DEBUG = _bool_env('DEBUG', '0')
+
+ALLOWED_HOSTS = _csv_env('ALLOWED_HOSTS', '${default_allowed_hosts}')
+CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS', '${default_csrf_origins}')
+CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS', '${default_cors_origins}')
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'CONN_MAX_AGE': 0,
+        'NAME': os.getenv('DATABASE_NAME', '${default_db_name}'),
+        'USER': os.getenv('DATABASE_USER', 'ecatalogus_user'),
+        'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
+        'HOST': os.getenv('DATABASE_HOST', '127.0.0.1'),
+        'PORT': os.getenv('DATABASE_PORT', '3306'),
+    }
+}
+
+STATICFILES_DIRS = [
+    BASE_DIR / '${overlay_dir}',
+    BASE_DIR / 'indexerapp/static',
+]
+
+SITE_NAME = '${site_name}'
+
+ETL_ROLE = '${etl_role}'
+ETL_MASTER_URL = ${etl_master_url}
+ETL_SLAVE_URLS = ${etl_slave_urls}
+ETL_API_TOKEN = os.getenv('ETL_API_TOKEN', '${SERVICE_SHORTNAME}-token-change-me')
+ETL_PEER_TOKENS = ${etl_peers}
+EOF
+
+  cat > "$alias_file" <<EOF
+"""Managed default settings alias for ${DOMAIN}."""
+
+from .${module_name} import *
+EOF
+
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "$settings_file" "$alias_file" 2>/dev/null || true
+  chmod 640 "$settings_file" "$alias_file" 2>/dev/null || true
+}
+
 load_runtime_env() {
   ENV_FILE="${APPDIR}/.env"
   [[ -f "$ENV_FILE" ]] || die "Runtime env file is missing: ${ENV_FILE}"
+  local configured_settings_module="$DJANGO_SETTINGS_MODULE"
   set -a
   # shellcheck source=/dev/null
   source "$ENV_FILE"
   set +a
+  if [[ "${DJANGO_SETTINGS_MODULE:-}" != "$configured_settings_module" ]]; then
+    warn "Runtime env DJANGO_SETTINGS_MODULE (${DJANGO_SETTINGS_MODULE:-unset}) differs from installer config (${configured_settings_module}); using installer config."
+    DJANGO_SETTINGS_MODULE="$configured_settings_module"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      upsert_env_value "$ENV_FILE" "DJANGO_SETTINGS_MODULE" "${DJANGO_SETTINGS_MODULE}"
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+      chmod 600 "$ENV_FILE"
+    fi
+  fi
   export DJANGO_SETTINGS_MODULE
 }
 
@@ -780,6 +930,19 @@ import importlib.util
 sys.exit(0 if importlib.util.find_spec("gunicorn") else 1)'; then
     log "gunicorn not found in venv; installing gunicorn into venv"
     "$venv_pip" install gunicorn
+  fi
+}
+
+run_download_libs() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would run download_libs.sh in ${APPDIR}"
+    return 0
+  fi
+  if [[ -f "${APPDIR}/download_libs.sh" ]]; then
+    log "Running download_libs.sh in ${APPDIR}"
+    (cd "${APPDIR}" && bash ./download_libs.sh)
+  else
+    warn "download_libs.sh not found in ${APPDIR}; skipping frontend asset download"
   fi
 }
 
@@ -1054,6 +1217,7 @@ prompt_for_missing_config_if_needed() {
 
 run_action_env() {
   ensure_runtime_env
+  render_instance_settings_files
   if [[ "$DRY_RUN" -eq 0 ]]; then
     log "Runtime env is ready at ${APPDIR}/.env"
   fi
@@ -1072,9 +1236,13 @@ run_action_full() {
   ensure_virtualenv
   update_gauge 40 "Ensuring runtime env"
   ensure_runtime_env
+  update_gauge 45 "Rendering instance settings"
+  render_instance_settings_files
   load_runtime_env
   update_gauge 50 "Installing dependencies"
   install_dependencies
+  update_gauge 55 "Fetching frontend libraries"
+  run_download_libs
   update_gauge 65 "Validating settings"
   validate_settings_module
   update_gauge 75 "Running Django checks"

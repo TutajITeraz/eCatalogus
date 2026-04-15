@@ -22,6 +22,7 @@ fetch() {
       local url="$1"; shift
       local target="$1"; shift
 
+      mkdir -p "$(dirname "$target")"
       if [ -s "$target" ]; then
             echo "[skip] $target already exists" >&2
             return 0
@@ -29,7 +30,7 @@ fetch() {
 
       echo "[get ] $(basename "$target")  ←  $url" >&2
       if curl -L --show-error --silent "$url" -o "$target"; then
-            if head -c 200 "$target" | grep -qi '<!doctype\|not found\|404'; then
+            if head -c 512 "$target" | grep -qiE '<!doctype html|<html|<head|<body|not found|couldn.t find the requested file|error 404'; then
                   echo "[warn] Got error page for $(basename \"$target\"), removing." >&2
                   rm -f "$target"
             fi
@@ -54,6 +55,44 @@ fetch() {
                               rm -f "$map_target"
                         fi
                   fi
+                  ;;
+            *.css)
+                  # Parse downloaded CSS for url(...) references and try to fetch those assets
+                  # Handles relative paths and absolute URLs (including protocol-relative //...)
+                  cssdir="$(dirname "$target")"
+                  grep -oE "url\([^)]*\)" "$target" | while read -r urlref; do
+                        # extract inner value and strip quotes/spaces
+                        ref=$(echo "$urlref" | sed -E "s#url\(['\"]?(.*)['\"]?\)#\1#I")
+                        asset_path="${ref%%\#*}"
+                        asset_path="${asset_path%%\?*}"
+                        # skip data URLs
+                        case "$ref" in
+                              data:*) continue ;;
+                        esac
+                        # determine source URL
+                        if echo "$ref" | grep -qE "^https?://"; then
+                              src_url="$ref"
+                        elif echo "$ref" | grep -qE "^//"; then
+                              src_url="https:$ref"
+                        else
+                              baseurl="${url%/*}"
+                              src_url="$baseurl/$ref"
+                        fi
+
+                        destpath="$cssdir/$asset_path"
+                        mkdir -p "$(dirname "$destpath")"
+                        if [ ! -s "$destpath" ]; then
+                              echo "[get ] $(basename "$destpath")  ←  $src_url" >&2
+                              if curl -L --show-error --silent "$src_url" -o "$destpath"; then
+                                    if head -c 512 "$destpath" | grep -qiE '<!doctype html|<html|<head|<body|not found|couldn.t find the requested file|error 404'; then
+                                          echo "[warn] Got error page for $(basename \"$destpath\"), removing." >&2
+                                          rm -f "$destpath"
+                                    fi
+                              else
+                                    rm -f "$destpath"
+                              fi
+                        fi
+                  done
                   ;;
             *) ;;
       esac
@@ -154,6 +193,16 @@ fetch "https://cdn.jsdelivr.net/npm/zoomist@2/zoomist.umd.js" \
 # Leaflet core CSS (1.9.4)
 fetch "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" \
       "$CSS_LIB_DIR/leaflet.css"
+mkdir -p "$CSS_LIB_DIR/images"
+# Fetch leaflet image assets referenced by leaflet.css
+fetch "https://unpkg.com/leaflet@1.9.4/dist/images/layers.png" \
+      "$CSS_LIB_DIR/images/layers.png"
+fetch "https://unpkg.com/leaflet@1.9.4/dist/images/layers-2x.png" \
+      "$CSS_LIB_DIR/images/layers-2x.png"
+fetch "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png" \
+      "$CSS_LIB_DIR/images/marker-icon.png"
+fetch "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png" \
+      "$CSS_LIB_DIR/images/marker-shadow.png"
 
 # MarkerCluster CSS (1.5.3)
 fetch "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" \
@@ -194,6 +243,34 @@ fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/plugins/zoom/lg-zoom.umd.
       "$JS_LIB_DIR/lightgallery/plugins/lg-zoom.min.js"
 fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/css/lightgallery-bundle.min.css" \
       "$JS_LIB_DIR/lightgallery/css/lightgallery-bundle.min.css"
+
+# Ensure LightGallery CSS is also present under static/css/lib so collectstatic finds it
+mkdir -p "$CSS_LIB_DIR/lightgallery"
+if [ -s "$JS_LIB_DIR/lightgallery/css/lightgallery-bundle.min.css" ]; then
+  cp -a "$JS_LIB_DIR/lightgallery/css/lightgallery-bundle.min.css" \
+        "$CSS_LIB_DIR/lightgallery/lightgallery-bundle.min.css"
+  echo "[sync] copied lightgallery CSS to $CSS_LIB_DIR/lightgallery" >&2
+fi
+
+# Also attempt to fetch LightGallery CSS directly into CSS lib (fallback when JS fetch failed)
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/css/lightgallery-bundle.min.css" \
+      "$CSS_LIB_DIR/lightgallery/lightgallery-bundle.min.css"
+
+# Ensure LightGallery font assets are present (prevents MissingFileError during collectstatic)
+mkdir -p "$JS_LIB_DIR/lightgallery/fonts"
+mkdir -p "$CSS_LIB_DIR/fonts"
+mkdir -p "$CSS_LIB_DIR/lightgallery/fonts"
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/fonts/lg.svg" \
+      "$JS_LIB_DIR/lightgallery/fonts/lg.svg"
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/fonts/lg.woff2" \
+      "$JS_LIB_DIR/lightgallery/fonts/lg.woff2"
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/fonts/lg.woff" \
+      "$JS_LIB_DIR/lightgallery/fonts/lg.woff"
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/fonts/lg.ttf" \
+      "$JS_LIB_DIR/lightgallery/fonts/lg.ttf"
+# copy to css lib locations; bundled CSS under css/lib/lightgallery resolves ../fonts to css/lib/fonts
+cp -a "$JS_LIB_DIR/lightgallery/fonts"/* "$CSS_LIB_DIR/fonts/" 2>/dev/null || true
+cp -a "$JS_LIB_DIR/lightgallery/fonts"/* "$CSS_LIB_DIR/lightgallery/fonts/" 2>/dev/null || true
 
 ##############################################
 # js/cdn  (used by page_local.html and others)
@@ -283,3 +360,62 @@ fetch "https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
 
 echo "" >&2
 echo "All libraries processed." >&2
+
+# Ensure .map files are available in both `lib` and `cdn` trees.
+sync_maps() {
+      local src="$1"; shift
+      local dst="$1"; shift
+      if [ ! -d "$src" ]; then
+            return 0
+      fi
+      find "$src" -type f -name '*.map' | while read -r map; do
+            rel="${map#$src/}"
+            dest="$dst/$rel"
+            mkdir -p "$(dirname "$dest")"
+            if [ ! -s "$dest" ]; then
+                  cp -a "$map" "$dest"
+                  echo "[sync] copied $rel -> $dst" >&2
+            fi
+            # If we have a .min.js.map, also create a non-min sibling (mirrors common references)
+            if [[ "$rel" == *.min.js.map ]]; then
+                  altrel="${rel/.min.js.map/.js.map}"
+                  altdest="$dst/$altrel"
+                  if [ ! -s "$altdest" ]; then
+                        mkdir -p "$(dirname "$altdest")"
+                        cp -a "$map" "$altdest"
+                        echo "[sync] copied $rel -> $altrel" >&2
+                  fi
+            fi
+      done
+}
+
+# Sync maps both directions to cover files referenced from either `lib` or `cdn`
+sync_maps "$JS_LIB_DIR" "$JS_CDN_DIR"
+sync_maps "$JS_CDN_DIR" "$JS_LIB_DIR"
+
+echo "[info] maps in $JS_CDN_DIR:" >&2
+find "$JS_CDN_DIR" -type f -name '*.map' -print | sed 's|^|  |' >&2 || true
+
+# Remove sourceMappingURL references when the referenced .map file is missing.
+fix_missing_map_references() {
+      local dir="$1"; shift
+      [ -d "$dir" ] || return 0
+      find "$dir" -type f -name '*.js' | while read -r js; do
+            # look for sourceMappingURL occurrences
+            if grep -Iq "sourceMappingURL" "$js"; then
+                  # extract the map filename (handles //# sourceMappingURL= or /*# ... */)
+                  mapfile=$(sed -n 's#.*sourceMappingURL=\s*\([^\*[:space:]]\+\).*#\1#Ip' "$js" | head -n1)
+                  if [ -n "$mapfile" ]; then
+                        mappath="$(dirname "$js")/$mapfile"
+                        if [ ! -s "$mappath" ]; then
+                              echo "[fix ] removing missing map reference in $(basename "$js"): $mapfile" >&2
+                              # remove lines containing sourceMappingURL (works for both single-line and block comments)
+                              sed -i.bak '/sourceMappingURL/Id' "$js" && rm -f "$js.bak"
+                        fi
+                  fi
+            fi
+      done
+}
+
+fix_missing_map_references "$JS_LIB_DIR"
+fix_missing_map_references "$JS_CDN_DIR"
