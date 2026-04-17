@@ -1,4 +1,11 @@
 
+// Export configuration
+const EXPORT_SCALE = 1.5;       // PNG upscale factor
+const EXPORT_ROW_HEIGHT = 30;   // Pixels per unique Table row in exported SVG
+const EXPORT_MIN_WIDTH = 1400;  // Minimum width of exported SVG
+
+let lastEditionData = [];       // Stores the last rendered dataset for export
+
 ms_edition_graph_init = function()
 {
     /*
@@ -87,6 +94,7 @@ ms_edition_graph_init = function()
 
     function createChart(data) 
     {
+        lastEditionData = data;
         let chartHeight = $('#chart').height();
         const margin = { top: 20, right: 30, bottom: 40, left: 250 },
         width = getWidth() - margin.left - margin.right - 50,
@@ -235,3 +243,123 @@ ms_edition_graph_init = function()
     }
     
 }
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function buildEditionExportSvg(data) {
+    const uniqueTables = [...new Set(data.map(d => d.Table))];
+    const margin = { top: 20, right: 30, bottom: 40, left: 250 };
+    const width  = Math.max(EXPORT_MIN_WIDTH, d3.extent(data, d => d.rubric_sequence)[1] * 40);
+    const height = uniqueTables.length * EXPORT_ROW_HEIGHT;
+
+    const container = document.createElement('div');
+    const svgSel = d3.select(container).append("svg")
+        .attr("xmlns", "http://www.w3.org/2000/svg")
+        .attr("width",  width  + margin.left + margin.right)
+        .attr("height", height + margin.top  + margin.bottom);
+
+    // White background
+    svgSel.append("rect")
+        .attr("width",  width  + margin.left + margin.right)
+        .attr("height", height + margin.top  + margin.bottom)
+        .attr("fill", "white");
+
+    const g = svgSel.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear().range([0, width]);
+    const y = d3.scalePoint().range([0, height]).padding(0.2);
+
+    const editionIndexes = [...new Set(data.map(d => d.edition_index))];
+    y.domain(data.map(d => d.Table));
+    x.domain(d3.extent(data, d => d.rubric_sequence));
+
+    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(editionIndexes);
+    const line  = d3.line()
+        .x(d => x(d.rubric_sequence))
+        .y(d => y(d.Table));
+
+    g.append("g").attr("class", "x axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+    g.append("g").attr("class", "y axis")
+        .call(d3.axisLeft(y));
+
+    editionIndexes.forEach(edition_index => {
+        const values = data.filter(d => d.edition_index === edition_index);
+        g.append("path")
+            .datum(values)
+            .attr("fill", "none")
+            .attr("stroke", color(edition_index))
+            .attr("stroke-width", 2.5)
+            .attr("d", line);
+        g.selectAll(null)
+            .data(values)
+            .enter().append("circle")
+            .attr("r", 5)
+            .attr("cx", d => x(d.rubric_sequence))
+            .attr("cy", d => y(d.Table))
+            .attr("fill", color(edition_index));
+    });
+
+    return container.querySelector('svg');
+}
+
+function _downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+window.exportEditionSvg = function() {
+    if (!lastEditionData.length) { alert('No data to export'); return; }
+    const svgEl = buildEditionExportSvg(lastEditionData);
+    const svgStr = new XMLSerializer().serializeToString(svgEl);
+    _downloadBlob(new Blob([svgStr], { type: 'image/svg+xml' }), 'edition_graph.svg');
+};
+
+window.exportEditionPng = function() {
+    if (!lastEditionData.length) { alert('No data to export'); return; }
+    const svgEl  = buildEditionExportSvg(lastEditionData);
+    const svgStr = new XMLSerializer().serializeToString(svgEl);
+    const svgW   = parseInt(svgEl.getAttribute('width'));
+    const svgH   = parseInt(svgEl.getAttribute('height'));
+    const canvas = document.createElement('canvas');
+    canvas.width  = svgW * EXPORT_SCALE;
+    canvas.height = svgH * EXPORT_SCALE;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(EXPORT_SCALE, EXPORT_SCALE);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, svgW, svgH);
+    const img = new Image();
+    const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
+    img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        const a = document.createElement('a');
+        a.download = 'edition_graph.png';
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+    };
+    img.src = url;
+};
+
+window.exportEditionJson = function() {
+    if (!lastEditionData.length) { alert('No data to export'); return; }
+    _downloadBlob(
+        new Blob([JSON.stringify(lastEditionData, null, 2)], { type: 'application/json' }),
+        'edition_data.json'
+    );
+};
+
+window.exportEditionCsv = function() {
+    if (!lastEditionData.length) { alert('No data to export'); return; }
+    const keys = Object.keys(lastEditionData[0]);
+    const rows = [keys.join(','), ...lastEditionData.map(row =>
+        keys.map(k => JSON.stringify(row[k] ?? '')).join(',')
+    )];
+    _downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'edition_data.csv');
+};

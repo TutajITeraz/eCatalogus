@@ -4,6 +4,13 @@ const colorPalette = [
     '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000',
     '#aaffc3', '#808000', '#ffd8b1'
 ];
+
+// Export configuration
+const EXPORT_SCALE      = 1.5;   // PNG upscale factor
+const EXPORT_ROW_HEIGHT = 28;    // Pixels per unique Table row in exported SVG
+const EXPORT_MIN_WIDTH  = 1400;  // Minimum width of exported SVG
+
+let lastFormulasData = [];       // Stores the last rendered dataset for export
 let traditionColors = {
     'Multiple': '#000075',
     'Unattributed': '#a9a9a9'
@@ -353,6 +360,7 @@ ms_formulas_graph_init = function() {
     }
 
     function createChart(data) {
+        lastFormulasData = data;
         console.log('createChart called with data:', data);
         console.log('traditionColors:', traditionColors);
         let chartHeight = $('#chart').height();
@@ -643,3 +651,152 @@ function wrap(text, width) {
         }
     });
 }
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function buildFormulasExportSvg(data) {
+    const uniqueTables = [...new Set(data.map(d => d.Table))];
+    const margin = { top: 20, right: 30, bottom: 40, left: 300 };
+    const width  = Math.max(EXPORT_MIN_WIDTH, d3.extent(data, d => d.sequence_in_ms)[1] * 40);
+    const height = uniqueTables.length * EXPORT_ROW_HEIGHT;
+
+    const container = document.createElement('div');
+    const svgSel = d3.select(container).append("svg")
+        .attr("xmlns", "http://www.w3.org/2000/svg")
+        .attr("width",  width  + margin.left + margin.right)
+        .attr("height", height + margin.top  + margin.bottom);
+
+    svgSel.append("rect")
+        .attr("width",  width  + margin.left + margin.right)
+        .attr("height", height + margin.top  + margin.bottom)
+        .attr("fill", "white");
+
+    const g = svgSel.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear().range([0, width]);
+    const y = d3.scalePoint().range([0, height]).padding(0.1);
+
+    const formulaIds = [...new Set(data.map(d => d.formula_id))];
+    y.domain(data.map(d => d.Table));
+    x.domain(d3.extent(data, d => d.sequence_in_ms));
+
+    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(formulaIds);
+    const groupedData = d3.group(data, d => d.formula_id, d => d.Table);
+
+    formulaIds.forEach(formula_id => {
+        const values = data.filter(d => d.formula_id === formula_id);
+        const traditions = values[0].formula_traditions || [];
+        let lineColor = color(formula_id);
+        if (traditions.length === 0)    lineColor = traditionColors['Unattributed'];
+        else if (traditions.length > 1) lineColor = traditionColors['Multiple'];
+        else                            lineColor = traditionColors[traditions[0]] || color(formula_id);
+
+        g.selectAll(null)
+            .data(values)
+            .enter()
+            .append("path")
+            .attr("fill", "none")
+            .attr("stroke", lineColor)
+            .attr("stroke-width", 2.5)
+            .attr("d", function(d) {
+                if (!groupedData.has(formula_id)) return null;
+                const msKeys  = Array.from(groupedData.get(formula_id).keys());
+                if (msKeys.length < 2) return null;
+                const leftMs  = d.Table;
+                const rightMs = msKeys.find(k => k !== leftMs);
+                if (!rightMs) return null;
+                const leftEntries  = groupedData.get(formula_id).get(leftMs);
+                const rightEntries = groupedData.get(formula_id).get(rightMs);
+                if (!leftEntries || !rightEntries) return null;
+                let pathString = "";
+                for (let i = 0; i < Math.max(leftEntries.length, rightEntries.length); i++) {
+                    const src = leftEntries[Math.min(i, leftEntries.length - 1)];
+                    const tgt = rightEntries[Math.min(i, rightEntries.length - 1)];
+                    if (src.Table !== tgt.Table)
+                        pathString += `M${x(src.sequence_in_ms)} ${y(src.Table)} L${x(tgt.sequence_in_ms)} ${y(tgt.Table)}`;
+                }
+                return pathString || null;
+            });
+
+        g.selectAll(null)
+            .data(values)
+            .enter().append("circle")
+            .attr("r", 5)
+            .attr("cx", d => x(d.sequence_in_ms))
+            .attr("cy", d => y(d.Table))
+            .attr("fill", lineColor);
+    });
+
+    g.append("g").attr("class", "y axis")
+        .attr("transform", "translate(-5,0)")
+        .call(d3.axisLeft(y)
+            .tickFormat(d => d.length > 60 ? d.substring(0, 60) + "\u2026" : d));
+
+    g.append("g").attr("class", "x axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x));
+
+    return container.querySelector('svg');
+}
+
+function _downloadBlobF(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+window.exportFormulasSvg = function() {
+    if (!lastFormulasData.length) { alert('No data to export'); return; }
+    const svgEl  = buildFormulasExportSvg(lastFormulasData);
+    const svgStr = new XMLSerializer().serializeToString(svgEl);
+    _downloadBlobF(new Blob([svgStr], { type: 'image/svg+xml' }), 'formulas_graph.svg');
+};
+
+window.exportFormulasPng = function() {
+    if (!lastFormulasData.length) { alert('No data to export'); return; }
+    const svgEl  = buildFormulasExportSvg(lastFormulasData);
+    const svgStr = new XMLSerializer().serializeToString(svgEl);
+    const svgW   = parseInt(svgEl.getAttribute('width'));
+    const svgH   = parseInt(svgEl.getAttribute('height'));
+    const canvas = document.createElement('canvas');
+    canvas.width  = svgW * EXPORT_SCALE;
+    canvas.height = svgH * EXPORT_SCALE;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(EXPORT_SCALE, EXPORT_SCALE);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, svgW, svgH);
+    const img = new Image();
+    const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
+    img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        const a = document.createElement('a');
+        a.download = 'formulas_graph.png';
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+    };
+    img.src = url;
+};
+
+window.exportFormulasJson = function() {
+    if (!lastFormulasData.length) { alert('No data to export'); return; }
+    _downloadBlobF(
+        new Blob([JSON.stringify(lastFormulasData, null, 2)], { type: 'application/json' }),
+        'formulas_data.json'
+    );
+};
+
+window.exportFormulasCsv = function() {
+    if (!lastFormulasData.length) { alert('No data to export'); return; }
+    const keys = Object.keys(lastFormulasData[0]);
+    const rows = [keys.join(','), ...lastFormulasData.map(row =>
+        keys.map(k => {
+            const v = row[k];
+            return JSON.stringify(Array.isArray(v) ? v.join(';') : (v ?? ''));
+        }).join(',')
+    )];
+    _downloadBlobF(new Blob([rows.join('\n')], { type: 'text/csv' }), 'formulas_data.csv');
+};

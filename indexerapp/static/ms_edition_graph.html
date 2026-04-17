@@ -17,6 +17,26 @@
 
     <div id="chart" class="overflow-x-auto"></div>
 
+    <div class="flex flex-wrap gap-2 mt-3 mb-4">
+        <span class="text-sm font-semibold text-gray-600 self-center">Export graph:</span>
+        <button onclick="exportEditionSvg()"
+            class="py-1 px-4 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-sm">
+            SVG
+        </button>
+        <button onclick="exportEditionPng()"
+            class="py-1 px-4 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-sm">
+            PNG
+        </button>
+        <span class="text-sm font-semibold text-gray-600 self-center ml-2">Export data:</span>
+        <button onclick="exportEditionJson()"
+            class="py-1 px-4 bg-[#3a5f7a] hover:bg-[#5a7f9a] text-white font-semibold rounded drop-shadow text-sm">
+            JSON
+        </button>
+        <button onclick="exportEditionCsv()"
+            class="py-1 px-4 bg-[#3a5f7a] hover:bg-[#5a7f9a] text-white font-semibold rounded drop-shadow text-sm">
+            CSV
+        </button>
+    </div>
 
 </div>
 
