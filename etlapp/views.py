@@ -25,6 +25,7 @@ from .services import (
     import_manuscript_payload,
     pull_remote_category,
     pull_remote_manuscript,
+    resolve_shared_conflict,
     resolve_etl_peer,
     user_can_manage_etl,
 )
@@ -100,7 +101,7 @@ class ETLDeltaImportView(APIView):
         try:
             payload = import_delta_payload(category=category, payload=request.data)
         except ETLImportConflictError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+            return Response(exc.to_payload(), status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             status_code = status.HTTP_404_NOT_FOUND if 'Unsupported' in str(exc) else status.HTTP_400_BAD_REQUEST
             return Response({'detail': str(exc)}, status=status_code)
@@ -223,14 +224,22 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
         peer_id = body.get('peer')
         category = body.get('category')
         since = body.get('since') or None
+        force_remote_uuids = body.get('force_remote_uuids') or []
+        keep_local_uuids = body.get('keep_local_uuids') or []
         if not peer_id or not category:
             return JsonResponse({'detail': 'Request body must include peer and category.'}, status=400)
 
         try:
             peer = resolve_etl_peer(peer_id)
-            result = pull_remote_category(peer['url'], category, since=since)
+            result = pull_remote_category(
+                peer['url'],
+                category,
+                since=since,
+                force_remote_uuids=force_remote_uuids,
+                keep_local_uuids=keep_local_uuids,
+            )
         except ETLImportConflictError as exc:
-            return JsonResponse({'detail': str(exc)}, status=409)
+            return JsonResponse(exc.to_payload(), status=409)
         except ValueError as exc:
             return JsonResponse({'detail': str(exc)}, status=400)
 
@@ -275,6 +284,42 @@ class ETLUIPullManuscriptView(ETLUIAccessMixin, View):
                 'result': result,
             }
         )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ETLUIResolveConflictView(ETLUIAccessMixin, View):
+    def post(self, request, *args, **kwargs):
+        try:
+            body = _load_json_body(request)
+        except ValueError as exc:
+            return JsonResponse({'detail': str(exc)}, status=400)
+
+        peer_id = body.get('peer')
+        category = body.get('category')
+        since = body.get('since') or None
+        force_remote_uuids = body.get('force_remote_uuids') or []
+        keep_local_uuids = body.get('keep_local_uuids') or []
+
+        try:
+            if not peer_id or not category:
+                raise ValueError('Request body must include peer and category.')
+
+            peer = resolve_etl_peer(peer_id)
+            result = resolve_shared_conflict(
+                peer['url'],
+                category,
+                body.get('conflict'),
+                body.get('resolution'),
+                since=since,
+                force_remote_uuids=force_remote_uuids,
+                keep_local_uuids=keep_local_uuids,
+            )
+        except ETLImportConflictError as exc:
+            return JsonResponse(exc.to_payload(), status=409)
+        except ValueError as exc:
+            return JsonResponse({'detail': str(exc)}, status=400)
+
+        return JsonResponse({'result': result})
 
 
 def _load_json_body(request):

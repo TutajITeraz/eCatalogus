@@ -1,4 +1,33 @@
 <script src="/static/js/etl_sync.js"></script>
+<style>
+    @keyframes etl-sync-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @keyframes etl-sync-progress {
+        0% {
+            transform: translateX(-100%);
+        }
+        100% {
+            transform: translateX(250%);
+        }
+    }
+
+    .etl-sync-spinner {
+        animation: etl-sync-spin 0.8s linear infinite;
+    }
+
+    .etl-sync-progress-bar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: 35%;
+        background: linear-gradient(90deg, rgba(199, 150, 106, 0) 0%, rgba(199, 150, 106, 0.85) 45%, rgba(199, 150, 106, 0) 100%);
+        animation: etl-sync-progress 1.4s ease-in-out infinite;
+    }
+</style>
 
 <div x-init="etl_sync_init()" class="px-2 pb-8">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-4 mb-6">
@@ -6,8 +35,21 @@
             <h1 class="text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left">ETL sync</h1>
             <p class="text-[#3d4b5c] text-sm sm:text-base mt-2">Synchronize reference dictionaries and manuscript packages from a configured ETL peer into the current instance.</p>
         </div>
-        <button id="etl-refresh-overview" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Refresh overview</button>
+        <div class="flex flex-col items-start gap-3 sm:items-end">
+            <button id="etl-refresh-overview" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Refresh overview</button>
+        </div>
     </div>
+
+    <section id="etl-busy-panel" class="hidden bg-[#fff4ea] border border-[#d8b89b] rounded-lg shadow-sm p-4 mb-6" aria-live="polite" aria-busy="false">
+        <div class="flex items-center gap-3">
+            <span class="etl-sync-spinner inline-block h-5 w-5 rounded-full border-2 border-[#d3b59f] border-t-[#8a6d55]"></span>
+            <div>
+                <div class="text-sm font-semibold text-[#6f4e37]">Synchronization in progress</div>
+                <div id="etl-busy-text" class="text-sm text-[#8a6d55]">Working...</div>
+            </div>
+        </div>
+        <div class="etl-sync-progress-bar relative mt-3 h-2 overflow-hidden rounded bg-[#ead7c7]"></div>
+    </section>
 
     <div class="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-5 mb-6">
         <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4">
@@ -39,6 +81,45 @@
         </div>
     </section>
 
+    <section id="etl-conflict-panel" class="hidden bg-[#fff7f2] border border-[#d8b89b] rounded-lg shadow-sm p-4 mb-6">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-2">Shared conflict review</h2>
+                <p id="etl-conflict-meta" class="text-sm text-[#3d4b5c]"></p>
+                <p id="etl-conflict-progress" class="text-xs text-[#8a6d55] mt-2"></p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button id="etl-conflict-keep-local" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#f1dfcf] rounded hover:bg-[#e6d1bf] text-center">Keep local version</button>
+                <button id="etl-conflict-apply-remote" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Apply remote version</button>
+                <button id="etl-conflict-close" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#f4e8df] rounded hover:bg-[#eadfd6] text-center">Close panel</button>
+            </div>
+        </div>
+
+        <div class="mt-4 overflow-x-auto">
+            <table class="w-full border-collapse text-sm">
+                <thead>
+                    <tr class="bg-[#f6ede6] text-[#6f4e37]">
+                        <th class="border border-[#eadfd6] px-3 py-2 text-left">Field</th>
+                        <th class="border border-[#eadfd6] px-3 py-2 text-left">Local</th>
+                        <th class="border border-[#eadfd6] px-3 py-2 text-left">Incoming</th>
+                    </tr>
+                </thead>
+                <tbody id="etl-conflict-differences"></tbody>
+            </table>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            <div>
+                <div class="text-xs uppercase tracking-[0.18em] text-[#8a6d55] mb-2">Local record</div>
+                <pre id="etl-conflict-local" class="bg-white border border-[#eadfd6] rounded p-3 text-xs text-[#203040] overflow-auto max-h-[360px]"></pre>
+            </div>
+            <div>
+                <div class="text-xs uppercase tracking-[0.18em] text-[#8a6d55] mb-2">Incoming record</div>
+                <pre id="etl-conflict-incoming" class="bg-white border border-[#eadfd6] rounded p-3 text-xs text-[#203040] overflow-auto max-h-[360px]"></pre>
+            </div>
+        </div>
+    </section>
+
     <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4 mb-6">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4">
             <div>
@@ -65,6 +146,6 @@
 
     <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4">
         <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-3">Operation log</h2>
-        <div id="etl-log" class="bg-[#fff] border border-[#eadfd6] rounded p-3 min-h-[120px] text-sm text-[#203040] whitespace-pre-wrap"></div>
+        <div id="etl-log" class="bg-[#fff] border border-[#eadfd6] rounded p-3 min-h-[120px] text-sm text-[#203040] break-words" style="white-space: pre-wrap;"></div>
     </section>
 </div>

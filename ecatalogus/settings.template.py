@@ -205,9 +205,14 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-MEDIA_ROOT =  os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 if DEBUG:
     MEDIA_URL = '/media/'
+
+# For multi-instance local setups, each instance should override at least:
+# - MEDIA_ROOT (for example BASE_DIR / 'media_instances' / '<instance_name>')
+# - SESSION_COOKIE_NAME
+# - CSRF_COOKIE_NAME
 
 
 CACHES = {

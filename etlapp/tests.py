@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from etlapp.services import ETLImportConflictError, build_manuscript_export_payload, import_manuscript_payload
 from indexerapp.models import Bibliography, Content, ContentTopic, Contributors, DeletedRecord, Manuscripts, MassHour, Topic, Type, Watermarks
 
 
@@ -305,6 +306,10 @@ class ETLDeltaImportViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 409)
+        payload = response.json()
+        self.assertEqual(payload['conflict']['model'], 'indexerapp.Bibliography')
+        self.assertEqual(payload['conflict']['reason'], 'stale_version')
+        self.assertEqual(payload['conflict']['object_uuid'], str(bibliography.uuid))
 
     def test_shared_import_skips_identical_watermark_with_empty_image_field(self):
         contributor = Contributors.objects.create(
@@ -562,6 +567,34 @@ class SyncMetadataTests(TestCase):
         with self.assertRaises(CommandError):
             call_command('validate_uuid_integrity', '--model', 'Bibliography', '--fail-on-issues')
 
+    def test_manuscript_export_and_import_transfers_media_files(self):
+        with tempfile.TemporaryDirectory() as source_media_dir, tempfile.TemporaryDirectory() as target_media_dir:
+            source_file_path = Path(source_media_dir) / 'images' / 'Kwaternion.jpg'
+            source_file_path.parent.mkdir(parents=True, exist_ok=True)
+            source_bytes = b'fake-image-content'
+            source_file_path.write_bytes(source_bytes)
+
+            with override_settings(MEDIA_ROOT=source_media_dir):
+                manuscript = Manuscripts.objects.create(
+                    name='Media manuscript',
+                    image='images/Kwaternion.jpg',
+                )
+                payload = build_manuscript_export_payload(manuscript.uuid)
+
+            manuscript_uuid = manuscript.uuid
+            Manuscripts.objects.all().delete()
+
+            with override_settings(MEDIA_ROOT=target_media_dir):
+                summary = import_manuscript_payload(payload)
+
+            imported_manuscript = Manuscripts.objects.get(uuid=manuscript_uuid)
+            imported_file_path = Path(target_media_dir) / 'images' / 'Kwaternion.jpg'
+
+            self.assertEqual(imported_manuscript.image.name, 'images/Kwaternion.jpg')
+            self.assertTrue(imported_file_path.exists())
+            self.assertEqual(imported_file_path.read_bytes(), source_bytes)
+            self.assertEqual(summary['media_summary']['created'], 1)
+
 
 @override_settings(
     SITE_NAME='Test Site',
@@ -713,3 +746,203 @@ class ETLUIViewTests(ETLUIEditorMixin, TestCase):
         self.assertEqual(manuscript.name, 'Remote manuscript')
         self.assertEqual(content.manuscript_id, manuscript.pk)
         self.assertEqual(response.json()['result']['import_summary']['created'], 2)
+
+    @patch('etlapp.views.pull_remote_category')
+    def test_pull_category_returns_structured_conflict_payload(self, pull_remote_category_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        pull_remote_category_mock.side_effect = ETLImportConflictError(
+            'Shared conflict detected.',
+            conflict={
+                'reason': 'payload_diff',
+                'model': 'indexerapp.Bibliography',
+                'object_uuid': str(uuid4()),
+                'current_version': 2,
+                'incoming_version': 2,
+                'local_record': {'title': 'Local'},
+                'incoming_record': {'title': 'Remote'},
+                'differences': [{'field': 'title', 'local': 'Local', 'incoming': 'Remote'}],
+            },
+        )
+
+        response = self.client.post(
+            reverse('etl:etl-ui-pull-category'),
+            data=json.dumps({'peer': 'master', 'category': 'shared'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 409)
+        payload = response.json()
+        self.assertEqual(payload['conflict']['model'], 'indexerapp.Bibliography')
+        self.assertEqual(payload['conflict']['differences'][0]['field'], 'title')
+
+    def test_resolve_conflict_requires_remote_pull_context(self):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        bibliography = Bibliography.objects.create(title='Local title')
+
+        response = self.client.post(
+            reverse('etl:etl-ui-resolve-conflict'),
+            data=json.dumps(
+                {
+                    'peer': 'master',
+                    'category': 'shared',
+                    'resolution': 'apply_remote',
+                    'conflict': {
+                        'model': 'indexerapp.Bibliography',
+                        'object_uuid': str(bibliography.uuid),
+                        'incoming_record': {
+                            'uuid': str(bibliography.uuid),
+                            'title': 'Remote title',
+                            'author': None,
+                            'shortname': None,
+                            'year': None,
+                            'zotero_id': None,
+                            'hierarchy': None,
+                            'version': bibliography.version,
+                            'entry_date': bibliography.entry_date.isoformat(),
+                        },
+                    },
+                }
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Cannot reach ETL peer', response.json()['detail'])
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_resolve_conflict_applies_remote_version_and_completes_pull(self, fetch_remote_etl_json_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        bibliography = Bibliography.objects.create(title='Local title')
+
+        fetch_remote_etl_json_mock.side_effect = [
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Bibliography',
+                        'results': [
+                            {
+                                'uuid': str(bibliography.uuid),
+                                'title': 'Remote title',
+                                'author': None,
+                                'shortname': None,
+                                'year': None,
+                                'zotero_id': None,
+                                'hierarchy': None,
+                                'version': bibliography.version,
+                                'entry_date': bibliography.entry_date.isoformat(),
+                            }
+                        ],
+                    }
+                ]
+            },
+            {
+                'category': 'shared',
+                'results': [],
+            },
+        ]
+
+        response = self.client.post(
+            reverse('etl:etl-ui-resolve-conflict'),
+            data=json.dumps(
+                {
+                    'peer': 'master',
+                    'category': 'shared',
+                    'resolution': 'apply_remote',
+                    'conflict': {
+                        'model': 'indexerapp.Bibliography',
+                        'object_uuid': str(bibliography.uuid),
+                        'incoming_record': {
+                            'uuid': str(bibliography.uuid),
+                            'title': 'Remote title',
+                            'author': None,
+                            'shortname': None,
+                            'year': None,
+                            'zotero_id': None,
+                            'hierarchy': None,
+                            'version': bibliography.version,
+                            'entry_date': bibliography.entry_date.isoformat(),
+                        },
+                    },
+                }
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        bibliography.refresh_from_db()
+        self.assertEqual(bibliography.title, 'Remote title')
+        payload = response.json()
+        self.assertTrue(payload['result']['applied'])
+        self.assertEqual(payload['result']['pull_result']['import_summary']['updated'], 1)
+        self.assertEqual(payload['result']['force_remote_uuids'], [str(bibliography.uuid)])
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_resolve_conflict_keeps_local_version_and_completes_pull(self, fetch_remote_etl_json_mock):
+        user = self.create_editor_user()
+        self.client.force_login(user)
+        bibliography = Bibliography.objects.create(title='Local title')
+
+        fetch_remote_etl_json_mock.side_effect = [
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Bibliography',
+                        'results': [
+                            {
+                                'uuid': str(bibliography.uuid),
+                                'title': 'Remote title',
+                                'author': None,
+                                'shortname': None,
+                                'year': None,
+                                'zotero_id': None,
+                                'hierarchy': None,
+                                'version': bibliography.version,
+                                'entry_date': bibliography.entry_date.isoformat(),
+                            }
+                        ],
+                    }
+                ]
+            },
+            {
+                'category': 'shared',
+                'results': [],
+            },
+        ]
+
+        response = self.client.post(
+            reverse('etl:etl-ui-resolve-conflict'),
+            data=json.dumps(
+                {
+                    'peer': 'master',
+                    'category': 'shared',
+                    'resolution': 'keep_local',
+                    'conflict': {
+                        'model': 'indexerapp.Bibliography',
+                        'object_uuid': str(bibliography.uuid),
+                        'incoming_record': {
+                            'uuid': str(bibliography.uuid),
+                            'title': 'Remote title',
+                            'author': None,
+                            'shortname': None,
+                            'year': None,
+                            'zotero_id': None,
+                            'hierarchy': None,
+                            'version': bibliography.version,
+                            'entry_date': bibliography.entry_date.isoformat(),
+                        },
+                    },
+                }
+            ),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        bibliography.refresh_from_db()
+        self.assertEqual(bibliography.title, 'Local title')
+        payload = response.json()
+        self.assertTrue(payload['result']['kept_local'])
+        self.assertEqual(payload['result']['pull_result']['import_summary']['skipped'], 1)
+        self.assertEqual(payload['result']['keep_local_uuids'], [str(bibliography.uuid)])

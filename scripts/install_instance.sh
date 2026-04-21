@@ -20,6 +20,7 @@ TMP_PRESERVE=""
 PYTHON_BIN=""
 ENV_FILE=""
 SYSTEM_PYTHON_BIN=""
+MEDIA_DIR=""
 
 usage() {
   cat <<EOF
@@ -349,6 +350,7 @@ resolve_config() {
   PUBLIC_HTML=${PUBLIC_HTML:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html}
   LOG_DIR=${LOG_DIR:-${APPDIR}/logs}
   DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ecatalogus.settings}
+  MEDIA_DIR=${MEDIA_DIR:-}
 
   normalize_repo_url
 
@@ -358,6 +360,27 @@ resolve_config() {
   PUBLIC_HTML=$(expand_template_value "$PUBLIC_HTML")
   LOG_DIR=$(expand_template_value "$LOG_DIR")
   SOCKET_PATH=$(expand_template_value "$SOCKET_PATH")
+  if [[ -n "$MEDIA_DIR" ]]; then
+    MEDIA_DIR=$(expand_template_value "$MEDIA_DIR")
+  fi
+}
+
+resolve_instance_runtime_paths() {
+  if [[ -n "$MEDIA_DIR" ]]; then
+    return 0
+  fi
+
+  case "$DJANGO_SETTINGS_MODULE" in
+    ecatalogus.settings_mpl)
+      MEDIA_DIR="${APPDIR}/media_instances/mpl"
+      ;;
+    ecatalogus.settings_ecatalogus)
+      MEDIA_DIR="${APPDIR}/media_instances/ecatalogus"
+      ;;
+    *)
+      MEDIA_DIR="${APPDIR}/media"
+      ;;
+  esac
 }
 
 validate_required() {
@@ -785,6 +808,10 @@ render_instance_settings_files() {
   local default_allowed_hosts="${DOMAIN},127.0.0.1,localhost"
   local default_csrf_origins="https://${DOMAIN},http://${DOMAIN},https://127.0.0.1,http://127.0.0.1"
   local default_cors_origins="https://${DOMAIN},http://${DOMAIN},http://localhost:3000,http://localhost:8000"
+  local media_env_name=""
+  local default_media_root=""
+  local session_cookie_name="sessionid"
+  local csrf_cookie_name="csrftoken"
 
   case "$module_name" in
     settings_ecatalogus)
@@ -795,6 +822,10 @@ render_instance_settings_files() {
       etl_slave_urls="[os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080')]"
       etl_peers="{os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080'): os.getenv('ETL_MPL_API_TOKEN', 'mpl-token-change-me')}"
       default_db_name="ecatalogus"
+      media_env_name="ECATALOGUS_MEDIA_ROOT"
+      default_media_root="str(BASE_DIR / 'media_instances' / 'ecatalogus')"
+      session_cookie_name="ecatalogus_sessionid"
+      csrf_cookie_name="ecatalogus_csrftoken"
       ;;
     settings_mpl)
       overlay_dir="static_mpl"
@@ -804,6 +835,10 @@ render_instance_settings_files() {
       etl_slave_urls="[]"
       etl_peers="{ETL_MASTER_URL: os.getenv('ETL_MASTER_API_TOKEN', 'ecatalogus-main-token-change-me')}"
       default_db_name="mpl"
+      media_env_name="MPL_MEDIA_ROOT"
+      default_media_root="str(BASE_DIR / 'media_instances' / 'mpl')"
+      session_cookie_name="mpl_sessionid"
+      csrf_cookie_name="mpl_csrftoken"
       ;;
     *)
       warn "No managed instance settings template for ${DJANGO_SETTINGS_MODULE}; skipping settings file rendering"
@@ -855,7 +890,11 @@ STATICFILES_DIRS = [
     BASE_DIR / 'indexerapp/static',
 ]
 
+MEDIA_ROOT = os.getenv('${media_env_name}', ${default_media_root})
+
 SITE_NAME = '${site_name}'
+SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', '${session_cookie_name}')
+CSRF_COOKIE_NAME = os.getenv('CSRF_COOKIE_NAME', '${csrf_cookie_name}')
 
 ETL_ROLE = '${etl_role}'
 ETL_MASTER_URL = ${etl_master_url}
@@ -964,15 +1003,28 @@ link_public_assets() {
     log "DRY-RUN: would refresh media/static symlinks under ${PUBLIC_HTML}"
     return 0
   fi
+  resolve_instance_runtime_paths
+
+  local legacy_media_dir="${APPDIR}/media"
+  if [[ "$MEDIA_DIR" != "$legacy_media_dir" && -d "$legacy_media_dir" ]]; then
+    mkdir -p "$MEDIA_DIR"
+    if [[ -z "$(find "$MEDIA_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+      cp -a "${legacy_media_dir}/." "$MEDIA_DIR/"
+      log "Migrated legacy media from ${legacy_media_dir} to ${MEDIA_DIR}"
+    else
+      log "Skipping legacy media migration because ${MEDIA_DIR} already contains files"
+    fi
+  fi
+
   # Ensure directories exist
   mkdir -p "$PUBLIC_HTML"
-  mkdir -p "$APPDIR/media" "$STATIC_DIR"
+  mkdir -p "$MEDIA_DIR" "$STATIC_DIR"
 
   # Create/replace symlinks (use absolute paths to avoid confusion)
-  if ln -sfn "$APPDIR/media" "$PUBLIC_HTML/media"; then
-    log "Linked ${PUBLIC_HTML}/media -> ${APPDIR}/media"
+  if ln -sfn "$MEDIA_DIR" "$PUBLIC_HTML/media"; then
+    log "Linked ${PUBLIC_HTML}/media -> ${MEDIA_DIR}"
   else
-    warn "Failed to link ${PUBLIC_HTML}/media -> ${APPDIR}/media"
+    warn "Failed to link ${PUBLIC_HTML}/media -> ${MEDIA_DIR}"
   fi
 
   if ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"; then
@@ -982,13 +1034,13 @@ link_public_assets() {
   fi
 
   # Ensure ownership and reasonable permissions on targets
-  if chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "$APPDIR/media" "$STATIC_DIR" 2>/dev/null; then
+  if chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null; then
     log "Set owner ${DEPLOY_USER}:${DEPLOY_USER} on media and static directories"
   fi
   if chown -h "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML/media" "$PUBLIC_HTML/static" 2>/dev/null; then
     log "Set symlink owner for public_html entries"
   fi
-  chmod -R u+rwX,g+rX,o+rX "$APPDIR/media" "$STATIC_DIR" 2>/dev/null || true
+  chmod -R u+rwX,g+rX,o+rX "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
 }
 
 save_effective_config() {
@@ -1010,6 +1062,7 @@ USE_TCP=${USE_TCP}
 PORT=${PORT}
 SOCKET_PATH=${SOCKET_PATH}
 STATIC_DIR=${STATIC_DIR}
+MEDIA_DIR=${MEDIA_DIR}
 PUBLIC_HTML=${PUBLIC_HTML}
 LOG_DIR=${LOG_DIR}
 DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
@@ -1079,6 +1132,7 @@ render_service() {
 
 render_nginx_snippet() {
   local out_snippet="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
+  resolve_instance_runtime_paths
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would render DirectAdmin nginx CUSTOM3 snippet to ${out_snippet}"
     return 0
@@ -1097,7 +1151,7 @@ location /static/ {
 }
 
 location /media/ {
-    alias ${APPDIR}/media/;
+  alias ${MEDIA_DIR}/;
     expires 30d;
     add_header Cache-Control "public, immutable";
 

@@ -5,6 +5,24 @@ The base for the development is the code of the platform, which was previously d
 
 The project aims to create an interactive catalog of Latin liturgical manuscripts available via the website. This catalog will contain a general description of the manuscript, its bibliography, and will also enable the introduction of information about its contents regarding many different disciplines (rites, formulas, liturgy, codicology, musicology, decoration, paleography and others).
 
+## Current local development setup
+
+The repository currently supports a multi-instance local layout from one codebase:
+- Liturgica Poloniae (`ecatalogus.settings_mpl`) on port `8080`
+- eCatalogus (`ecatalogus.settings_ecatalogus`) on port `8000`
+
+Important local rules:
+- each instance has its own database
+- each instance has its own session cookie name
+- each instance has its own `MEDIA_ROOT`
+- local per-instance media lives under `media_instances/<instance_name>/`
+
+Current default local media layout:
+- `media_instances/mpl/`
+- `media_instances/ecatalogus/`
+
+This directory is intentionally gitignored. It is local runtime data, not repository content.
+
 ## Sample screanshoots:
 
 ### Listing and filtering Manuscripts
@@ -97,6 +115,15 @@ Then edit `ecatalogus/settings.py` and set at minimum:
 - `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` — add your domain(s)
 - `DATABASES` — set `NAME`, `USER` and `PASSWORD` for your MariaDB instance
 
+For multi-instance local work, prefer dedicated instance settings files such as:
+- `ecatalogus.settings_mpl`
+- `ecatalogus.settings_ecatalogus`
+
+Those instance settings should define at minimum:
+- distinct database names
+- distinct `SESSION_COOKIE_NAME` and `CSRF_COOKIE_NAME`
+- distinct `MEDIA_ROOT`
+
 ## Following commands must be executed in the project directory!
 ```
 
@@ -143,6 +170,30 @@ python manage.py collectstatic
 ```
 python manage.py runserver 0.0.0.0:8080
 ```
+
+## Local multi-instance run
+
+Use the provided scripts:
+
+```bash
+./run_liturgica.sh
+./run_ecatalogus_main.sh
+```
+
+Expected local URLs:
+- `http://127.0.0.1:8080` for Liturgica Poloniae
+- `http://127.0.0.1:8000` for eCatalogus
+
+## Local ETL smoke test
+
+Minimal end-to-end local ETL verification:
+
+1. open both instances and log in separately
+2. in ETL sync, run `Pull main dictionaries`
+3. run `Load peer manuscripts`
+4. import one manuscript package from MPL to eCatalogus
+5. verify that related media files appear in `media_instances/ecatalogus/`
+6. verify that `/media/...` URLs work on both instances
 
 
 

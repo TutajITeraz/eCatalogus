@@ -167,6 +167,7 @@ indexerapp/migrations/
 ritus_indexer/settings.py
 ecatalogus/settings.py
 media/
+media_instances/
 tailwindcss-linux-x64
 indexerapp/static/tailwindcss
 indexerapp/static/formulas_visualizer/data/coordinates_hdbscan.csv

@@ -11,6 +11,7 @@ CFG_ARG=""
 CONFIG_SOURCE=""
 LOG_FILE=""
 TMP_PRESERVE=""
+MEDIA_DIR=""
 
 usage() {
   cat <<EOF
@@ -22,6 +23,35 @@ timestamp() { date +%Y%m%d-%H%M%S; }
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"; }
 warn() { log "WARNING: $*"; }
 die() { log "ERROR: $*"; exit 1; }
+
+upsert_env_value() {
+  local file=$1
+  local key=$2
+  local value=$3
+  local tmp
+
+  tmp=$(mktemp)
+  if [[ -f "$file" ]]; then
+    awk -v key="$key" -v value="$value" '
+      BEGIN { updated = 0 }
+      $0 ~ "^" key "=" {
+        print key "=" value
+        updated = 1
+        next
+      }
+      { print }
+      END {
+        if (!updated) {
+          print key "=" value
+        }
+      }
+    ' "$file" > "$tmp"
+  else
+    printf '%s=%s\n' "$key" "$value" > "$tmp"
+  fi
+
+  mv "$tmp" "$file"
+}
 
 cleanup() {
   if [[ -n "$TMP_PRESERVE" && -d "$TMP_PRESERVE" ]]; then
@@ -96,6 +126,7 @@ resolve_config() {
   DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ecatalogus.settings}
   SERVICE_SHORTNAME=${SERVICE_SHORTNAME:-}
   PRESERVE_FILES=${PRESERVE_FILES:-}
+  MEDIA_DIR=${MEDIA_DIR:-}
 
   if [[ "$REPO_URL" =~ ^https://github.com/[^[:space:]]+$ && "$REPO_URL" != *.git ]]; then
     REPO_URL="${REPO_URL}.git"
@@ -106,6 +137,27 @@ resolve_config() {
   PUBLIC_HTML=$(expand_template_value "$PUBLIC_HTML")
   STATIC_DIR=$(expand_template_value "$STATIC_DIR")
   LOG_DIR=$(expand_template_value "$LOG_DIR")
+  if [[ -n "$MEDIA_DIR" ]]; then
+    MEDIA_DIR=$(expand_template_value "$MEDIA_DIR")
+  fi
+}
+
+resolve_instance_runtime_paths() {
+  if [[ -n "$MEDIA_DIR" ]]; then
+    return 0
+  fi
+
+  case "$DJANGO_SETTINGS_MODULE" in
+    ecatalogus.settings_mpl)
+      MEDIA_DIR="${APPDIR}/media_instances/mpl"
+      ;;
+    ecatalogus.settings_ecatalogus)
+      MEDIA_DIR="${APPDIR}/media_instances/ecatalogus"
+      ;;
+    *)
+      MEDIA_DIR="${APPDIR}/media"
+      ;;
+  esac
 }
 
 validate_config() {
@@ -198,11 +250,141 @@ guard_unexpected_git_changes() {
 load_runtime_env() {
   local env_file="${APPDIR}/.env"
   [[ -f "$env_file" ]] || die "Runtime env file is missing: ${env_file}"
+  local configured_settings_module="$DJANGO_SETTINGS_MODULE"
   set -a
   # shellcheck source=/dev/null
   source "$env_file"
   set +a
+  if [[ "${DJANGO_SETTINGS_MODULE:-}" != "$configured_settings_module" ]]; then
+    warn "Runtime env DJANGO_SETTINGS_MODULE (${DJANGO_SETTINGS_MODULE:-unset}) differs from deploy config (${configured_settings_module}); using deploy config."
+    DJANGO_SETTINGS_MODULE="$configured_settings_module"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      upsert_env_value "$env_file" "DJANGO_SETTINGS_MODULE" "${DJANGO_SETTINGS_MODULE}"
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$env_file" 2>/dev/null || true
+      chmod 600 "$env_file"
+    fi
+  fi
   export DJANGO_SETTINGS_MODULE
+}
+
+render_instance_settings_files() {
+  local settings_dir="${APPDIR}/ecatalogus"
+  local module_name="${DJANGO_SETTINGS_MODULE##*.}"
+  local settings_file="${settings_dir}/${module_name}.py"
+  local alias_file="${settings_dir}/settings.py"
+  local overlay_dir=""
+  local site_name=""
+  local etl_role=""
+  local etl_master_url="None"
+  local etl_slave_urls="[]"
+  local etl_peers="{}"
+  local default_db_name=""
+  local default_allowed_hosts="${DOMAIN},127.0.0.1,localhost"
+  local default_csrf_origins="https://${DOMAIN},http://${DOMAIN},https://127.0.0.1,http://127.0.0.1"
+  local default_cors_origins="https://${DOMAIN},http://${DOMAIN},http://localhost:3000,http://localhost:8000"
+  local media_env_name=""
+  local default_media_root=""
+  local session_cookie_name="sessionid"
+  local csrf_cookie_name="csrftoken"
+
+  case "$module_name" in
+    settings_ecatalogus)
+      overlay_dir="static_ecatalogus"
+      site_name="eCatalogus"
+      etl_role="master"
+      etl_master_url="None"
+      etl_slave_urls="[os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080')]"
+      etl_peers="{os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080'): os.getenv('ETL_MPL_API_TOKEN', 'mpl-token-change-me')}"
+      default_db_name="ecatalogus"
+      media_env_name="ECATALOGUS_MEDIA_ROOT"
+      default_media_root="str(BASE_DIR / 'media_instances' / 'ecatalogus')"
+      session_cookie_name="ecatalogus_sessionid"
+      csrf_cookie_name="ecatalogus_csrftoken"
+      ;;
+    settings_mpl)
+      overlay_dir="static_mpl"
+      site_name="Liturgica Poloniae"
+      etl_role="slave"
+      etl_master_url="os.getenv('ETL_MASTER_URL', 'http://127.0.0.1:8000')"
+      etl_slave_urls="[]"
+      etl_peers="{ETL_MASTER_URL: os.getenv('ETL_MASTER_API_TOKEN', 'ecatalogus-main-token-change-me')}"
+      default_db_name="mpl"
+      media_env_name="MPL_MEDIA_ROOT"
+      default_media_root="str(BASE_DIR / 'media_instances' / 'mpl')"
+      session_cookie_name="mpl_sessionid"
+      csrf_cookie_name="mpl_csrftoken"
+      ;;
+    *)
+      warn "No managed instance settings template for ${DJANGO_SETTINGS_MODULE}; skipping settings file rendering"
+      return 0
+      ;;
+  esac
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render ${settings_file} and ${alias_file}"
+    return 0
+  fi
+
+  mkdir -p "$settings_dir"
+  cat > "$settings_file" <<EOF
+"""Managed by scripts/deploy_update.sh for ${DOMAIN}."""
+
+from .settings_base import *
+
+
+def _csv_env(name, default=""):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
+
+
+def _bool_env(name, default="0"):
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+SECRET_KEY = os.getenv('SECRET_KEY', '${module_name}-secret-key-change-me')
+DEBUG = _bool_env('DEBUG', '0')
+
+ALLOWED_HOSTS = _csv_env('ALLOWED_HOSTS', '${default_allowed_hosts}')
+CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS', '${default_csrf_origins}')
+CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS', '${default_cors_origins}')
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'CONN_MAX_AGE': 0,
+        'NAME': os.getenv('DATABASE_NAME', '${default_db_name}'),
+        'USER': os.getenv('DATABASE_USER', 'ecatalogus_user'),
+        'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
+        'HOST': os.getenv('DATABASE_HOST', '127.0.0.1'),
+        'PORT': os.getenv('DATABASE_PORT', '3306'),
+    }
+}
+
+STATICFILES_DIRS = [
+    BASE_DIR / '${overlay_dir}',
+    BASE_DIR / 'indexerapp/static',
+]
+
+MEDIA_ROOT = os.getenv('${media_env_name}', ${default_media_root})
+
+SITE_NAME = '${site_name}'
+SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', '${session_cookie_name}')
+CSRF_COOKIE_NAME = os.getenv('CSRF_COOKIE_NAME', '${csrf_cookie_name}')
+
+ETL_ROLE = '${etl_role}'
+ETL_MASTER_URL = ${etl_master_url}
+ETL_SLAVE_URLS = ${etl_slave_urls}
+ETL_API_TOKEN = os.getenv('ETL_API_TOKEN', '${SERVICE_SHORTNAME}-token-change-me')
+ETL_PEER_TOKENS = ${etl_peers}
+EOF
+
+  cat > "$alias_file" <<EOF
+"""Managed default settings alias for ${DOMAIN}."""
+
+from .${module_name} import *
+EOF
+
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "$settings_file" "$alias_file" 2>/dev/null || true
+  chmod 640 "$settings_file" "$alias_file" 2>/dev/null || true
 }
 
 validate_settings_module() {
@@ -230,6 +412,90 @@ run_manage() {
     cd "$APPDIR"
     "$venv_python" manage.py "$@"
   )
+}
+
+run_download_libs() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would run download_libs.sh in ${APPDIR}"
+    return 0
+  fi
+  if [[ -f "${APPDIR}/download_libs.sh" ]]; then
+    log "Running download_libs.sh in ${APPDIR}"
+    (cd "${APPDIR}" && bash ./download_libs.sh)
+  else
+    warn "download_libs.sh not found in ${APPDIR}; skipping frontend asset download"
+  fi
+}
+
+link_public_assets() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would refresh media/static symlinks under ${PUBLIC_HTML}"
+    return 0
+  fi
+  resolve_instance_runtime_paths
+
+  local legacy_media_dir="${APPDIR}/media"
+  if [[ "$MEDIA_DIR" != "$legacy_media_dir" && -d "$legacy_media_dir" ]]; then
+    mkdir -p "$MEDIA_DIR"
+    if [[ -z "$(find "$MEDIA_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+      cp -a "${legacy_media_dir}/." "$MEDIA_DIR/"
+      log "Migrated legacy media from ${legacy_media_dir} to ${MEDIA_DIR}"
+    else
+      log "Skipping legacy media migration because ${MEDIA_DIR} already contains files"
+    fi
+  fi
+
+  mkdir -p "$PUBLIC_HTML"
+  mkdir -p "$MEDIA_DIR" "$STATIC_DIR"
+  ln -sfn "$MEDIA_DIR" "$PUBLIC_HTML/media"
+  ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"
+  chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
+  chown -h "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML/media" "$PUBLIC_HTML/static" 2>/dev/null || true
+  chmod -R u+rwX,g+rX,o+rX "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
+}
+
+render_nginx_snippet() {
+  local out_snippet="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
+  resolve_instance_runtime_paths
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render DirectAdmin nginx CUSTOM3 snippet to ${out_snippet}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/../deploy"
+  cat > "$out_snippet" <<EOF
+location = /favicon.ico {
+    access_log off;
+    log_not_found off;
+}
+
+location /static/ {
+    alias ${PUBLIC_HTML}/static/;
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+}
+
+location /media/ {
+    alias ${MEDIA_DIR}/;
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+
+    sendfile on;
+    tcp_nopush on;
+}
+
+location / {
+    proxy_pass http://unix:${PUBLIC_HTML}/gunicorn.sock;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+}
+EOF
+  log "Rendered DirectAdmin nginx CUSTOM3 snippet to ${out_snippet}"
 }
 
 restart_service() {
@@ -281,6 +547,7 @@ main() {
   fi
 
   restore_preserved_files
+  render_instance_settings_files
   load_runtime_env
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -292,10 +559,13 @@ main() {
     warn "requirements.txt not found in ${APPDIR}; skipping dependency installation"
   fi
 
+  run_download_libs
   validate_settings_module
   run_manage check
   run_manage migrate --noinput
   run_manage collectstatic --noinput
+  link_public_assets
+  render_nginx_snippet
   restart_service
 
   log "Deploy finished successfully"

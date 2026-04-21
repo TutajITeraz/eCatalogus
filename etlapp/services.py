@@ -1,4 +1,6 @@
+import base64
 import json
+import os
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
@@ -27,7 +29,17 @@ ETL_IMPORT_PERMISSION_NAMES = [
 
 
 class ETLImportConflictError(Exception):
-    pass
+    def __init__(self, message, conflict=None, extra_payload=None):
+        super().__init__(message)
+        self.conflict = conflict
+        self.extra_payload = extra_payload or {}
+
+    def to_payload(self):
+        payload = {'detail': str(self)}
+        if self.conflict is not None:
+            payload['conflict'] = self.conflict
+        payload.update(self.extra_payload)
+        return payload
 
 
 def build_status_payload():
@@ -296,6 +308,8 @@ def build_manuscript_export_payload(manuscript_uuid):
     included_pks = {'Manuscripts': {manuscript.pk}}
     exported_models = []
     total_records = 0
+    media_files = []
+    seen_media_paths = set()
 
     for model in ordered_models:
         if model is Manuscripts:
@@ -310,6 +324,7 @@ def build_manuscript_export_payload(manuscript_uuid):
             continue
 
         included_pks[model.__name__] = {record.pk for record in records}
+        _collect_media_files_for_records(model, records, media_files, seen_media_paths)
         serialized = [_serialize_instance(record) for record in records]
         total_records += len(serialized)
         exported_models.append({
@@ -327,10 +342,11 @@ def build_manuscript_export_payload(manuscript_uuid):
         'model_count': len(exported_models),
         'record_count': total_records,
         'models': exported_models,
+        'media_files': media_files,
     }
 
 
-def pull_remote_category(peer_url, category, since=None):
+def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None, keep_local_uuids=None):
     if category not in {'main', 'shared'}:
         raise ValueError(f'Unsupported delta import category: {category}')
 
@@ -352,7 +368,12 @@ def pull_remote_category(peer_url, category, since=None):
     )
 
     with transaction.atomic():
-        import_summary = import_delta_payload(category, export_payload)
+        import_summary = import_delta_payload(
+            category,
+            export_payload,
+            force_remote_uuids=force_remote_uuids,
+            keep_local_uuids=keep_local_uuids,
+        )
         delete_summary = apply_deleted_records_payload(category, deleted_payload)
 
     return {
@@ -382,19 +403,98 @@ def pull_remote_manuscript(peer_url, manuscript_uuid):
 
 
 @transaction.atomic
-def import_delta_payload(category, payload):
+def import_delta_payload(category, payload, force_remote_uuids=None, keep_local_uuids=None):
     if category not in {'main', 'shared'}:
         raise ValueError(f'Unsupported delta import category: {category}')
 
-    return _import_models_payload(category, payload)
+    return _import_models_payload(
+        category,
+        payload,
+        force_remote_uuids=force_remote_uuids,
+        keep_local_uuids=keep_local_uuids,
+    )
 
 
 @transaction.atomic
 def import_manuscript_payload(payload):
-    return _import_models_payload('ms', payload)
+    summary = _import_models_payload('ms', payload)
+    summary['media_summary'] = _import_media_files(payload.get('media_files', []))
+    return summary
 
 
-def _import_models_payload(category, payload):
+@transaction.atomic
+def resolve_shared_conflict(
+    peer_url,
+    category,
+    conflict_payload,
+    resolution,
+    since=None,
+    force_remote_uuids=None,
+    keep_local_uuids=None,
+):
+    if resolution == 'close':
+        return {
+            'resolution': 'close',
+            'applied': False,
+            'force_remote_uuids': sorted(_normalize_resolution_uuid_set(force_remote_uuids)),
+            'keep_local_uuids': sorted(_normalize_resolution_uuid_set(keep_local_uuids)),
+        }
+
+    if resolution not in {'apply_remote', 'keep_local'}:
+        raise ValueError(f'Unsupported conflict resolution: {resolution}')
+
+    if category != 'shared':
+        raise ValueError('Conflict resolution workflow currently supports only shared category pulls.')
+
+    if not peer_url:
+        raise ValueError('Conflict resolution requires a peer URL.')
+
+    if not isinstance(conflict_payload, dict):
+        raise ValueError('Conflict payload must be an object.')
+
+    object_uuid = conflict_payload.get('object_uuid')
+    if not object_uuid:
+        raise ValueError('Conflict payload must include object_uuid.')
+
+    force_remote_uuids = _normalize_resolution_uuid_set(force_remote_uuids)
+    keep_local_uuids = _normalize_resolution_uuid_set(keep_local_uuids)
+
+    if resolution == 'apply_remote':
+        keep_local_uuids.discard(object_uuid)
+        force_remote_uuids.add(object_uuid)
+    elif resolution == 'keep_local':
+        force_remote_uuids.discard(object_uuid)
+        keep_local_uuids.add(object_uuid)
+
+    try:
+        pull_result = pull_remote_category(
+            peer_url,
+            category,
+            since=since,
+            force_remote_uuids=force_remote_uuids,
+            keep_local_uuids=keep_local_uuids,
+        )
+    except ETLImportConflictError as exc:
+        raise ETLImportConflictError(
+            str(exc),
+            conflict=exc.conflict,
+            extra_payload={
+                'force_remote_uuids': sorted(force_remote_uuids),
+                'keep_local_uuids': sorted(keep_local_uuids),
+            },
+        ) from exc
+
+    return {
+        'resolution': resolution,
+        'applied': resolution == 'apply_remote',
+        'kept_local': resolution == 'keep_local',
+        'pull_result': pull_result,
+        'force_remote_uuids': sorted(force_remote_uuids),
+        'keep_local_uuids': sorted(keep_local_uuids),
+    }
+
+
+def _import_models_payload(category, payload, force_remote_uuids=None, keep_local_uuids=None):
     if category not in {'main', 'shared', 'ms'}:
         raise ValueError(f'Unsupported delta import category: {category}')
 
@@ -404,6 +504,9 @@ def _import_models_payload(category, payload):
     model_payloads = payload.get('models')
     if not isinstance(model_payloads, list):
         raise ValueError('Request body must include a models list.')
+
+    force_remote_uuids = set(force_remote_uuids or [])
+    keep_local_uuids = set(keep_local_uuids or [])
 
     summary = {
         'category': category,
@@ -431,7 +534,13 @@ def _import_models_payload(category, payload):
         if not isinstance(records, list):
             raise ValueError(f'Model {model_label} results must be a list.')
 
-        model_summary = _import_model_records(model, category, records)
+        model_summary = _import_model_records(
+            model,
+            category,
+            records,
+            force_remote_uuids=force_remote_uuids,
+            keep_local_uuids=keep_local_uuids,
+        )
         summary['model_count'] += 1
         summary['created'] += model_summary['created']
         summary['updated'] += model_summary['updated']
@@ -441,7 +550,7 @@ def _import_models_payload(category, payload):
     return summary
 
 
-def _import_model_records(model, category, records):
+def _import_model_records(model, category, records, force_remote_uuids=None, keep_local_uuids=None):
     model_summary = {
         'model': model._meta.label,
         'created': 0,
@@ -449,6 +558,9 @@ def _import_model_records(model, category, records):
         'skipped': 0,
         'count': len(records),
     }
+
+    force_remote_uuids = set(force_remote_uuids or [])
+    keep_local_uuids = set(keep_local_uuids or [])
 
     for record in records:
         if not isinstance(record, dict):
@@ -461,8 +573,18 @@ def _import_model_records(model, category, records):
         attrs, m2m_values = _prepare_import_values(model, record)
         existing = model.objects.filter(uuid=record_uuid).first()
 
+        if category == 'shared' and existing is not None and record_uuid in keep_local_uuids:
+            model_summary['skipped'] += 1
+            continue
+
         if category == 'shared' and existing is not None:
-            _check_shared_conflict(existing, attrs, m2m_values)
+            _check_shared_conflict(
+                existing,
+                attrs,
+                m2m_values,
+                incoming_record=record,
+                force_remote=record_uuid in force_remote_uuids,
+            )
 
         if existing is None:
             instance = model.objects.create(**_get_create_values(model, attrs))
@@ -605,12 +727,24 @@ def _get_comparable_instance_value(instance, key):
     return current_value
 
 
-def _check_shared_conflict(existing, attrs, m2m_values):
+def _check_shared_conflict(existing, attrs, m2m_values, incoming_record=None, force_remote=False):
+    if force_remote:
+        return
+
     incoming_version = attrs.get('version')
     current_version = getattr(existing, 'version', None)
 
     if incoming_version is None:
-        raise ETLImportConflictError(f'Shared import for {existing._meta.label} requires version.')
+        raise ETLImportConflictError(
+            f'Shared import for {existing._meta.label} requires version.',
+            conflict=_build_shared_conflict_payload(
+                existing,
+                incoming_record or {},
+                reason='missing_version',
+                incoming_version=incoming_version,
+                current_version=current_version,
+            ),
+        )
 
     if current_version is None:
         return
@@ -618,13 +752,77 @@ def _check_shared_conflict(existing, attrs, m2m_values):
     if incoming_version < current_version:
         raise ETLImportConflictError(
             f'Conflict for {existing._meta.label} uuid={existing.uuid}: incoming version {incoming_version} '
-            f'is older than current version {current_version}.'
+            f'is older than current version {current_version}.',
+            conflict=_build_shared_conflict_payload(
+                existing,
+                incoming_record or {},
+                reason='stale_version',
+                incoming_version=incoming_version,
+                current_version=current_version,
+            ),
         )
 
     if incoming_version == current_version and not _is_noop(existing, attrs, m2m_values):
         raise ETLImportConflictError(
-            f'Conflict for {existing._meta.label} uuid={existing.uuid}: incoming payload differs at version {incoming_version}.'
+            f'Conflict for {existing._meta.label} uuid={existing.uuid}: incoming payload differs at version {incoming_version}.',
+            conflict=_build_shared_conflict_payload(
+                existing,
+                incoming_record or {},
+                reason='payload_diff',
+                incoming_version=incoming_version,
+                current_version=current_version,
+            ),
         )
+
+
+def _build_shared_conflict_payload(existing, incoming_record, reason, incoming_version, current_version):
+    local_record = _serialize_instance(existing)
+    differences = []
+
+    for key in sorted(set(local_record.keys()) | set(incoming_record.keys())):
+        local_value = _normalize_conflict_value(local_record.get(key))
+        incoming_value = _normalize_conflict_value(incoming_record.get(key))
+        if local_value == incoming_value:
+            continue
+
+        differences.append(
+            {
+                'field': key,
+                'local': local_value,
+                'incoming': incoming_value,
+            }
+        )
+
+    return {
+        'reason': reason,
+        'model': existing._meta.label,
+        'object_uuid': str(existing.uuid),
+        'incoming_version': incoming_version,
+        'current_version': current_version,
+        'local_record': local_record,
+        'incoming_record': incoming_record,
+        'differences': differences,
+    }
+
+
+def _normalize_conflict_value(value):
+    if isinstance(value, list):
+        return sorted(_normalize_conflict_value(item) for item in value)
+    if isinstance(value, dict):
+        return {
+            str(key): _normalize_conflict_value(item)
+            for key, item in sorted(value.items())
+        }
+    return value
+
+
+def _normalize_resolution_uuid_set(uuid_values):
+    normalized = set()
+    for uuid_value in uuid_values or []:
+        if uuid_value is None:
+            continue
+        normalized.add(str(uuid_value))
+    return normalized
 
 
 def _get_category_models_in_dependency_order(category):
@@ -741,6 +939,90 @@ def _serialize_instance(instance):
             payload[f'{field.name}_uuids'] = []
 
     return payload
+
+
+def _collect_media_files_for_records(model, records, media_files, seen_media_paths):
+    file_fields = [
+        field for field in model._meta.concrete_fields
+        if field.get_internal_type() in {'FileField', 'ImageField'}
+    ]
+    if not file_fields:
+        return
+
+    for record in records:
+        for field in file_fields:
+            field_file = getattr(record, field.name)
+            file_name = getattr(field_file, 'name', None)
+            if not file_name or file_name in seen_media_paths:
+                continue
+            if not field_file.storage.exists(file_name):
+                continue
+
+            with field_file.storage.open(file_name, 'rb') as handle:
+                content = handle.read()
+
+            media_files.append({
+                'path': file_name,
+                'content_base64': base64.b64encode(content).decode('ascii'),
+            })
+            seen_media_paths.add(file_name)
+
+
+def _import_media_files(media_files):
+    summary = {
+        'count': 0,
+        'created': 0,
+        'updated': 0,
+        'skipped': 0,
+    }
+    if not media_files:
+        return summary
+    if not isinstance(media_files, list):
+        raise ValueError('media_files must be a list.')
+
+    for media_file in media_files:
+        if not isinstance(media_file, dict):
+            raise ValueError('Each media file entry must be an object.')
+
+        relative_path = _normalize_media_relative_path(media_file.get('path'))
+        encoded_content = media_file.get('content_base64')
+        if not relative_path or encoded_content is None:
+            raise ValueError('Each media file entry must include path and content_base64.')
+
+        try:
+            content = base64.b64decode(encoded_content)
+        except Exception as exc:
+            raise ValueError(f'Invalid base64 payload for media file {relative_path}.') from exc
+
+        target_path = os.path.join(settings.MEDIA_ROOT, *relative_path.split('/'))
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+        summary['count'] += 1
+        if os.path.exists(target_path):
+            with open(target_path, 'rb') as existing_handle:
+                if existing_handle.read() == content:
+                    summary['skipped'] += 1
+                    continue
+            summary['updated'] += 1
+        else:
+            summary['created'] += 1
+
+        with open(target_path, 'wb') as target_handle:
+            target_handle.write(content)
+
+    return summary
+
+
+def _normalize_media_relative_path(path):
+    if not path:
+        return None
+
+    normalized = str(path).replace('\\', '/').lstrip('/')
+    parts = [part for part in normalized.split('/') if part]
+    if not parts or any(part in {'.', '..'} for part in parts):
+        raise ValueError(f'Invalid media file path: {path}')
+
+    return '/'.join(parts)
 
 
 def _serialize_value(value):

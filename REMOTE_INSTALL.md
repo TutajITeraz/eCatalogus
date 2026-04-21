@@ -8,15 +8,15 @@ Goal
  - Offer an interactive installer (uses `whiptail` if available, falls back to stdin prompts).
 
 What is included
- - `scripts/install_instance.sh` — installer that validates config early, clones or updates the repo, creates a virtualenv, installs dependencies, runs `check`, `migrate`, `collectstatic`, refreshes symlinks, and writes a per-instance config under `scripts/config/`.
- - `scripts/deploy_update.sh` — update script that validates config, preserves local files listed in the config, refuses unexpected dirty working trees, runs `check`, `migrate`, `collectstatic`, and restarts the service when possible.
+ - `scripts/install_instance.sh` — installer that validates config early, clones or updates the repo, creates a virtualenv, installs dependencies, downloads frontend libraries, runs `check`, `migrate`, `collectstatic`, refreshes symlinks/permissions, renders managed per-instance settings files, and writes a per-instance config under `scripts/config/`.
+ - `scripts/deploy_update.sh` — update script that validates config, preserves local files listed in the config, refuses unexpected dirty working trees, renders managed per-instance settings files, downloads frontend libraries, runs `check`, `migrate`, `collectstatic`, refreshes symlinks/permissions, and restarts the service when possible.
  - `scripts/config/example.env` — example environment file showing configurable values (domain, repo URL, branch, paths, preserve list, socket/port, etc.).
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root.
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root (or use `--install-unit` when running the installer with sudo/root).
 
 Design decisions
  - Scripts always use `git` to obtain code. On existing checkouts they preserve configured files before reset and abort if they detect unexpected local changes.
- - Local instance-specific files (for example `settings.py`, `config.js`) are preserved by copying them out before `git reset` and restoring them afterwards. Configure the list via `PRESERVE_FILES` in the env file.
+ - Local instance-specific files that are truly local-only can be preserved by copying them out before `git reset` and restoring them afterwards. Configure the list via `PRESERVE_FILES` in the env file. Do not preserve managed files such as `ecatalogus/settings.py`, `ecatalogus/settings_mpl.py`, `ecatalogus/settings_ecatalogus.py`, or repo-owned overlay static files.
  - By default the service binds to a Unix socket (recommended for Nginx). TCP mode is supported; the installer checks port availability when TCP is selected.
  - The scripts never run `makemigrations` on the server. They only apply committed migrations.
  - If you pass a config file to `install_instance.sh`, it is used as-is unless you explicitly request `--edit-config`.
@@ -79,8 +79,43 @@ Logging
  - Each run writes a timestamped log into the instance `logs/` directory (configured by `LOG_DIR` in the env file).
 
 Notes
- - The installer now validates critical config values before it touches sockets, git, or the filesystem, so an empty `APPDIR` or `REPO_URL` fails immediately instead of falling through.
- - The installer and deploy script no longer generate settings modules on the server. Use the committed Django settings module configured by `DJANGO_SETTINGS_MODULE`.
+ - The installer validates critical config values before it touches sockets, git, or the filesystem, so an empty `APPDIR` or `REPO_URL` fails immediately instead of falling through.
+ - The installer and deploy script render managed instance settings files on the server based on `DJANGO_SETTINGS_MODULE`. This keeps multi-instance overlays (`static_mpl/`, `static_ecatalogus/`) active even when instance settings files are gitignored.
+ - For multi-instance setups, keep media separated per instance. A recommended pattern is `APPDIR/media_instances/<instance_name>/` and setting `MEDIA_ROOT` accordingly in each managed settings file.
+ - The install and deploy scripts now also render per-instance cookie names and per-instance `MEDIA_ROOT` defaults for the managed `settings_mpl` and `settings_ecatalogus` modules.
+ - When upgrading an older single-instance install, the scripts can migrate files from legacy `APPDIR/media` into the new per-instance media directory if the new target is still empty.
  - The deploy script restarts the service when it can. If sudo is unavailable, it prints a warning so you can restart the service manually.
+
+Adding a new instance
+ - 1. Create the domain in DirectAdmin so the domain directories already exist.
+ - 2. Copy `scripts/config/example.env` to `scripts/config/<domain>.env` and edit at minimum: `DOMAIN`, `DEPLOY_USER`, `REPO_URL`, `SERVICE_SHORTNAME`, `DJANGO_SETTINGS_MODULE`, and optionally `PYTHON_BIN`, `SOCKET_PATH`, `PORT`, `PUBLIC_HTML`.
+ - 3. Choose the instance type by setting `DJANGO_SETTINGS_MODULE`:
+	 - `ecatalogus.settings_ecatalogus` for eCatalogus branding and `static_ecatalogus/`
+	 - `ecatalogus.settings_mpl` for Liturgica Poloniae branding and `static_mpl/`
+ - 3a. Assign a dedicated media directory for the instance, for example:
+	 - `APPDIR/media_instances/ecatalogus/`
+	 - `APPDIR/media_instances/mpl/`
+ - 3b. Ensure instance settings also use distinct cookie names when multiple instances share one host:
+	 - `SESSION_COOKIE_NAME`
+	 - `CSRF_COOKIE_NAME`
+ - 4. Keep `PRESERVE_FILES` minimal. Prefer preserving only truly local files such as `local_settings.py`. Do not include `config.js`, `settings.py`, or overlay static files unless you intentionally maintain custom, non-repo variants.
+ - 5. Run the installer:
+	 - `./scripts/install_instance.sh scripts/config/<domain>.env --action full --non-interactive`
+ - 6. To install and enable the generated systemd unit immediately:
+	 - `sudo ./scripts/install_instance.sh scripts/config/<domain>.env --action full --non-interactive --install-unit`
+ - 7. Verify the selected overlay before opening the site:
+	 - `source .venv/bin/activate`
+	 - `export DJANGO_SETTINGS_MODULE=<value from config>`
+	 - `python manage.py findstatic js/config.js img/logo_flat.svg --verbosity 2`
+ - 8. Confirm that `public_html/static` points to `static_assets` and that collected files were refreshed:
+	 - `readlink "$PUBLIC_HTML/static"`
+	 - `ls -l "$APPDIR/static_assets/img/logo_flat.svg"`
+ - 9. For later updates use:
+	 - `./scripts/deploy_update.sh scripts/config/<domain>.env`
+
+Upgrading an older single-instance install
+ - If the old install served media directly from `APPDIR/media`, run `./scripts/deploy_update.sh scripts/config/<domain>.env` first.
+ - The script will refresh managed settings, point symlinks at the per-instance media directory, and render an updated DirectAdmin CUSTOM3 snippet in `deploy/`.
+ - If your server already has an old CUSTOM3 snippet with `alias .../media/`, update that snippet once so Nginx points to the new per-instance media directory, then run the DirectAdmin config rewrite step.
 
 
