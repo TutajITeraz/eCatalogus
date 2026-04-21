@@ -43,8 +43,7 @@ ms_formulas_graph_init = function() {
 
     let originalData = [];
 
-    $('#genreSelect').on('select2:select', function(e) {
-        const genreId = e.params.data.id;
+    function configureTraditionFilter(genreId) {
         $('#traditionFilter').val(null).trigger('change');
         $('#traditionFilter').select2({
             ajax: {
@@ -55,7 +54,6 @@ ms_formulas_graph_init = function() {
                 },
                 processResults: function(data) {
                     console.log('Tradition filter data:', data.results);
-                    // Update traditionColors and traditionMap
                     traditionMap = {};
                     data.results.forEach((trad, index) => {
                         traditionMap[trad.id] = trad.text;
@@ -63,7 +61,6 @@ ms_formulas_graph_init = function() {
                             traditionColors[trad.text] = colorPalette[index % colorPalette.length];
                         }
                     });
-                    // Add Unattributed to the filter options
                     traditionMap['Unattributed'] = 'Unattributed';
                     data.results.push({ id: 'Unattributed', text: 'Unattributed' });
                     return {
@@ -73,6 +70,32 @@ ms_formulas_graph_init = function() {
                 }
             }
         });
+    }
+
+    function selectInitialGenre() {
+        $.ajax({
+            url: pageRoot + '/liturgical-genres-autocomplete/',
+            dataType: 'json',
+            xhrFields: {
+                withCredentials: true
+            }
+        }).done(function(data) {
+            const firstGenre = data?.results?.[0];
+            if (!firstGenre || $('#genreSelect').val()) {
+                return;
+            }
+
+            const option = new Option(firstGenre.text, firstGenre.id, true, true);
+            $('#genreSelect').append(option).trigger('change');
+            configureTraditionFilter(firstGenre.id);
+        });
+    }
+
+    selectInitialGenre();
+
+    $('#genreSelect').on('select2:select', function(e) {
+        const genreId = e.params.data.id;
+        configureTraditionFilter(genreId);
     });
 
     $('#identifyTraditionsBtn').on('click', function() {
