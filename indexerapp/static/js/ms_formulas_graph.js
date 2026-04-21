@@ -6,9 +6,15 @@ const colorPalette = [
 ];
 
 // Export configuration
+const CHART_MIN_WIDTH   = 720;   // Minimum on-screen plot width
+const CHART_STEP_WIDTH  = 28;    // Preferred pixels per unique X position on screen
 const EXPORT_SCALE      = 1.5;   // PNG upscale factor
-const EXPORT_ROW_HEIGHT = 28;    // Pixels per unique Table row in exported SVG
-const EXPORT_MIN_WIDTH  = 1400;  // Minimum width of exported SVG
+const EXPORT_ROW_HEIGHT = 350;    // Pixels per unique Table row in exported SVG
+const EXPORT_MIN_WIDTH  = 520;   // Minimum width of exported SVG
+const EXPORT_POINT_RADIUS = 5;   // Exported point radius
+const EXPORT_POINT_GAP = 2;      // Minimal visible gap between touching exported points
+const EXPORT_STEP_WIDTH = EXPORT_POINT_RADIUS * 2 + EXPORT_POINT_GAP;
+const EXPORT_LABEL_OFFSET = EXPORT_POINT_RADIUS + 10;  // Vertical offset keeping exported labels clear of markers
 
 let lastFormulasData = [];       // Stores the last rendered dataset for export
 let traditionColors = {
@@ -218,6 +224,18 @@ ms_formulas_graph_init = function() {
         );
     }
 
+    function getChartWidth(data, valueAccessor, margin) {
+        const chartElement = document.getElementById('chart');
+        const containerWidth = chartElement
+            ? chartElement.getBoundingClientRect().width
+            : getWidth();
+        const uniquePositions = new Set(data.map(valueAccessor)).size || 1;
+        const preferredWidth = Math.max(CHART_MIN_WIDTH, uniquePositions * CHART_STEP_WIDTH);
+        const availableWidth = Math.max(CHART_MIN_WIDTH, containerWidth - margin.left - margin.right);
+
+        return Math.min(availableWidth, preferredWidth);
+    }
+
     function showStats(data) {
         console.log('showStats called with data:', data);
         console.log('Current traditionColors:', traditionColors);
@@ -369,9 +387,9 @@ ms_formulas_graph_init = function() {
                 right: 30,
                 bottom: 40,
                 left: 300
-            },
-            width = getWidth() - margin.left - margin.right - 50 - 340,
-            height = chartHeight - margin.top - margin.bottom;
+            };
+        const width = getChartWidth(data, d => d.sequence_in_ms, margin);
+        const height = chartHeight - margin.top - margin.bottom;
 
         $("#chart").empty();
 
@@ -656,7 +674,8 @@ function wrap(text, width) {
 function buildFormulasExportSvg(data) {
     const uniqueTables = [...new Set(data.map(d => d.Table))];
     const margin = { top: 20, right: 30, bottom: 40, left: 300 };
-    const width  = Math.max(EXPORT_MIN_WIDTH, d3.extent(data, d => d.sequence_in_ms)[1] * 40);
+    const uniquePositions = new Set(data.map(d => d.sequence_in_ms)).size || 1;
+    const width  = Math.max(EXPORT_MIN_WIDTH, uniquePositions * EXPORT_STEP_WIDTH);
     const height = uniqueTables.length * EXPORT_ROW_HEIGHT;
 
     const container = document.createElement('div');
@@ -682,6 +701,23 @@ function buildFormulasExportSvg(data) {
 
     const color = d3.scaleOrdinal(d3.schemeCategory10).domain(formulaIds);
     const groupedData = d3.group(data, d => d.formula_id, d => d.Table);
+
+    function appendExportLabel(xPos, yPos, labelText, labelColor) {
+        g.append("text")
+            .attr("x", xPos)
+            .attr("y", yPos - EXPORT_LABEL_OFFSET)
+            .attr("fill", labelColor)
+            .attr("font-size", 11)
+            .attr("font-weight", 600)
+            .attr("text-anchor", "start")
+            .attr("dominant-baseline", "middle")
+            .attr("stroke", "white")
+            .attr("stroke-width", 2)
+            .attr("paint-order", "stroke fill")
+            .attr("stroke-linejoin", "round")
+            .attr("transform", `rotate(-90, ${xPos}, ${yPos - EXPORT_LABEL_OFFSET})`)
+            .text(labelText);
+    }
 
     formulaIds.forEach(formula_id => {
         const values = data.filter(d => d.formula_id === formula_id);
@@ -721,10 +757,14 @@ function buildFormulasExportSvg(data) {
         g.selectAll(null)
             .data(values)
             .enter().append("circle")
-            .attr("r", 5)
+            .attr("r", EXPORT_POINT_RADIUS)
             .attr("cx", d => x(d.sequence_in_ms))
             .attr("cy", d => y(d.Table))
             .attr("fill", lineColor);
+
+        values.forEach(value => {
+            appendExportLabel(x(value.sequence_in_ms), y(value.Table), formula_id, lineColor);
+        });
     });
 
     g.append("g").attr("class", "y axis")
