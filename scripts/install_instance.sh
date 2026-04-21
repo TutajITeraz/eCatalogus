@@ -21,6 +21,8 @@ PYTHON_BIN=""
 ENV_FILE=""
 SYSTEM_PYTHON_BIN=""
 MEDIA_DIR=""
+DB_CHARSET="utf8mb4"
+DB_COLLATION="utf8mb4_unicode_ci"
 
 usage() {
   cat <<EOF
@@ -882,6 +884,10 @@ DATABASES = {
         'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
         'HOST': os.getenv('DATABASE_HOST', '127.0.0.1'),
         'PORT': os.getenv('DATABASE_PORT', '3306'),
+    'OPTIONS': {
+      'charset': '${DB_CHARSET}',
+      'init_command': 'SET NAMES ${DB_CHARSET} COLLATE ${DB_COLLATION}',
+    },
     }
 }
 
@@ -996,6 +1002,77 @@ run_manage() {
     cd "$APPDIR"
     "$venv_python" manage.py "$@"
   )
+}
+
+get_django_database_config() {
+  local venv_python="${VENV_PATH}/bin/python"
+  [[ -x "$venv_python" ]] || die "Virtualenv Python not found: ${venv_python}"
+  PYTHONPATH="$APPDIR" "$venv_python" - <<'PY'
+import importlib
+import os
+
+module_name = os.environ['DJANGO_SETTINGS_MODULE']
+settings = importlib.import_module(module_name)
+database = settings.DATABASES['default']
+print(database.get('NAME', ''))
+print(database.get('USER', ''))
+print(database.get('PASSWORD', ''))
+print(database.get('HOST', ''))
+print(database.get('PORT', ''))
+PY
+}
+
+select_mysql_client() {
+  if command -v mysql >/dev/null 2>&1; then
+    printf '%s\n' "$(command -v mysql)"
+    return 0
+  fi
+  if command -v mariadb >/dev/null 2>&1; then
+    printf '%s\n' "$(command -v mariadb)"
+    return 0
+  fi
+  return 1
+}
+
+ensure_database_charset() {
+  local mysql_client
+  mysql_client=$(select_mysql_client) || die "mysql/mariadb client not found; cannot enforce database charset"
+
+  local db_name db_user db_password db_host db_port
+  mapfile -t db_config < <(get_django_database_config)
+  db_name=${db_config[0]:-}
+  db_user=${db_config[1]:-}
+  db_password=${db_config[2]:-}
+  db_host=${db_config[3]:-127.0.0.1}
+  db_port=${db_config[4]:-3306}
+
+  [[ -n "$db_name" ]] || die "Database name is empty; cannot enforce database charset"
+  [[ -n "$db_user" ]] || die "Database user is empty; cannot enforce database charset"
+
+  local mysql_args=(--default-character-set="$DB_CHARSET" -h "$db_host" -P "$db_port" -u "$db_user")
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would create/alter database ${db_name} with ${DB_CHARSET}/${DB_COLLATION} and convert all existing tables"
+    return 0
+  fi
+
+  MYSQL_PWD="$db_password" "$mysql_client" "${mysql_args[@]}" <<SQL
+CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET ${DB_CHARSET} COLLATE ${DB_COLLATION};
+ALTER DATABASE \`$db_name\` CHARACTER SET ${DB_CHARSET} COLLATE ${DB_COLLATION};
+SQL
+
+  local table_name
+  while IFS= read -r table_name; do
+    [[ -n "$table_name" ]] || continue
+    MYSQL_PWD="$db_password" "$mysql_client" "${mysql_args[@]}" <<SQL
+ALTER TABLE \`$db_name\`.\`$table_name\` CONVERT TO CHARACTER SET ${DB_CHARSET} COLLATE ${DB_COLLATION};
+SQL
+  done < <(
+    MYSQL_PWD="$db_password" "$mysql_client" "${mysql_args[@]}" -N -s -e \
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='${db_name}' AND TABLE_TYPE='BASE TABLE'"
+  )
+
+  log "Ensured database ${db_name} and existing tables use ${DB_CHARSET}/${DB_COLLATION}"
 }
 
 link_public_assets() {
@@ -1297,6 +1374,8 @@ run_action_full() {
   install_dependencies
   update_gauge 55 "Fetching frontend libraries"
   run_download_libs
+  update_gauge 60 "Enforcing database charset"
+  ensure_database_charset
   update_gauge 65 "Validating settings"
   validate_settings_module
   update_gauge 75 "Running Django checks"
