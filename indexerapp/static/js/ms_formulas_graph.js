@@ -5,25 +5,21 @@ const colorPalette = [
     '#aaffc3', '#808000', '#ffd8b1'
 ];
 
-// Export configuration
-const CHART_MIN_WIDTH   = 720;   // Minimum on-screen plot width
-const CHART_STEP_WIDTH  = 28;    // Preferred pixels per unique X position on screen
-const EXPORT_SCALE      = 1.5;   // PNG upscale factor
-const EXPORT_ROW_HEIGHT = 350;    // Pixels per unique Table row in exported SVG
-const EXPORT_MIN_WIDTH  = 520;   // Minimum width of exported SVG
-const EXPORT_POINT_RADIUS = 5;   // Exported point radius
-const EXPORT_POINT_GAP = 2;      // Minimal visible gap between touching exported points
-const EXPORT_STEP_WIDTH = EXPORT_POINT_RADIUS * 2 + EXPORT_POINT_GAP;
-const EXPORT_LABEL_OFFSET = EXPORT_POINT_RADIUS + 10;  // Vertical offset keeping exported labels clear of markers
+const EXPORT_SCALE = 1.5;
 
-let lastFormulasData = [];       // Stores the last rendered dataset for export
+let lastFormulasData = [];
 let traditionColors = {
-    'Multiple': '#000075',
-    'Unattributed': '#a9a9a9'
+    Multiple: '#000075',
+    Unattributed: '#a9a9a9'
 };
-let traditionMap = {}; // Store id-to-text mapping for traditions
+let traditionMap = {};
+let currentChartType = 'parallel';
 
 ms_formulas_graph_init = function() {
+    let originalData = [];
+    let leftId = -1;
+    let rightId = -1;
+
     $('#traditionFilter').select2();
     $('#genreSelect').select2({
         ajax: {
@@ -41,7 +37,16 @@ ms_formulas_graph_init = function() {
         }
     });
 
-    let originalData = [];
+    $('#chartTypeSelect').select2({
+        minimumResultsForSearch: Infinity,
+        data: [
+            { id: 'parallel', text: 'Parallel Coordinates Plot' },
+            { id: 'dot_matrix', text: 'Dot Plot Matrix' },
+            { id: 'circos', text: 'Circos Plot' },
+            { id: 'sankey', text: 'Sankey Diagram' }
+        ]
+    });
+    $('#chartTypeSelect').val(currentChartType).trigger('change');
 
     function configureTraditionFilter(genreId) {
         $('#traditionFilter').val(null).trigger('change');
@@ -53,15 +58,14 @@ ms_formulas_graph_init = function() {
                     withCredentials: true
                 },
                 processResults: function(data) {
-                    console.log('Tradition filter data:', data.results);
                     traditionMap = {};
-                    data.results.forEach((trad, index) => {
-                        traditionMap[trad.id] = trad.text;
-                        if (!traditionColors[trad.text]) {
-                            traditionColors[trad.text] = colorPalette[index % colorPalette.length];
+                    data.results.forEach((tradition, index) => {
+                        traditionMap[tradition.id] = tradition.text;
+                        if (!traditionColors[tradition.text]) {
+                            traditionColors[tradition.text] = colorPalette[index % colorPalette.length];
                         }
                     });
-                    traditionMap['Unattributed'] = 'Unattributed';
+                    traditionMap.Unattributed = 'Unattributed';
                     data.results.push({ id: 'Unattributed', text: 'Unattributed' });
                     return {
                         results: data.results,
@@ -91,35 +95,257 @@ ms_formulas_graph_init = function() {
         });
     }
 
-    selectInitialGenre();
-
-    $('#genreSelect').on('select2:select', function(e) {
-        const genreId = e.params.data.id;
-        configureTraditionFilter(genreId);
-    });
-
-    $('#identifyTraditionsBtn').on('click', function() {
-        console.log('Identify Traditions clicked, originalData:', originalData);
-        showStats(originalData);
-        renderFilteredChart();
-    });
-
     function setTableHeight() {
-        var windowHeight = $(window).height();
-        var windowWidth = $(window).width();
-        let tableHeight;
-        if (windowWidth > 640) {
-            tableHeight = windowHeight - 400;
-        } else {
-            tableHeight = windowHeight - 370;
-        }
+        const windowHeight = $(window).height();
+        const windowWidth = $(window).width();
+        const tableHeight = windowWidth > 640 ? windowHeight - 400 : windowHeight - 370;
         $('#chart').css('height', tableHeight + 'px');
     }
+
+    function showSpinner(text) {
+        $('#chart').html(`<div class="text-center py-10 text-gray-600 font-semibold">${text}...</div>`);
+    }
+
+    function showEmptyGraph(message) {
+        $('#chart').html(`<div class="text-center py-10 text-gray-600 font-semibold">${message}</div>`);
+    }
+
+    function renderActiveChart(data) {
+        lastFormulasData = data;
+        currentChartType = $('#chartTypeSelect').val() || 'parallel';
+
+        if (!data.length) {
+            showEmptyGraph('No data available for the selected filters.');
+            return;
+        }
+
+        window.FormulasVisualizations.render({
+            type: currentChartType,
+            containerSelector: '#chart',
+            data,
+            colorizeTraditions: $('#colorizeTraditions').is(':checked'),
+            traditionColors,
+            colorPalette
+        });
+    }
+
+    function renderFilteredChart() {
+        showSpinner('Updating graph');
+        const selectedIds = $('#traditionFilter').val() || [];
+        const selectedTraditions = selectedIds.map(id => traditionMap[id] || id);
+        let filteredData = originalData;
+
+        if (selectedTraditions.length > 0) {
+            filteredData = originalData.filter(item => {
+                const traditions = item.formula_traditions || [];
+                if (selectedTraditions.includes('Unattributed') && selectedTraditions.length === 1) {
+                    return traditions.length === 0;
+                }
+                if (selectedTraditions.includes('Unattributed')) {
+                    return traditions.length === 0 || selectedTraditions.some(tradition => tradition !== 'Unattributed' && traditions.includes(tradition));
+                }
+                return selectedTraditions.some(tradition => traditions.includes(tradition));
+            });
+        }
+
+        renderActiveChart(filteredData);
+    }
+
+    function fetchDataAndDrawChart(left, right) {
+        if (left === -1 || right === -1) {
+            return;
+        }
+
+        showSpinner('Data loading');
+
+        fetch(pageRoot + '/compare_formulas_json/?left=' + left + '&right=' + right)
+            .then(response => response.json())
+            .then(data => {
+                originalData = data;
+                const allTraditions = new Set();
+                data.forEach(item => {
+                    (item.formula_traditions || []).forEach(tradition => allTraditions.add(tradition));
+                });
+
+                let colorIndex = 0;
+                allTraditions.forEach(tradition => {
+                    if (!traditionColors[tradition]) {
+                        traditionColors[tradition] = colorPalette[colorIndex % colorPalette.length];
+                        colorIndex += 1;
+                    }
+                });
+
+                showStats(originalData);
+                renderFilteredChart();
+            })
+            .catch(() => {
+                showEmptyGraph('Could not load graph data.');
+            });
+    }
+
+    function showStats(data) {
+        const container = document.getElementById('ms_stats');
+        container.innerHTML = '';
+
+        const manuscriptGroups = {};
+        const allFormulaIds = new Map();
+        const allFormulaTraditions = new Map();
+        const allTraditions = new Set();
+
+        for (const item of data) {
+            const manuscript = item.Table;
+            if (!manuscriptGroups[manuscript]) {
+                manuscriptGroups[manuscript] = [];
+            }
+            manuscriptGroups[manuscript].push(item);
+
+            if (!allFormulaIds.has(item.formula_id)) {
+                allFormulaIds.set(item.formula_id, new Set());
+            }
+            allFormulaIds.get(item.formula_id).add(manuscript);
+
+            if (!allFormulaTraditions.has(item.formula_id)) {
+                allFormulaTraditions.set(item.formula_id, new Set());
+            }
+            (item.formula_traditions || []).forEach(tradition => {
+                allFormulaTraditions.get(item.formula_id).add(tradition);
+                allTraditions.add(tradition);
+            });
+        }
+
+        const manuscriptStats = [];
+        const traditionCounts = {};
+        allTraditions.forEach(tradition => {
+            traditionCounts[tradition] = { only: 0, count: 0 };
+        });
+        traditionCounts.Multiple = { only: 0, count: 0 };
+        traditionCounts.Unattributed = { only: 0, count: 0 };
+
+        for (const [manuscript, entries] of Object.entries(manuscriptGroups)) {
+            const stats = { manuscript, total: entries.length, unattributed: 0, Multiple: 0 };
+            allTraditions.forEach(tradition => {
+                stats[tradition] = 0;
+                stats[`${tradition}_only`] = 0;
+            });
+
+            for (const entry of entries) {
+                const traditions = new Set(entry.formula_traditions || []);
+                if (traditions.size === 0) {
+                    stats.unattributed += 1;
+                    traditionCounts.Unattributed.count += 1;
+                } else if (traditions.size > 1) {
+                    stats.Multiple += 1;
+                    traditionCounts.Multiple.count += 1;
+                } else {
+                    const tradition = Array.from(traditions)[0];
+                    stats[tradition] += 1;
+                    stats[`${tradition}_only`] += 1;
+                    traditionCounts[tradition].count += 1;
+                    traditionCounts[tradition].only += 1;
+                }
+            }
+
+            manuscriptStats.push(stats);
+        }
+
+        const sharedStats = {};
+        allTraditions.forEach(tradition => {
+            sharedStats[tradition] = 0;
+        });
+        sharedStats.Multiple = 0;
+        sharedStats.Unattributed = 0;
+
+        let totalShared = 0;
+        for (const [formulaId, manuscripts] of allFormulaIds.entries()) {
+            if (manuscripts.size <= 1) {
+                continue;
+            }
+
+            totalShared += 1;
+            const traditions = allFormulaTraditions.get(formulaId) || new Set();
+            if (traditions.size === 0) {
+                sharedStats.Unattributed += 1;
+            } else if (traditions.size > 1) {
+                sharedStats.Multiple += 1;
+            } else {
+                sharedStats[Array.from(traditions)[0]] += 1;
+            }
+        }
+
+        let html = '<div class="space-y-6">';
+        manuscriptStats.forEach(stat => {
+            html += `
+                <div class="border border-gray-300 rounded-lg p-4 bg-white shadow-md">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">${stat.manuscript}</h3>
+                    <ul class="text-sm text-gray-700 space-y-1">
+                        <li><span class="font-medium">Total orations:</span> ${stat.total}</li>`;
+            allTraditions.forEach(tradition => {
+                if (stat[tradition] > 0) {
+                    html += `<li><span class="dot" style="background-color: ${traditionColors[tradition] || '#6b7280'};"></span><span class="font-medium">${tradition}:</span> ${stat[tradition]}</li>`;
+                }
+            });
+            if (stat.Multiple > 0) {
+                html += `<li><span class="dot" style="background-color: ${traditionColors.Multiple};"></span><span class="font-medium">Multiple traditions:</span> ${stat.Multiple}</li>`;
+            }
+            html += `<li><span class="dot" style="background-color: ${traditionColors.Unattributed};"></span><span class="font-medium">Unattributed:</span> ${stat.unattributed}</li>
+                    </ul>
+                </div>`;
+        });
+
+        html += `
+            <div class="border border-gray-300 rounded-lg p-4 bg-yellow-50 shadow-inner">
+                <h3 class="text-lg font-semibold text-yellow-900 mb-2">Global Stats</h3>
+                <ul class="text-sm text-yellow-800 space-y-1">
+                    <li><span class="font-medium">Number of connections between manuscripts:</span> ${totalShared}</li>`;
+        allTraditions.forEach(tradition => {
+            if (sharedStats[tradition] > 0) {
+                html += `<li><span class="dot" style="background-color: ${traditionColors[tradition] || '#6b7280'};"></span><span class="font-medium">${tradition}:</span> ${sharedStats[tradition]}</li>`;
+            }
+        });
+        if (sharedStats.Multiple > 0) {
+            html += `<li><span class="dot" style="background-color: ${traditionColors.Multiple};"></span><span class="font-medium">Multiple traditions:</span> ${sharedStats.Multiple}</li>`;
+        }
+        html += `<li><span class="dot" style="background-color: ${traditionColors.Unattributed};"></span><span class="font-medium">Unattributed:</span> ${sharedStats.Unattributed}</li>
+                </ul>
+            </div>
+        </div>`;
+
+        container.innerHTML = html;
+    }
+
+    function getCurrentChartSvgClone() {
+        const svg = document.querySelector('#chart svg');
+        if (!svg) {
+            return null;
+        }
+
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const hasBackground = Array.from(clone.children).some(node => node.tagName === 'rect' && node.getAttribute('fill') === 'white');
+        if (!hasBackground) {
+            const width = clone.getAttribute('width') || svg.clientWidth;
+            const height = clone.getAttribute('height') || svg.clientHeight;
+            const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            background.setAttribute('width', width);
+            background.setAttribute('height', height);
+            background.setAttribute('fill', 'white');
+            clone.insertBefore(background, clone.firstChild);
+        }
+        return clone;
+    }
+
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     setTableHeight();
     $(window).resize(setTableHeight);
-
-    let left_id = -1;
-    let right_id = -1;
+    selectInitialGenre();
 
     $('.manuscript_filter_left').select2({
         ajax: {
@@ -141,725 +367,141 @@ ms_formulas_graph_init = function() {
         }
     });
 
-    $('.manuscript_filter_left').on('select2:select', function(e) {
-        left_id = e.params.data.id;
-        console.log('Left manuscript selected:', left_id);
-        fetchDataAndDrawChart(left_id, right_id);
+    $('#genreSelect').on('select2:select', function(event) {
+        configureTraditionFilter(event.params.data.id);
     });
 
-    $('.manuscript_filter_right').on('select2:select', function(e) {
-        right_id = e.params.data.id;
-        console.log('Right manuscript selected:', right_id);
-        fetchDataAndDrawChart(left_id, right_id);
-    });
-
-    $('#traditionFilter').on('change', function() {
-        console.log('Tradition filter changed:', $('#traditionFilter').val());
-        renderFilteredChart();
-    });
-
-    $('#colorizeTraditions').on('change', function() {
-        console.log('Colorize traditions toggled:', $('#colorizeTraditions').is(':checked'));
-        renderFilteredChart();
-    });
-
-    function renderFilteredChart() {
-        showSpinner("Updating graph...");
-        const selectedIds = $('#traditionFilter').val() || [];
-        const selected = selectedIds.map(id => traditionMap[id] || id); // Map IDs to text
-        console.log('Selected tradition texts:', selected);
-        console.log('Original data:', originalData);
-        let filteredData = originalData;
-
-        if (selected.length > 0) {
-            filteredData = originalData.filter(item => {
-                const traditions = item.formula_traditions || [];
-                console.log('Filtering item:', item.formula_id, 'Traditions:', traditions);
-                if (selected.includes('Unattributed') && selected.length === 1) {
-                    return traditions.length === 0;
-                } else if (selected.includes('Unattributed')) {
-                    return traditions.length === 0 || selected.some(t => t !== 'Unattributed' && traditions.includes(t));
-                } else {
-                    return selected.some(t => traditions.includes(t));
-                }
-            });
-        }
-        console.log('Filtered data:', filteredData);
-        createChart(filteredData);
-    }
-
-    function showSpinner(text) {
-        $('#chart').html(`<div class="text-center py-10 text-gray-600 font-semibold">${text}...</div>`);
-    }
-
-    function fetchDataAndDrawChart(left_id, right_id) {
-        if (left_id === -1 || right_id === -1) {
-            console.log('Invalid manuscript IDs:', left_id, right_id);
-            return;
-        }
-
-        showSpinner("Data loading");
-
-        fetch(pageRoot + "/compare_formulas_json/?left=" + left_id + "&right=" + right_id)
-            .then(response => response.json())
-            .then(data => {
-                console.log('Fetched data:', data);
-                originalData = data;
-                // Assign colors to all traditions in data
-                const allTraditions = new Set();
-                data.forEach(item => {
-                    (item.formula_traditions || []).forEach(trad => allTraditions.add(trad));
-                });
-                console.log('All traditions in data:', allTraditions);
-                let colorIndex = 0;
-                allTraditions.forEach(trad => {
-                    if (!traditionColors[trad]) {
-                        traditionColors[trad] = colorPalette[colorIndex % colorPalette.length];
-                        colorIndex++;
-                    }
-                });
-                showStats(originalData);
-                showSpinner("Generating graph");
-                renderFilteredChart();
-            })
-            .catch(error => {
-                console.error('Fetch error:', error);
-            });
-    }
-
-    function getWidth() {
-        return Math.max(
-            document.body.scrollWidth,
-            document.documentElement.scrollWidth,
-            document.body.offsetWidth,
-            document.documentElement.offsetWidth,
-            document.documentElement.clientWidth
-        );
-    }
-
-    function getHeight() {
-        return Math.max(
-            document.body.scrollHeight,
-            document.documentElement.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.offsetHeight,
-            document.documentElement.clientHeight
-        );
-    }
-
-    function getChartWidth(data, valueAccessor, margin) {
-        const chartElement = document.getElementById('chart');
-        const containerWidth = chartElement
-            ? chartElement.getBoundingClientRect().width
-            : getWidth();
-        const uniquePositions = new Set(data.map(valueAccessor)).size || 1;
-        const preferredWidth = Math.max(CHART_MIN_WIDTH, uniquePositions * CHART_STEP_WIDTH);
-        const availableWidth = Math.max(CHART_MIN_WIDTH, containerWidth - margin.left - margin.right);
-
-        return Math.min(availableWidth, preferredWidth);
-    }
-
-    function showStats(data) {
-        console.log('showStats called with data:', data);
-        console.log('Current traditionColors:', traditionColors);
-        const container = document.getElementById('ms_stats');
-        container.innerHTML = '';
-
-        const msGroups = {};
-        const allFormulaIds = new Map();
-        const allFormulaTraditions = new Map();
-        const allTraditions = new Set();
-
-        for (const item of data) {
-            const table = item.Table;
-            if (!msGroups[table]) msGroups[table] = [];
-            msGroups[table].push(item);
-
-            if (!allFormulaIds.has(item.formula_id)) {
-                allFormulaIds.set(item.formula_id, new Set());
-            }
-            allFormulaIds.get(item.formula_id).add(table);
-
-            if (!allFormulaTraditions.has(item.formula_id)) {
-                allFormulaTraditions.set(item.formula_id, new Set());
-            }
-            item.formula_traditions.forEach(trad => {
-                allFormulaTraditions.get(item.formula_id).add(trad);
-                allTraditions.add(trad);
-            });
-        }
-
-        const msStats = [];
-        const traditionCounts = {};
-
-        allTraditions.forEach(trad => {
-            traditionCounts[trad] = { only: 0, count: 0 };
-        });
-        traditionCounts['Multiple'] = { only: 0, count: 0 };
-        traditionCounts['Unattributed'] = { only: 0, count: 0 };
-
-        for (const [ms, entries] of Object.entries(msGroups)) {
-            let total = entries.length;
-            let unattributed = 0;
-            let stats = { ms, total, unattributed };
-
-            for (const trad of allTraditions) {
-                stats[trad] = 0;
-                stats[`${trad}_only`] = 0;
-            }
-            stats['Multiple'] = 0;
-
-            for (const e of entries) {
-                const t = new Set(e.formula_traditions);
-                if (t.size === 0) {
-                    unattributed++;
-                    traditionCounts['Unattributed'].count++;
-                } else if (t.size > 1) {
-                    stats['Multiple']++;
-                    traditionCounts['Multiple'].count++;
-                } else {
-                    const trad = Array.from(t)[0];
-                    stats[trad]++;
-                    traditionCounts[trad].count++;
-                    stats[`${trad}_only`]++;
-                    traditionCounts[trad].only++;
-                }
-            }
-
-            msStats.push(stats);
-        }
-
-        let inBothMS = 0;
-        let totalShared = 0;
-        let sharedStats = {};
-
-        allTraditions.forEach(trad => {
-            sharedStats[trad] = 0;
-        });
-        sharedStats['Multiple'] = 0;
-        sharedStats['Unattributed'] = 0;
-
-        for (const [id, sets] of allFormulaIds.entries()) {
-            if (sets.size > 1) {
-                inBothMS++;
-                totalShared++;
-                const traditions = allFormulaTraditions.get(id);
-                if (traditions.size === 0) {
-                    sharedStats['Unattributed']++;
-                } else if (traditions.size > 1) {
-                    sharedStats['Multiple']++;
-                } else {
-                    sharedStats[Array.from(traditions)[0]]++;
-                }
-            }
-        }
-
-        let html = `<div class="space-y-6">`;
-
-        for (const stat of msStats) {
-            html += `
-                <div class="border border-gray-300 rounded-lg p-4 bg-white shadow-md">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-2">${stat.ms}</h3>
-                    <ul class="text-sm text-gray-700 space-y-1">
-                        <li><span class="font-medium">Total orations:</span> ${stat.total}</li>`;
-            allTraditions.forEach(trad => {
-                if (stat[trad] > 0) {
-                    const tradColor = traditionColors[trad] || colorPalette[Math.floor(Math.random() * colorPalette.length)];
-                    console.log(`Assigning color to ${trad}: ${tradColor}`);
-                    html += `<li><span class="dot" style="background-color: ${tradColor};"></span><span class="font-medium">${trad}:</span> ${stat[trad]}</li>`;
-                }
-            });
-            if (stat['Multiple'] > 0) {
-                html += `<li><span class="dot" style="background-color: ${traditionColors['Multiple']};"></span><span class="font-medium">Multiple traditions:</span> ${stat['Multiple']}</li>`;
-            }
-            html += `<li><span class="dot" style="background-color: ${traditionColors['Unattributed']};"></span><span class="font-medium">Unattributed:</span> ${stat.unattributed}</li>
-                    </ul>
-                </div>`;
-        }
-
-        html += `
-            <div class="border border-gray-300 rounded-lg p-4 bg-yellow-50 shadow-inner">
-                <h3 class="text-lg font-semibold text-yellow-900 mb-2">Global Stats</h3>
-                <ul class="text-sm text-yellow-800 space-y-1">
-                    <li><span class="font-medium">Number of connections between manuscripts:</span> ${totalShared}</li>`;
-        allTraditions.forEach(trad => {
-            if (sharedStats[trad] > 0) {
-                const tradColor = traditionColors[trad] || colorPalette[Math.floor(Math.random() * colorPalette.length)];
-                console.log(`Assigning color to ${trad} (global): ${tradColor}`);
-                html += `<li><span class="dot" style="background-color: ${tradColor};"></span><span class="font-medium">${trad}:</span> ${sharedStats[trad]}</li>`;
-            }
-        });
-        if (sharedStats['Multiple'] > 0) {
-            html += `<li><span class="dot" style="background-color: ${traditionColors['Multiple']};"></span><span class="font-medium">Multiple traditions:</span> ${sharedStats['Multiple']}</li>`;
-        }
-        html += `<li><span class="dot" style="background-color: ${traditionColors['Unattributed']};"></span><span class="font-medium">Unattributed:</span> ${sharedStats['Unattributed']}</li>
-                </ul>
-            </div>
-        </div>`;
-
-        container.innerHTML = html;
-    }
-
-    function createChart(data) {
-        lastFormulasData = data;
-        console.log('createChart called with data:', data);
-        console.log('traditionColors:', traditionColors);
-        let chartHeight = $('#chart').height();
-        const margin = {
-                top: 20,
-                right: 30,
-                bottom: 40,
-                left: 300
-            };
-        const width = getChartWidth(data, d => d.sequence_in_ms, margin);
-        const height = chartHeight - margin.top - margin.bottom;
-
-        $("#chart").empty();
-
-        const svg = d3.select("#chart").append("svg")
-            .attr("width", width + margin.left + margin.right)
-            .attr("height", height + margin.top + margin.bottom);
-
-        const g = svg.append("g")
-            .attr("transform", `translate(${margin.left},${margin.top})`);
-
-        const x = d3.scaleLinear().range([0, width]);
-        const y = d3.scalePoint().range([0, height]).padding(0.1);
-
-        const editionIndexes = [...new Set(data.map(d => d.formula_id))];
-        console.log('editionIndexes:', editionIndexes);
-        y.domain(data.map(d => d.Table));
-        x.domain(d3.extent(data, d => d.sequence_in_ms));
-
-        console.log('y.domain:', y.domain());
-        console.log('x.domain:', x.domain());
-
-        const colorizeTraditions = $('#colorizeTraditions').is(':checked');
-
-        const color = d3.scaleOrdinal(d3.schemeCategory10).domain(editionIndexes);
-
-        const tooltip = d3.select("body").append("div")
-            .attr("class", "tooltip")
-            .style("opacity", 0);
-
-        let selectedLine = null;
-        let selectedCircles = null;
-
-        function highlightConnection(formula_id) {
-            selectedLine = null;
-            g.selectAll(".selected-circle").classed("selected-circle", false);
-
-            selectedLine = g.selectAll('path.connection-line')
-                .filter(d => d.formula_id === formula_id)
-                .classed("selected-line", true)
-                .raise();
-
-            selectedCircles = g.selectAll('circle')
-                .filter(d => d.formula_id === formula_id)
-                .classed("selected-circle", true)
-                .raise();
-        }
-
-        function handleClickOnCircle(d) {
-            highlightConnection(d.formula_id);
-        }
-
-        function handleClickOnLine(d) {
-            highlightConnection(d.formula_id);
-        }
-
-        const groupedData = d3.group(data, d => d.formula_id, d => d.Table);
-        console.log('groupedData:', groupedData);
-
-        editionIndexes.forEach(formula_id => {
-            const values = data.filter(d => d.formula_id === formula_id);
-
-            let traditionClass = "";
-            let connectionColor = color(formula_id);
-            let circleColor = color(formula_id);
-
-            if (colorizeTraditions) {
-                const traditions = values[0].formula_traditions || [];
-                if (traditions.length === 0) {
-                    traditionClass = "Unattributed";
-                    connectionColor = traditionColors["Unattributed"];
-                    circleColor = traditionColors["Unattributed"];
-                } else if (traditions.length > 1) {
-                    traditionClass = "Multiple";
-                    connectionColor = traditionColors["Multiple"];
-                    circleColor = traditionColors["Multiple"];
-                } else {
-                    traditionClass = traditions[0];
-                    connectionColor = traditionColors[traditions[0]] || color(formula_id);
-                    circleColor = traditionColors[traditions[0]] || color(formula_id);
-                }
-            }
-
-            g.selectAll(`.connection-line-${formula_id}`)
-                .data(data.filter(d => d.formula_id === formula_id))
-                .enter()
-                .append("path")
-                .attr("class", `connection-line connection-line-${formula_id}`)
-                .attr("fill", "none")
-                .attr("stroke", connectionColor)
-                .attr("stroke-width", 3)
-                .attr("d", function(d) {
-                    const leftMs = d.Table;
-
-                    if (!groupedData.has(formula_id)) return null;
-
-                    const msKeys = Array.from(groupedData.get(formula_id).keys());
-                    if (msKeys.length < 2) return null;
-
-                    const rightMs = msKeys.find(key => key !== leftMs);
-                    if (!rightMs) return null;
-
-                    const leftEntries = groupedData.get(formula_id).get(leftMs);
-                    const rightEntries = groupedData.get(formula_id).get(rightMs);
-
-                    if (!leftEntries || !rightEntries) return null;
-                    const leftCount = leftEntries.length;
-                    const rightCount = rightEntries.length;
-
-                    let connections = [];
-
-                    for (let i = 0; i < Math.max(leftCount, rightCount); i++) {
-                        let source = leftEntries[Math.min(i, leftCount - 1)];
-                        let target = rightEntries[Math.min(i, rightCount - 1)];
-
-                        connections.push({
-                            source: source,
-                            target: target
-                        });
-                    }
-
-                    let pathString = "";
-                    connections.forEach(connection => {
-                        if (connection.source.Table !== connection.target.Table) {
-                            pathString += `M${x(connection.source.sequence_in_ms)} ${y(connection.source.Table)} L${x(connection.target.sequence_in_ms)} ${y(connection.target.Table)}`;
-                        }
-                    });
-                    return pathString;
-                })
-                .on("mouseover", function(event, d) {
-                    tooltip.transition()
-                        .duration(200)
-                        .style("opacity", .9);
-                    tooltip.html(`Formula: ${values[0].formula}<br>
-                                  Tradition: ${values[0].formula_traditions.join(', ')}<br>
-                                  Sequence: ${values[0].sequence_in_ms} -> ${values[values.length - 1].sequence_in_ms}`)
-                        .style("left", `${event.pageX + 5}px`)
-                        .style("top", `${event.pageY - 28}px`);
-                })
-                .on("mouseout", function() {
-                    tooltip.transition()
-                        .duration(500)
-                        .style("opacity", 0);
-                })
-                .on("click", function(event, d) {
-                    handleClickOnLine.call(this, d);
-                    event.stopPropagation();
-                });
-
-            g.selectAll("dot")
-                .data(values)
-                .enter().append("circle")
-                .attr("r", 7)
-                .attr("cx", d => x(d.sequence_in_ms))
-                .attr("cy", d => y(d.Table))
-                .attr("fill", circleColor)
-                .on("mouseover", function(event, d) {
-                    tooltip.transition()
-                        .duration(200)
-                        .style("opacity", .9);
-                    tooltip.html(`Formula: ${d.formula_id}<br>
-                        Tradition: ${values[0].formula_traditions.join(', ')}<br>
-                        Sequence: ${d.sequence_in_ms}<br>${d.rubric_name}<br>${d.formula}`)
-                        .style("left", `${event.pageX + 5}px`)
-                        .style("top", `${event.pageY - 28}px`);
-                })
-                .on("mouseout", function() {
-                    tooltip.transition()
-                        .duration(500)
-                        .style("opacity", 0);
-                })
-                .on("click", function(event, d) {
-                    handleClickOnCircle.call(this, d);
-                    event.stopPropagation();
-                });
-        });
-
-        g.append("g").attr("class", "y axis")
-            .attr("transform", `translate(-5,0)`)
-            .call(d3.axisLeft(y)
-                .tickFormat(d => {
-                    const maxLength = 90;
-                    let text = d;
-                    if (text.length > maxLength) {
-                        text = text.substring(0, maxLength) + "...";
-                    }
-                    return text;
-                }))
-            .selectAll("text")
-            .call(wrap, margin.left - 10);
-
-        g.append("g").attr("class", "x axis")
-            .attr("transform", `translate(0,${height})`)
-            .call(d3.axisBottom(x));
-
-        svg.on("click", function(event) {
-            if (!d3.select(event.target).classed("dot") && !d3.select(event.target).classed("connection-line")) {
-                g.selectAll(".selected-line").classed("selected-line", false);
-                g.selectAll(".selected-circle").classed("selected-circle", false);
-            }
-        });
-
-        function handleZoom(e) {
-            const new_x = e.transform.rescaleX(x);
-
-            g.select(".x.axis").call(d3.axisBottom(new_x));
-
-            g.selectAll('circle')
-                .attr('cx', d => new_x(d.sequence_in_ms));
-
-            g.selectAll('path.connection-line')
-                .attr('d', function(d) {
-                    const leftMs = d.Table;
-
-                    if (!groupedData.has(d.formula_id)) return null;
-
-                    const msKeys = Array.from(groupedData.get(d.formula_id).keys());
-                    if (msKeys.length < 2) return null;
-
-                    const rightMs = msKeys.find(key => key !== leftMs);
-                    if (!rightMs) return null;
-
-                    const leftEntries = groupedData.get(d.formula_id).get(leftMs);
-                    const rightEntries = groupedData.get(d.formula_id).get(rightMs);
-
-                    if (!leftEntries || !rightEntries) return null;
-                    const leftCount = leftEntries.length;
-                    const rightCount = rightEntries.length;
-
-                    let connections = [];
-
-                    for (let i = 0; i < Math.max(leftCount, rightCount); i++) {
-                        let source = leftEntries[Math.min(i, leftCount - 1)];
-                        let target = rightEntries[Math.min(i, rightCount - 1)];
-
-                        connections.push({
-                            source: source,
-                            target: target
-                        });
-                    }
-                    let pathString = "";
-                    connections.forEach(connection => {
-                        if (connection.source.Table !== connection.target.Table) {
-                            pathString += `M${new_x(connection.source.sequence_in_ms)} ${y(connection.source.Table)} L${new_x(connection.target.sequence_in_ms)} ${y(connection.target.Table)}`;
-                        }
-                    });
-                    return pathString;
-                });
-        }
-
-        let zoom = d3.zoom()
-            .on('zoom', handleZoom);
-
-        svg.call(zoom);
-    }
-}
-
-function wrap(text, width) {
-    text.each(function() {
-        var text = d3.select(this),
-            words = text.text().split(/\s+/).reverse(),
-            word,
-            line = [],
-            lineNumber = 0,
-            lineHeight = 1.1,
-            y = text.attr("y"),
-            dy = parseFloat(text.attr("dy")),
-            tspan = text.text(null).append("tspan").attr("x", -3).attr("y", y).attr("dy", dy + "em");
-        while (word = words.pop()) {
-            line.push(word);
-            tspan.text(line.join(" "));
-            if (tspan.node().getComputedTextLength() > width) {
-                line.pop();
-                tspan.text(line.join(" "));
-                line = [word];
-                tspan = text.append("tspan").attr("x", -3).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
-            }
+    $('#traditionFilter').on('change', renderFilteredChart);
+    $('#colorizeTraditions').on('change', renderFilteredChart);
+    $('#chartTypeSelect').on('change', function() {
+        currentChartType = $(this).val() || 'parallel';
+        if (originalData.length) {
+            renderFilteredChart();
         }
     });
-}
-// ─── Export helpers ───────────────────────────────────────────────────────────
 
-function buildFormulasExportSvg(data) {
-    const uniqueTables = [...new Set(data.map(d => d.Table))];
-    const margin = { top: 20, right: 30, bottom: 40, left: 300 };
-    const uniquePositions = new Set(data.map(d => d.sequence_in_ms)).size || 1;
-    const width  = Math.max(EXPORT_MIN_WIDTH, uniquePositions * EXPORT_STEP_WIDTH);
-    const height = uniqueTables.length * EXPORT_ROW_HEIGHT;
-
-    const container = document.createElement('div');
-    const svgSel = d3.select(container).append("svg")
-        .attr("xmlns", "http://www.w3.org/2000/svg")
-        .attr("width",  width  + margin.left + margin.right)
-        .attr("height", height + margin.top  + margin.bottom);
-
-    svgSel.append("rect")
-        .attr("width",  width  + margin.left + margin.right)
-        .attr("height", height + margin.top  + margin.bottom)
-        .attr("fill", "white");
-
-    const g = svgSel.append("g")
-        .attr("transform", `translate(${margin.left},${margin.top})`);
-
-    const x = d3.scaleLinear().range([0, width]);
-    const y = d3.scalePoint().range([0, height]).padding(0.1);
-
-    const formulaIds = [...new Set(data.map(d => d.formula_id))];
-    y.domain(data.map(d => d.Table));
-    x.domain(d3.extent(data, d => d.sequence_in_ms));
-
-    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(formulaIds);
-    const groupedData = d3.group(data, d => d.formula_id, d => d.Table);
-
-    function appendExportLabel(xPos, yPos, labelText, labelColor) {
-        g.append("text")
-            .attr("x", xPos)
-            .attr("y", yPos - EXPORT_LABEL_OFFSET)
-            .attr("fill", labelColor)
-            .attr("font-size", 11)
-            .attr("font-weight", 600)
-            .attr("text-anchor", "start")
-            .attr("dominant-baseline", "middle")
-            .attr("stroke", "white")
-            .attr("stroke-width", 2)
-            .attr("paint-order", "stroke fill")
-            .attr("stroke-linejoin", "round")
-            .attr("transform", `rotate(-90, ${xPos}, ${yPos - EXPORT_LABEL_OFFSET})`)
-            .text(labelText);
-    }
-
-    formulaIds.forEach(formula_id => {
-        const values = data.filter(d => d.formula_id === formula_id);
-        const traditions = values[0].formula_traditions || [];
-        let lineColor = color(formula_id);
-        if (traditions.length === 0)    lineColor = traditionColors['Unattributed'];
-        else if (traditions.length > 1) lineColor = traditionColors['Multiple'];
-        else                            lineColor = traditionColors[traditions[0]] || color(formula_id);
-
-        g.selectAll(null)
-            .data(values)
-            .enter()
-            .append("path")
-            .attr("fill", "none")
-            .attr("stroke", lineColor)
-            .attr("stroke-width", 2.5)
-            .attr("d", function(d) {
-                if (!groupedData.has(formula_id)) return null;
-                const msKeys  = Array.from(groupedData.get(formula_id).keys());
-                if (msKeys.length < 2) return null;
-                const leftMs  = d.Table;
-                const rightMs = msKeys.find(k => k !== leftMs);
-                if (!rightMs) return null;
-                const leftEntries  = groupedData.get(formula_id).get(leftMs);
-                const rightEntries = groupedData.get(formula_id).get(rightMs);
-                if (!leftEntries || !rightEntries) return null;
-                let pathString = "";
-                for (let i = 0; i < Math.max(leftEntries.length, rightEntries.length); i++) {
-                    const src = leftEntries[Math.min(i, leftEntries.length - 1)];
-                    const tgt = rightEntries[Math.min(i, rightEntries.length - 1)];
-                    if (src.Table !== tgt.Table)
-                        pathString += `M${x(src.sequence_in_ms)} ${y(src.Table)} L${x(tgt.sequence_in_ms)} ${y(tgt.Table)}`;
-                }
-                return pathString || null;
-            });
-
-        g.selectAll(null)
-            .data(values)
-            .enter().append("circle")
-            .attr("r", EXPORT_POINT_RADIUS)
-            .attr("cx", d => x(d.sequence_in_ms))
-            .attr("cy", d => y(d.Table))
-            .attr("fill", lineColor);
-
-        values.forEach(value => {
-            appendExportLabel(x(value.sequence_in_ms), y(value.Table), formula_id, lineColor);
-        });
+    $('.manuscript_filter_left').on('select2:select', function(event) {
+        leftId = event.params.data.id;
+        fetchDataAndDrawChart(leftId, rightId);
     });
 
-    g.append("g").attr("class", "y axis")
-        .attr("transform", "translate(-5,0)")
-        .call(d3.axisLeft(y)
-            .tickFormat(d => d.length > 60 ? d.substring(0, 60) + "\u2026" : d));
-
-    g.append("g").attr("class", "x axis")
-        .attr("transform", `translate(0,${height})`)
-        .call(d3.axisBottom(x));
-
-    return container.querySelector('svg');
-}
-
-function _downloadBlobF(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+    $('.manuscript_filter_right').on('select2:select', function(event) {
+        rightId = event.params.data.id;
+        fetchDataAndDrawChart(leftId, rightId);
+    });
+};
 
 window.exportFormulasSvg = function() {
-    if (!lastFormulasData.length) { alert('No data to export'); return; }
-    const svgEl  = buildFormulasExportSvg(lastFormulasData);
-    const svgStr = new XMLSerializer().serializeToString(svgEl);
-    _downloadBlobF(new Blob([svgStr], { type: 'image/svg+xml' }), 'formulas_graph.svg');
+    if (!lastFormulasData.length) {
+        alert('No data to export');
+        return;
+    }
+
+    const svg = document.querySelector('#chart svg');
+    if (!svg) {
+        alert('No graph to export');
+        return;
+    }
+
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const hasBackground = Array.from(clone.children).some(node => node.tagName === 'rect' && node.getAttribute('fill') === 'white');
+    if (!hasBackground) {
+        const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        background.setAttribute('width', clone.getAttribute('width') || svg.clientWidth);
+        background.setAttribute('height', clone.getAttribute('height') || svg.clientHeight);
+        background.setAttribute('fill', 'white');
+        clone.insertBefore(background, clone.firstChild);
+    }
+
+    const svgString = new XMLSerializer().serializeToString(clone);
+    const url = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'formulas_graph.svg';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
 window.exportFormulasPng = function() {
-    if (!lastFormulasData.length) { alert('No data to export'); return; }
-    const svgEl  = buildFormulasExportSvg(lastFormulasData);
-    const svgStr = new XMLSerializer().serializeToString(svgEl);
-    const svgW   = parseInt(svgEl.getAttribute('width'));
-    const svgH   = parseInt(svgEl.getAttribute('height'));
+    if (!lastFormulasData.length) {
+        alert('No data to export');
+        return;
+    }
+
+    const svg = document.querySelector('#chart svg');
+    if (!svg) {
+        alert('No graph to export');
+        return;
+    }
+
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const hasBackground = Array.from(clone.children).some(node => node.tagName === 'rect' && node.getAttribute('fill') === 'white');
+    if (!hasBackground) {
+        const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        background.setAttribute('width', clone.getAttribute('width') || svg.clientWidth);
+        background.setAttribute('height', clone.getAttribute('height') || svg.clientHeight);
+        background.setAttribute('fill', 'white');
+        clone.insertBefore(background, clone.firstChild);
+    }
+
+    const svgString = new XMLSerializer().serializeToString(clone);
+    const svgWidth = parseInt(clone.getAttribute('width'), 10);
+    const svgHeight = parseInt(clone.getAttribute('height'), 10);
     const canvas = document.createElement('canvas');
-    canvas.width  = svgW * EXPORT_SCALE;
-    canvas.height = svgH * EXPORT_SCALE;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(EXPORT_SCALE, EXPORT_SCALE);
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, svgW, svgH);
-    const img = new Image();
-    const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
-    img.onload = function() {
-        ctx.drawImage(img, 0, 0);
+    canvas.width = svgWidth * EXPORT_SCALE;
+    canvas.height = svgHeight * EXPORT_SCALE;
+    const context = canvas.getContext('2d');
+    context.scale(EXPORT_SCALE, EXPORT_SCALE);
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, svgWidth, svgHeight);
+    const image = new Image();
+    const url = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml' }));
+    image.onload = function() {
+        context.drawImage(image, 0, 0);
         URL.revokeObjectURL(url);
-        const a = document.createElement('a');
-        a.download = 'formulas_graph.png';
-        a.href = canvas.toDataURL('image/png');
-        a.click();
+        const link = document.createElement('a');
+        link.download = 'formulas_graph.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
     };
-    img.src = url;
+    image.src = url;
 };
 
 window.exportFormulasJson = function() {
-    if (!lastFormulasData.length) { alert('No data to export'); return; }
-    _downloadBlobF(
-        new Blob([JSON.stringify(lastFormulasData, null, 2)], { type: 'application/json' }),
-        'formulas_data.json'
-    );
+    if (!lastFormulasData.length) {
+        alert('No data to export');
+        return;
+    }
+
+    const url = URL.createObjectURL(new Blob([JSON.stringify(lastFormulasData, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'formulas_data.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
 window.exportFormulasCsv = function() {
-    if (!lastFormulasData.length) { alert('No data to export'); return; }
+    if (!lastFormulasData.length) {
+        alert('No data to export');
+        return;
+    }
+
     const keys = Object.keys(lastFormulasData[0]);
-    const rows = [keys.join(','), ...lastFormulasData.map(row =>
-        keys.map(k => {
-            const v = row[k];
-            return JSON.stringify(Array.isArray(v) ? v.join(';') : (v ?? ''));
-        }).join(',')
-    )];
-    _downloadBlobF(new Blob([rows.join('\n')], { type: 'text/csv' }), 'formulas_data.csv');
+    const rows = [
+        keys.join(','),
+        ...lastFormulasData.map(row => keys.map(key => {
+            const value = row[key];
+            return JSON.stringify(Array.isArray(value) ? value.join(';') : (value ?? ''));
+        }).join(','))
+    ];
+
+    const url = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'formulas_data.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 };

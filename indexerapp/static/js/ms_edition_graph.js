@@ -1,405 +1,198 @@
+const EXPORT_SCALE = 1.5;
 
-// Export configuration
-const CHART_MIN_WIDTH = 720;    // Minimum on-screen plot width
-const CHART_STEP_WIDTH = 28;    // Preferred pixels per unique X position on screen
-const EXPORT_SCALE = 1.5;       // PNG upscale factor
-const EXPORT_ROW_HEIGHT = 350;   // Pixels per unique Table row in exported SVG
-const EXPORT_MIN_WIDTH = 520;   // Minimum width of exported SVG
-const EXPORT_POINT_RADIUS = 5;  // Exported point radius
-const EXPORT_POINT_GAP = 2;     // Minimal visible gap between touching exported points
-const EXPORT_STEP_WIDTH = EXPORT_POINT_RADIUS * 2 + EXPORT_POINT_GAP;
-const EXPORT_LABEL_OFFSET = EXPORT_POINT_RADIUS + 10; // Vertical offset keeping exported labels clear of markers
+let lastEditionData = [];
+let currentEditionChartType = 'parallel';
 
-let lastEditionData = [];       // Stores the last rendered dataset for export
+ms_edition_graph_init = function() {
+    let originalData = [];
 
-ms_edition_graph_init = function()
-{
-    /*
-    const urlParams = new URLSearchParams(queryString);
-    let left = urlParams.get('left');
-    let right = urlParams.get('right');
-    */
-
-   function setTableHeight() {
-        var windowHeight = $(window).height();
-        var windowWidth = $(window).width();
-        // console.log('height: ', windowWidth);
-        if(windowWidth > 640){
-            var tableHeight = windowHeight - 400;
-        } else {
-            var tableHeight = windowHeight - 370;
-        }
-        
-        
+    function setTableHeight() {
+        const windowHeight = $(window).height();
+        const windowWidth = $(window).width();
+        const tableHeight = windowWidth > 640 ? windowHeight - 400 : windowHeight - 370;
         $('#chart').css('height', tableHeight + 'px');
     }
+
+    function showSpinner(text) {
+        $('#chart').html(`<div class="text-center py-10 text-gray-600 font-semibold">${text}...</div>`);
+    }
+
+    function showEmptyGraph(message) {
+        $('#chart').html(`<div class="text-center py-10 text-gray-600 font-semibold">${message}</div>`);
+    }
+
+    function renderActiveChart(data) {
+        lastEditionData = data;
+        currentEditionChartType = $('#editionChartTypeSelect').val() || 'parallel';
+
+        if (!data.length) {
+            showEmptyGraph('No data available for the selected manuscripts.');
+            return;
+        }
+
+        window.EditionVisualizations.render({
+            type: currentEditionChartType,
+            containerSelector: '#chart',
+            data,
+            colorPalette: [
+                '#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
+                '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4',
+                '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000',
+                '#aaffc3', '#808000', '#ffd8b1'
+            ]
+        });
+    }
+
+    function fetchDataAndDrawChart(mss) {
+        if (!mss) {
+            showEmptyGraph('Select manuscripts to render a graph.');
+            return;
+        }
+
+        showSpinner('Data loading');
+        fetch(pageRoot + '/compare_edition_json/?mss=' + mss)
+            .then(response => response.json())
+            .then(data => {
+                originalData = data;
+                renderActiveChart(originalData);
+            })
+            .catch(() => {
+                showEmptyGraph('Could not load graph data.');
+            });
+    }
+
+    function getCurrentChartSvgClone() {
+        const svg = document.querySelector('#chart svg');
+        if (!svg) {
+            return null;
+        }
+
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const hasBackground = Array.from(clone.children).some(node => node.tagName === 'rect' && node.getAttribute('fill') === 'white');
+        if (!hasBackground) {
+            const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            background.setAttribute('width', clone.getAttribute('width') || svg.clientWidth);
+            background.setAttribute('height', clone.getAttribute('height') || svg.clientHeight);
+            background.setAttribute('fill', 'white');
+            clone.insertBefore(background, clone.firstChild);
+        }
+        return clone;
+    }
+
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     setTableHeight();
+    $(window).resize(setTableHeight);
 
-    // Adjust height on window resize
-    $(window).resize(function() {
-        setTableHeight();
+    $('#editionChartTypeSelect').select2({
+        minimumResultsForSearch: Infinity,
+        data: [
+            { id: 'parallel', text: 'Parallel Coordinates Plot' },
+            { id: 'dot_matrix', text: 'Dot Plot Matrix' },
+            { id: 'circos', text: 'Circos Plot' },
+            { id: 'sankey', text: 'Sankey Diagram' }
+        ]
     });
-
- 
-
+    $('#editionChartTypeSelect').val(currentEditionChartType).trigger('change');
 
     $('.manuscript_filter').select2({
         ajax: {
-            url: pageRoot+'/manuscripts-autocomplete/',
+            url: pageRoot + '/manuscripts-autocomplete/',
             dataType: 'json',
             xhrFields: {
                 withCredentials: true
-           }
-            // Additional AJAX parameters go here; see the end of this chapter for the full code of this example
-          }
-    });
-
-    $('#ms_select').on('select2:select', function (e) {
-        mss = $('#ms_select').select2('data').map(item => item.id).join(';');
-        console.log(mss);
-
-        fetchDataAndDrawChart(mss);
-    });
-
-    $('#ms_select').on('select2:unselect', function (e) {
-        mss = $('#ms_select').select2('data').map(item => item.id).join(';');
-        console.log(mss);
-        fetchDataAndDrawChart(mss);
-    });
-
-
-    function fetchDataAndDrawChart(mss)
-    {
-
-        fetch(pageRoot+"/compare_edition_json/?mss="+mss)
-            .then(response => response.json())
-            .then(data => createChart(data));
-    }
-
-    function getWidth() {
-        return Math.max(
-          document.body.scrollWidth,
-          document.documentElement.scrollWidth,
-          document.body.offsetWidth,
-          document.documentElement.offsetWidth,
-          document.documentElement.clientWidth
-        );
-      }
-      
-      function getHeight() {
-        return Math.max(
-          document.body.scrollHeight,
-          document.documentElement.scrollHeight,
-          document.body.offsetHeight,
-          document.documentElement.offsetHeight,
-          document.documentElement.clientHeight
-        );
-      }
-
-    function getChartWidth(data, valueAccessor, margin) {
-        const chartElement = document.getElementById('chart');
-        const containerWidth = chartElement
-            ? chartElement.getBoundingClientRect().width
-            : getWidth();
-        const uniquePositions = new Set(data.map(valueAccessor)).size || 1;
-        const preferredWidth = Math.max(CHART_MIN_WIDTH, uniquePositions * CHART_STEP_WIDTH);
-        const availableWidth = Math.max(CHART_MIN_WIDTH, containerWidth - margin.left - margin.right);
-
-        return Math.min(availableWidth, preferredWidth);
-    }
-
-    
-
-    function createChart(data) 
-    {
-        lastEditionData = data;
-        let chartHeight = $('#chart').height();
-        const margin = { top: 20, right: 30, bottom: 40, left: 250 };
-        const width = getChartWidth(data, d => d.rubric_sequence, margin);
-        const height = chartHeight - margin.top - margin.bottom;
-    
-        $("#chart").empty();
-    
-        const svg = d3.select("#chart").append("svg")
-            .attr("width", width + margin.left + margin.right)
-            .attr("height", height + margin.top + margin.bottom)
-            .append("g")
-            .attr("transform", `translate(${margin.left},${margin.top})`);
-    
-        const x = d3.scaleLinear().range([0, width]);
-        const y = d3.scalePoint().range([0, height]).padding(0.2);
-    
-        const editionIndexes = [...new Set(data.map(d => d.edition_index))];
-        y.domain(data.map(d => d.Table));
-        x.domain(d3.extent(data, d => d.rubric_sequence));
-    
-        const color = d3.scaleOrdinal(d3.schemeCategory10).domain(editionIndexes);
-    
-        const line = d3.line()
-                        .x(d => x(d.rubric_sequence))
-                        .y(d => y(d.Table));
-    
-        svg.append("g").attr("class", "x axis")
-            .attr("transform", `translate(0,${height})`)
-            .call(d3.axisBottom(x));
-    
-        svg.append("g").attr("class", "y axis")
-            .call(d3.axisLeft(y));
-    
-        const tooltip = d3.select("body").append("div")
-            .attr("class", "tooltip")
-            .style("opacity", 0);
-    
-        // Funkcja do obsługi kliknięć na liniach
-        function handleClickOnLine(values, edition_index) {
-            if (selectedLine) {
-                selectedLine.classed("selected-line", false);
-                selectedCircles.classed("selected-circle", false);
             }
-    
-            // Zaznacz linię i przenieś na wierzch
-            selectedLine = d3.select(this).classed("selected-line", true).raise();
-    
-            // Zaznacz kropki powiązane z tą linią
-            selectedCircles = svg.selectAll('circle')
-                .filter(d => d.edition_index === edition_index)
-                .classed("selected-circle", true)
-                .raise();
         }
-    
-        // Przechowuj zaznaczone linie i kropki
-        let selectedLine;
-        let selectedCircles;
-    
-        editionIndexes.forEach(edition_index => {
-            const values = data.filter(d => d.edition_index === edition_index);
-            
-            svg.append("path")
-                .datum(values)
-                .attr("fill", "none")
-                .attr("stroke", color(edition_index))
-                .attr("stroke-width", 3)  // Ustaw grubość linii na 3
-                .attr("d", line)
-                .attr("class", "data-line")
-                .on("mouseover", function(event) {
-                    tooltip.transition()
-                        .duration(200)
-                        .style("opacity", .9);
-                    tooltip.html(`Edition: ${edition_index}<br>${values[0].rubric_name_standarized}`)
-                        .style("left", `${event.pageX + 5}px`)
-                        .style("top", `${event.pageY - 28}px`);
-                })
-                .on("mouseout", function() {
-                    tooltip.transition()
-                        .duration(500)
-                        .style("opacity", 0);
-                })
-                .on("click", function() { handleClickOnLine.call(this, values, edition_index); });  // Obsługa kliknięcia
-    
-            const midpointIndex = Math.floor(values.length / 2);
-            const midpoint = values[midpointIndex];
-    
-            /*
-            svg.append("text")
-                .attr("class", "line-label")
-                .attr("x", x(midpoint.rubric_sequence))
-                .attr("y", y(midpoint.Table) + 10)
-                .attr("transform", `rotate(90, ${x(midpoint.rubric_sequence)}, ${y(midpoint.Table) + 10})`)
-                .text(edition_index);
-            */
-            svg.selectAll("dot")
-                .data(values)
-                .enter().append("circle")
-                .attr("r", 7)  // Ustaw promień kropki na 7
-                .attr("cx", d => x(d.rubric_sequence))
-                .attr("cy", d => y(d.Table))
-                .attr("fill", color(edition_index))
-                .on("mouseover", function(event, d) {
-                    tooltip.transition()
-                        .duration(200)
-                        .style("opacity", .9);
-                    tooltip.html(`Edition: ${d.edition_index}<br>Rubric: ${d.rubric_sequence}<br>${d.rubric_name_standarized}`)
-                        .style("left", `${event.pageX + 5}px`)
-                        .style("top", `${event.pageY - 28}px`);
-                })
-                .on("mouseout", function() {
-                    tooltip.transition()
-                        .duration(500)
-                        .style("opacity", 0);
-                })
-                .on("click", function(event, d) { handleClickOnLine.call(this, values, edition_index); });  // Obsługa kliknięcia
-    
-        });
-    
-        // Funkcjonalność zoomu na osi X
-        function handleZoom(e) {
-            // Rescale the x-axis based on zoom level
-            const new_x = e.transform.rescaleX(x);
-        
-            // Update the x-axis, but keep the y-axis untouched
-            svg.select(".x.axis").call(d3.axisBottom(new_x));
-        
-            // Update only the x position of circles, no scaling for size or y-axis
-            svg.selectAll('circle')
-                .attr('cx', d => new_x(d.rubric_sequence));  // Update x position only
-        
-
-            // Update the paths (lines) with the new x-scale, ensure proper data binding
-            svg.selectAll('path.data-line')  // Select paths associated with data lines
-                .attr('d', d => line
-                    .x(d => new_x(d.rubric_sequence))  // Update the x position using new_x
-                    .y(d => y(d.Table))(d));  // Keep the y position the same
-        }
-        
-        
-        
-        let zoom = d3.zoom()
-        .on('zoom', handleZoom);
-        
-        d3.select('svg')
-        .call(zoom);
-    }
-    
-}
-
-// ─── Export helpers ───────────────────────────────────────────────────────────
-
-function buildEditionExportSvg(data) {
-    const uniqueTables = [...new Set(data.map(d => d.Table))];
-    const margin = { top: 20, right: 30, bottom: 40, left: 250 };
-    const uniquePositions = new Set(data.map(d => d.rubric_sequence)).size || 1;
-    const width  = Math.max(EXPORT_MIN_WIDTH, uniquePositions * EXPORT_STEP_WIDTH);
-    const height = uniqueTables.length * EXPORT_ROW_HEIGHT;
-
-    const container = document.createElement('div');
-    const svgSel = d3.select(container).append("svg")
-        .attr("xmlns", "http://www.w3.org/2000/svg")
-        .attr("width",  width  + margin.left + margin.right)
-        .attr("height", height + margin.top  + margin.bottom);
-
-    // White background
-    svgSel.append("rect")
-        .attr("width",  width  + margin.left + margin.right)
-        .attr("height", height + margin.top  + margin.bottom)
-        .attr("fill", "white");
-
-    const g = svgSel.append("g")
-        .attr("transform", `translate(${margin.left},${margin.top})`);
-
-    const x = d3.scaleLinear().range([0, width]);
-    const y = d3.scalePoint().range([0, height]).padding(0.2);
-
-    const editionIndexes = [...new Set(data.map(d => d.edition_index))];
-    y.domain(data.map(d => d.Table));
-    x.domain(d3.extent(data, d => d.rubric_sequence));
-
-    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(editionIndexes);
-    const line  = d3.line()
-        .x(d => x(d.rubric_sequence))
-        .y(d => y(d.Table));
-
-    function appendExportLabel(xPos, yPos, labelText, labelColor) {
-        g.append("text")
-            .attr("x", xPos)
-            .attr("y", yPos - EXPORT_LABEL_OFFSET)
-            .attr("fill", labelColor)
-            .attr("font-size", 11)
-            .attr("font-weight", 600)
-            .attr("text-anchor", "start")
-            .attr("dominant-baseline", "middle")
-            .attr("stroke", "white")
-            .attr("stroke-width", 2)
-            .attr("paint-order", "stroke fill")
-            .attr("stroke-linejoin", "round")
-            .attr("transform", `rotate(-90, ${xPos}, ${yPos - EXPORT_LABEL_OFFSET})`)
-            .text(labelText);
-    }
-
-    g.append("g").attr("class", "x axis")
-        .attr("transform", `translate(0,${height})`)
-        .call(d3.axisBottom(x));
-    g.append("g").attr("class", "y axis")
-        .call(d3.axisLeft(y));
-
-    editionIndexes.forEach(edition_index => {
-        const values = data.filter(d => d.edition_index === edition_index);
-        g.append("path")
-            .datum(values)
-            .attr("fill", "none")
-            .attr("stroke", color(edition_index))
-            .attr("stroke-width", 2.5)
-            .attr("d", line);
-        g.selectAll(null)
-            .data(values)
-            .enter().append("circle")
-            .attr("r", EXPORT_POINT_RADIUS)
-            .attr("cx", d => x(d.rubric_sequence))
-            .attr("cy", d => y(d.Table))
-            .attr("fill", color(edition_index));
-
-        values.forEach(value => {
-            appendExportLabel(x(value.rubric_sequence), y(value.Table), edition_index, color(edition_index));
-        });
     });
 
-    return container.querySelector('svg');
-}
+    $('#ms_select').on('select2:select select2:unselect', function() {
+        const mss = $('#ms_select').select2('data').map(item => item.id).join(';');
+        fetchDataAndDrawChart(mss);
+    });
 
-function _downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+    $('#editionChartTypeSelect').on('change', function() {
+        currentEditionChartType = $(this).val() || 'parallel';
+        if (originalData.length) {
+            renderActiveChart(originalData);
+        }
+    });
 
-window.exportEditionSvg = function() {
-    if (!lastEditionData.length) { alert('No data to export'); return; }
-    const svgEl = buildEditionExportSvg(lastEditionData);
-    const svgStr = new XMLSerializer().serializeToString(svgEl);
-    _downloadBlob(new Blob([svgStr], { type: 'image/svg+xml' }), 'edition_graph.svg');
-};
-
-window.exportEditionPng = function() {
-    if (!lastEditionData.length) { alert('No data to export'); return; }
-    const svgEl  = buildEditionExportSvg(lastEditionData);
-    const svgStr = new XMLSerializer().serializeToString(svgEl);
-    const svgW   = parseInt(svgEl.getAttribute('width'));
-    const svgH   = parseInt(svgEl.getAttribute('height'));
-    const canvas = document.createElement('canvas');
-    canvas.width  = svgW * EXPORT_SCALE;
-    canvas.height = svgH * EXPORT_SCALE;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(EXPORT_SCALE, EXPORT_SCALE);
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, svgW, svgH);
-    const img = new Image();
-    const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
-    img.onload = function() {
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-        const a = document.createElement('a');
-        a.download = 'edition_graph.png';
-        a.href = canvas.toDataURL('image/png');
-        a.click();
+    window.exportEditionSvg = function() {
+        if (!lastEditionData.length) {
+            alert('No data to export');
+            return;
+        }
+        const svg = getCurrentChartSvgClone();
+        if (!svg) {
+            alert('No graph to export');
+            return;
+        }
+        const svgString = new XMLSerializer().serializeToString(svg);
+        downloadBlob(new Blob([svgString], { type: 'image/svg+xml' }), 'edition_graph.svg');
     };
-    img.src = url;
-};
 
-window.exportEditionJson = function() {
-    if (!lastEditionData.length) { alert('No data to export'); return; }
-    _downloadBlob(
-        new Blob([JSON.stringify(lastEditionData, null, 2)], { type: 'application/json' }),
-        'edition_data.json'
-    );
-};
+    window.exportEditionPng = function() {
+        if (!lastEditionData.length) {
+            alert('No data to export');
+            return;
+        }
+        const svg = getCurrentChartSvgClone();
+        if (!svg) {
+            alert('No graph to export');
+            return;
+        }
+        const svgString = new XMLSerializer().serializeToString(svg);
+        const svgWidth = parseInt(svg.getAttribute('width'), 10);
+        const svgHeight = parseInt(svg.getAttribute('height'), 10);
+        const canvas = document.createElement('canvas');
+        canvas.width = svgWidth * EXPORT_SCALE;
+        canvas.height = svgHeight * EXPORT_SCALE;
+        const context = canvas.getContext('2d');
+        context.scale(EXPORT_SCALE, EXPORT_SCALE);
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, svgWidth, svgHeight);
+        const image = new Image();
+        const url = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml' }));
+        image.onload = function() {
+            context.drawImage(image, 0, 0);
+            URL.revokeObjectURL(url);
+            const link = document.createElement('a');
+            link.download = 'edition_graph.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        };
+        image.src = url;
+    };
 
-window.exportEditionCsv = function() {
-    if (!lastEditionData.length) { alert('No data to export'); return; }
-    const keys = Object.keys(lastEditionData[0]);
-    const rows = [keys.join(','), ...lastEditionData.map(row =>
-        keys.map(k => JSON.stringify(row[k] ?? '')).join(',')
-    )];
-    _downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'edition_data.csv');
+    window.exportEditionJson = function() {
+        if (!lastEditionData.length) {
+            alert('No data to export');
+            return;
+        }
+        downloadBlob(
+            new Blob([JSON.stringify(lastEditionData, null, 2)], { type: 'application/json' }),
+            'edition_data.json'
+        );
+    };
+
+    window.exportEditionCsv = function() {
+        if (!lastEditionData.length) {
+            alert('No data to export');
+            return;
+        }
+        const keys = Object.keys(lastEditionData[0]);
+        const rows = [
+            keys.join(','),
+            ...lastEditionData.map(row => keys.map(key => JSON.stringify(row[key] ?? '')).join(','))
+        ];
+        downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'edition_data.csv');
+    };
 };

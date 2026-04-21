@@ -1,9 +1,11 @@
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
 
 
 
 
+<script src="/static/js/ms_formulas_visualizations.js"></script>
 <script src="/static/js/ms_formulas_graph.js"></script>
 
 
@@ -25,13 +27,11 @@
     <label class="ml-2" for="traditionFilter"> Tradition filter:</label>
     <select id="traditionFilter" multiple style="width: 200px;"></select>
 
-    <a class="py-1 px-1 sm:py-1 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base"
-       href="#" type="button" id="identifyTraditionsBtn">
-      Identify traditions
-    </a>
-
     <label for="colorizeTraditions">Colorize traditions</label>
     <input type="checkbox" id="colorizeTraditions">
+
+    <label class="ml-2" for="chartTypeSelect">Diagram type:</label>
+    <select id="chartTypeSelect" style="width: 280px;"></select>
   </div>
 
   <div class="flex my-1 flex-wrap gap-4">
