@@ -15,6 +15,28 @@ let traditionColors = {
 let traditionMap = {};
 let currentChartType = 'parallel';
 
+function assignTraditionColor(traditionName, preferredIndex) {
+    if (traditionColors[traditionName]) {
+        return traditionColors[traditionName];
+    }
+
+    const usedColors = new Set(Object.values(traditionColors));
+    const preferredColor = typeof preferredIndex === 'number'
+        ? colorPalette[preferredIndex % colorPalette.length]
+        : null;
+
+    if (preferredColor && !usedColors.has(preferredColor)) {
+        traditionColors[traditionName] = preferredColor;
+        return preferredColor;
+    }
+
+    const fallbackColor = colorPalette.find(color => !usedColors.has(color))
+        || colorPalette[Object.keys(traditionColors).length % colorPalette.length];
+
+    traditionColors[traditionName] = fallbackColor;
+    return fallbackColor;
+}
+
 ms_formulas_graph_init = function() {
     let originalData = [];
     let leftId = -1;
@@ -61,9 +83,7 @@ ms_formulas_graph_init = function() {
                     traditionMap = {};
                     data.results.forEach((tradition, index) => {
                         traditionMap[tradition.id] = tradition.text;
-                        if (!traditionColors[tradition.text]) {
-                            traditionColors[tradition.text] = colorPalette[index % colorPalette.length];
-                        }
+                        assignTraditionColor(tradition.text, index);
                     });
                     traditionMap.Unattributed = 'Unattributed';
                     data.results.push({ id: 'Unattributed', text: 'Unattributed' });
@@ -167,13 +187,7 @@ ms_formulas_graph_init = function() {
                     (item.formula_traditions || []).forEach(tradition => allTraditions.add(tradition));
                 });
 
-                let colorIndex = 0;
-                allTraditions.forEach(tradition => {
-                    if (!traditionColors[tradition]) {
-                        traditionColors[tradition] = colorPalette[colorIndex % colorPalette.length];
-                        colorIndex += 1;
-                    }
-                });
+                allTraditions.forEach(tradition => assignTraditionColor(tradition));
 
                 showStats(originalData);
                 renderFilteredChart();
