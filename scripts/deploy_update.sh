@@ -234,6 +234,22 @@ path_is_preserved() {
   return 1
 }
 
+path_is_managed_generated() {
+  local path=$1
+  local module_name="${DJANGO_SETTINGS_MODULE##*.}"
+
+  case "$path" in
+    ecatalogus/settings.py)
+      return 0
+      ;;
+    "ecatalogus/${module_name}.py")
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 backup_preserved_files() {
   TMP_PRESERVE=$(mktemp -d)
   local rel_path
@@ -263,7 +279,7 @@ guard_unexpected_git_changes() {
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     line=${line:3}
-    if path_is_preserved "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
+    if path_is_preserved "$line" || path_is_managed_generated "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
       continue
     fi
     unexpected+=("$line")
