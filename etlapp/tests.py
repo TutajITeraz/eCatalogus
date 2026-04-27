@@ -616,6 +616,45 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(child.parent_colour, parent)
         self.assertIn('"created": 2', stdout.getvalue())
 
+    def test_import_legacy_main_bundle_handles_self_parent_reference(self):
+        colour_uuid = str(uuid4())
+        payload = {
+            'site_name': 'legacy-main-bootstrap',
+            'category': 'main',
+            'legacy_source': True,
+            'uuid_strategy': 'deterministic:model_label+pk',
+            'model_count': 1,
+            'record_count': 1,
+            'models': [
+                {
+                    'model': 'indexerapp.Colours',
+                    'category': 'main',
+                    'count': 1,
+                    'results': [
+                        {
+                            'source_pk': 1,
+                            'uuid': colour_uuid,
+                            'name': 'Self colour',
+                            'rgb': '#123456',
+                            'parent_colour': 1,
+                            'parent_colour_uuid': colour_uuid,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / 'legacy_main_bundle.json'
+            input_path.write_text(json.dumps(payload), encoding='utf-8')
+
+            stdout = StringIO()
+            call_command('import_legacy_main_bundle', str(input_path), stdout=stdout)
+
+        colour = Colours.objects.get(uuid=colour_uuid)
+        self.assertEqual(colour.parent_colour, colour)
+        self.assertIn('"created": 1', stdout.getvalue())
+
     def test_export_legacy_main_bundle_and_import_it_back(self):
         genre = LiturgicalGenres.objects.create(title='Antiphon')
         Traditions.objects.create(name='Roman', genre=genre, uuid=None)

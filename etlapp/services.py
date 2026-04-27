@@ -579,7 +579,7 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 raise ValueError(f'Record for {model._meta.label} is missing uuid.')
 
             try:
-                attrs, m2m_values = _prepare_import_values(model, record)
+                attrs, m2m_values, self_referential_attnames = _prepare_import_values(model, record)
             except ValueError as exc:
                 next_pending.append(record)
                 last_error = exc
@@ -593,6 +593,8 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 continue
 
             if category == 'shared' and existing is not None:
+                for attname in self_referential_attnames:
+                    attrs[attname] = existing.pk
                 _check_shared_conflict(
                     existing,
                     attrs,
@@ -603,6 +605,8 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
 
             if existing is None:
                 instance = model.objects.create(**_get_create_values(model, attrs))
+                for attname in self_referential_attnames:
+                    attrs[attname] = instance.pk
                 if attrs:
                     model.objects.filter(pk=instance.pk).update(**attrs)
                 instance.refresh_from_db()
@@ -610,6 +614,9 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 model_summary['created'] += 1
                 progress_made = True
                 continue
+
+            for attname in self_referential_attnames:
+                attrs[attname] = existing.pk
 
             if _is_noop(existing, attrs, m2m_values):
                 model_summary['skipped'] += 1
@@ -636,6 +643,8 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
 def _prepare_import_values(model, record):
     attrs = {}
     m2m_values = {}
+    self_referential_attnames = []
+    record_uuid = record.get('uuid')
 
     for field in model._meta.concrete_fields:
         if field.primary_key:
@@ -646,6 +655,9 @@ def _prepare_import_values(model, record):
             if uuid_key in record and record[uuid_key] is not None:
                 related_object = field.related_model.objects.filter(uuid=record[uuid_key]).first()
                 if related_object is None:
+                    if field.related_model == model and record[uuid_key] == record_uuid:
+                        self_referential_attnames.append(field.attname)
+                        continue
                     raise ValueError(
                         f'Missing related object for {model._meta.label}.{field.name} with uuid={record[uuid_key]}'
                     )
@@ -677,7 +689,7 @@ def _prepare_import_values(model, record):
             ids = record[field.name] or []
             m2m_values[field.name] = list(field.related_model.objects.filter(pk__in=ids))
 
-    return attrs, m2m_values
+    return attrs, m2m_values, self_referential_attnames
 
 
 def _coerce_field_value(field, value):
