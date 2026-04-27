@@ -1,5 +1,7 @@
+import os
 from django.apps import apps
-from django.db.models.signals import pre_delete, pre_save, post_save
+from django.contrib.auth import get_user_model
+from django.db.models.signals import post_migrate, pre_delete, pre_save, post_save
 from django.dispatch import receiver
 import logging
 import uuid
@@ -15,6 +17,43 @@ from .utils.image_processing import downscale_if_raster
 logger = logging.getLogger(__name__)
 
 SHARED_SYNC_SENDERS = (Bibliography, Contributors, Hands, Watermarks)
+
+
+def ensure_env_superuser(*, using='default'):
+    username = os.getenv('DJANGO_SUPERUSER_USERNAME', '').strip()
+    password = os.getenv('DJANGO_SUPERUSER_PASSWORD', '')
+    email = os.getenv('DJANGO_SUPERUSER_EMAIL', '').strip()
+    if not username or not password:
+        return False
+
+    user_model = get_user_model()
+    user, created = user_model._default_manager.db_manager(using).get_or_create(
+        username=username,
+        defaults={
+            'email': email,
+            'is_staff': True,
+            'is_superuser': True,
+        },
+    )
+
+    changed = created
+    if user.email != email:
+        user.email = email
+        changed = True
+    if not user.is_staff:
+        user.is_staff = True
+        changed = True
+    if not user.is_superuser:
+        user.is_superuser = True
+        changed = True
+    if not user.check_password(password):
+        user.set_password(password)
+        changed = True
+
+    if changed:
+        user.save(using=using)
+
+    return changed
 
 
 def _ensure_sync_uuid(sender, instance, **kwargs):
@@ -71,6 +110,17 @@ for model_name in get_sync_model_names():
         weak=False,
         dispatch_uid=f'etl_deleted_record_{model_name}',
     )
+
+
+@receiver(post_migrate)
+def ensure_configured_superuser_after_migrate(sender, app_config=None, verbosity=1, using='default', **kwargs):
+    current_app = app_config or sender
+    if current_app is None or getattr(current_app, 'label', None) != 'indexerapp':
+        return
+
+    changed = ensure_env_superuser(using=using)
+    if changed and verbosity >= 1:
+        logger.info('Ensured Django superuser from DJANGO_SUPERUSER_* environment variables.')
 
 # Signal for Layouts, Quires, Calendar, Decoration, ManuscriptHands, and ManuscriptMusicNotations
 @receiver(pre_save, sender=Layouts)
