@@ -12,11 +12,80 @@ Instance-specific values (NOT here):
 
 from pathlib import Path
 import os
+import shlex
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-SESSION_COOKIE_DOMAIN_DYNAMIC = ['.hostline.net.pl']
+def _parse_env_line(raw_line):
+    line = raw_line.strip()
+    if not line or line.startswith('#'):
+        return None, None
+
+    if line.startswith('export '):
+        line = line[7:].strip()
+
+    if '=' not in line:
+        return None, None
+
+    key, value = line.split('=', 1)
+    key = key.strip()
+    value = value.strip()
+    if not key:
+        return None, None
+
+    if value and value[0] in {'"', "'"}:
+        try:
+            value = shlex.split(value)[0]
+        except ValueError:
+            pass
+
+    return key, value
+
+
+def _load_env_file(env_path, *, override_keys=None):
+    if not env_path.exists():
+        return
+
+    override_keys = override_keys or set()
+    for raw_line in env_path.read_text(encoding='utf-8').splitlines():
+        key, value = _parse_env_line(raw_line)
+        if key is None:
+            continue
+        if key in os.environ and key not in override_keys:
+            continue
+        os.environ[key] = value
+
+
+_INITIAL_ENV_KEYS = set(os.environ)
+_load_env_file(BASE_DIR / '.env')
+
+_module_name = os.getenv('DJANGO_SETTINGS_MODULE', '')
+_instance_env_name = None
+if _module_name.endswith('settings_mpl'):
+    _instance_env_name = '.env.mpl'
+elif _module_name.endswith('settings_ecatalogus'):
+    _instance_env_name = '.env.ecatalogus'
+
+if _instance_env_name is not None:
+    _load_env_file(
+        BASE_DIR / _instance_env_name,
+        override_keys={key for key in os.environ if key not in _INITIAL_ENV_KEYS},
+    )
+
+
+def csv_env(name, default=""):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
+
+
+def bool_env(name, default="0"):
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+SESSION_COOKIE_DOMAIN_DYNAMIC = csv_env(
+    'SESSION_COOKIE_DOMAIN_DYNAMIC',
+    '.hostline.net.pl,.ispan.pl',
+)
 CORS_ALLOW_CREDENTIALS = True
 SESSION_COOKIE_HTTPONLY = False
 SESSION_COOKIE_SAMESITE = None

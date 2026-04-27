@@ -165,7 +165,6 @@ cython_debug/
 #Specific:
 indexerapp/migrations/
 ritus_indexer/settings.py
-ecatalogus/settings.py
 media/
 media_instances/
 tailwindcss-linux-x64
@@ -181,9 +180,8 @@ indexerapp/static/css/lib/
 indexerapp/static/css/cdn/
 /backup
 
-# Instance-specific settings — contain secrets, not in repo
-ecatalogus/settings_mpl.py
-ecatalogus/settings_ecatalogus.py
 indexerapp/static/.DS_Store
 /tmp
 .DS_Store
+.env.ecatalogus
+.env.mpl

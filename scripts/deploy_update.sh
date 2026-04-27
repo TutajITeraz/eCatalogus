@@ -11,6 +11,7 @@ CFG_ARG=""
 CONFIG_SOURCE=""
 LOG_FILE=""
 TMP_PRESERVE=""
+TMP_RENDERED_SETTINGS=""
 MEDIA_DIR=""
 
 usage() {
@@ -56,6 +57,30 @@ upsert_env_value() {
 cleanup() {
   if [[ -n "$TMP_PRESERVE" && -d "$TMP_PRESERVE" ]]; then
     rm -rf "$TMP_PRESERVE"
+  fi
+  if [[ -n "$TMP_RENDERED_SETTINGS" && -d "$TMP_RENDERED_SETTINGS" ]]; then
+    local settings_target=""
+    local alias_target=""
+    if [[ -f "${TMP_RENDERED_SETTINGS}/settings_file_target" ]]; then
+      settings_target=$(cat "${TMP_RENDERED_SETTINGS}/settings_file_target")
+    fi
+    if [[ -f "${TMP_RENDERED_SETTINGS}/alias_file_target" ]]; then
+      alias_target=$(cat "${TMP_RENDERED_SETTINGS}/alias_file_target")
+    fi
+
+    if [[ -f "${TMP_RENDERED_SETTINGS}/restore_settings_file" ]]; then
+      cp "${TMP_RENDERED_SETTINGS}/restore_settings_file" "$settings_target"
+    elif [[ -n "$settings_target" ]]; then
+      rm -f "$settings_target"
+    fi
+
+    if [[ -f "${TMP_RENDERED_SETTINGS}/restore_alias_file" ]]; then
+      cp "${TMP_RENDERED_SETTINGS}/restore_alias_file" "$alias_target"
+    elif [[ -n "$alias_target" ]]; then
+      rm -f "$alias_target"
+    fi
+
+    rm -rf "$TMP_RENDERED_SETTINGS"
   fi
 }
 
@@ -183,7 +208,10 @@ prepare_logging() {
 build_preserve_paths() {
   PRESERVE_PATHS=()
   local item
-  IFS=',' read -r -a raw_paths <<< "$PRESERVE_FILES"
+  local -a raw_paths=()
+  if [[ -n "$PRESERVE_FILES" ]]; then
+    IFS=',' read -r -a raw_paths <<< "$PRESERVE_FILES"
+  fi
   for item in "${raw_paths[@]}"; do
     item=$(printf '%s' "$item" | awk '{$1=$1; print}')
     [[ -n "$item" ]] && PRESERVE_PATHS+=("$item")
@@ -322,7 +350,15 @@ render_instance_settings_files() {
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would render ${settings_file} and ${alias_file}"
-    return 0
+    TMP_RENDERED_SETTINGS=${TMP_RENDERED_SETTINGS:-$(mktemp -d)}
+    printf '%s' "$settings_file" > "${TMP_RENDERED_SETTINGS}/settings_file_target"
+    printf '%s' "$alias_file" > "${TMP_RENDERED_SETTINGS}/alias_file_target"
+    if [[ -f "$settings_file" && ! -f "${TMP_RENDERED_SETTINGS}/restore_settings_file" ]]; then
+      cp "$settings_file" "${TMP_RENDERED_SETTINGS}/restore_settings_file"
+    fi
+    if [[ -f "$alias_file" && ! -f "${TMP_RENDERED_SETTINGS}/restore_alias_file" ]]; then
+      cp "$alias_file" "${TMP_RENDERED_SETTINGS}/restore_alias_file"
+    fi
   fi
 
   mkdir -p "$settings_dir"
