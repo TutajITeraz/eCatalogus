@@ -27,5 +27,12 @@ class Command(BaseCommand):
         if payload.get('category') != 'main':
             raise CommandError('Legacy main bundle must have category=main.')
 
+        shared_dependencies = payload.get('shared_dependencies', [])
+        shared_summary = None
+        if shared_dependencies:
+            shared_summary = import_delta_payload('shared', {'models': shared_dependencies})
+
         summary = import_delta_payload('main', payload)
+        if shared_summary is not None:
+            summary['shared_dependencies'] = shared_summary
         self.stdout.write(self.style.SUCCESS(json.dumps(summary, ensure_ascii=False, indent=2)))

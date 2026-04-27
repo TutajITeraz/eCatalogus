@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -654,6 +654,99 @@ class ExportModelCategoriesCommandTests(TestCase):
         colour = Colours.objects.get(uuid=colour_uuid)
         self.assertEqual(colour.parent_colour, colour)
         self.assertIn('"created": 1', stdout.getvalue())
+
+    def test_export_legacy_main_bundle_includes_shared_dependencies_for_edition_content(self):
+        bibliography = Bibliography.objects.create(title='Bib one', uuid=None)
+        EditionContent.objects.create(bibliography=bibliography, uuid=None)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'legacy_main_bundle.json'
+
+            call_command('export_legacy_main_bundle', '--output', str(output_path))
+            payload = json.loads(output_path.read_text(encoding='utf-8'))
+
+        shared_models = {item['model'] for item in payload['shared_dependencies']}
+        self.assertIn('indexerapp.Bibliography', shared_models)
+        bibliography_payload = next(
+            item for item in payload['shared_dependencies'] if item['model'] == 'indexerapp.Bibliography'
+        )
+        self.assertEqual(bibliography_payload['results'][0]['title'], 'Bib one')
+
+    def test_import_legacy_main_bundle_imports_shared_dependencies_before_main(self):
+        bibliography_uuid = str(uuid4())
+        edition_uuid = str(uuid4())
+        payload = {
+            'site_name': 'legacy-main-bootstrap',
+            'category': 'main',
+            'legacy_source': True,
+            'uuid_strategy': 'deterministic:model_label+pk',
+            'model_count': 1,
+            'record_count': 1,
+            'shared_dependency_model_count': 1,
+            'shared_dependency_record_count': 1,
+            'shared_dependencies': [
+                {
+                    'model': 'indexerapp.Bibliography',
+                    'category': 'shared',
+                    'count': 1,
+                    'results': [
+                        {
+                            'source_pk': 1,
+                            'uuid': bibliography_uuid,
+                            'title': 'Shared bibliography',
+                            'author': 'Author',
+                            'shortname': 'SB',
+                            'year': 2024,
+                            'zotero_id': None,
+                            'hierarchy': None,
+                            'version': 1,
+                        }
+                    ],
+                }
+            ],
+            'models': [
+                {
+                    'model': 'indexerapp.EditionContent',
+                    'category': 'main',
+                    'count': 1,
+                    'results': [
+                        {
+                            'source_pk': 1,
+                            'uuid': edition_uuid,
+                            'bibliography': 1,
+                            'bibliography_uuid': bibliography_uuid,
+                            'formula': None,
+                            'formula_uuid': None,
+                            'rubric_name_standarized': None,
+                            'rubric_name_standarized_uuid': None,
+                            'feast_rubric_sequence': '1.0',
+                            'subsequence': None,
+                            'page': 7,
+                            'function': None,
+                            'function_uuid': None,
+                            'subfunction': None,
+                            'subfunction_uuid': None,
+                            'data_contributor': None,
+                            'data_contributor_uuid': None,
+                            'authors': [],
+                            'authors_uuids': [],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / 'legacy_main_bundle.json'
+            input_path.write_text(json.dumps(payload), encoding='utf-8')
+
+            stdout = StringIO()
+            call_command('import_legacy_main_bundle', str(input_path), stdout=stdout)
+
+        bibliography = Bibliography.objects.get(uuid=bibliography_uuid)
+        edition_content = EditionContent.objects.get(uuid=edition_uuid)
+        self.assertEqual(edition_content.bibliography, bibliography)
+        self.assertIn('"shared_dependencies"', stdout.getvalue())
 
     def test_export_legacy_main_bundle_and_import_it_back(self):
         genre = LiturgicalGenres.objects.create(title='Antiphon')
