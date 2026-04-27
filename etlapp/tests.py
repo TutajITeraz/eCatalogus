@@ -15,7 +15,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from etlapp.services import ETLImportConflictError, build_manuscript_export_payload, import_manuscript_payload
-from indexerapp.models import Bibliography, Content, ContentTopic, Contributors, DeletedRecord, Manuscripts, MassHour, Topic, Type, Watermarks
+from etlapp.uuid_utils import build_deterministic_sync_uuid
+from indexerapp.models import Bibliography, Content, ContentTopic, Contributors, DeletedRecord, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -565,6 +566,52 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertIn('Imported bundle', Type.objects.get(short_name='TP2').name)
         self.assertIn('"created": 1', stdout.getvalue())
 
+    def test_export_legacy_main_bundle_and_import_it_back(self):
+        genre = LiturgicalGenres.objects.create(title='Antiphon')
+        Traditions.objects.create(name='Roman', genre=genre, uuid=None)
+        tradition = Traditions.objects.get(name='Roman')
+        formula = Formulas.objects.create(co_no='CO123', text='Lorem', uuid=None)
+        formula.tradition.add(tradition)
+
+        LiturgicalGenres.objects.filter(pk=genre.pk).update(uuid=None)
+        Traditions.objects.filter(pk=tradition.pk).update(uuid=None)
+        Formulas.objects.filter(pk=formula.pk).update(uuid=None)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'legacy_main_bundle.json'
+            export_stdout = StringIO()
+            import_stdout = StringIO()
+
+            call_command('export_legacy_main_bundle', '--output', str(output_path), stdout=export_stdout)
+            payload = json.loads(output_path.read_text(encoding='utf-8'))
+
+            self.assertEqual(payload['category'], 'main')
+            self.assertTrue(payload['legacy_source'])
+
+            genres_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.LiturgicalGenres')
+            traditions_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.Traditions')
+            formulas_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.Formulas')
+
+            expected_genre_uuid = str(build_deterministic_sync_uuid('indexerapp.LiturgicalGenres', genre.pk))
+            self.assertEqual(genres_payload['results'][0]['uuid'], expected_genre_uuid)
+            self.assertEqual(traditions_payload['results'][0]['genre_uuid'], expected_genre_uuid)
+            self.assertEqual(formulas_payload['results'][0]['tradition_uuids'][0], str(build_deterministic_sync_uuid('indexerapp.Traditions', tradition.pk)))
+
+            Formulas.objects.all().delete()
+            Traditions.objects.all().delete()
+            LiturgicalGenres.objects.all().delete()
+
+            call_command('import_legacy_main_bundle', str(output_path), stdout=import_stdout)
+
+        imported_genre = LiturgicalGenres.objects.get(title='Antiphon')
+        imported_tradition = Traditions.objects.get(name='Roman')
+        imported_formula = Formulas.objects.get(co_no='CO123')
+        self.assertEqual(str(imported_genre.uuid), expected_genre_uuid)
+        self.assertIsNotNone(imported_tradition.genre)
+        self.assertEqual(imported_tradition.genre, imported_genre)
+        self.assertEqual(list(imported_formula.tradition.values_list('pk', flat=True)), [imported_tradition.pk])
+        self.assertIn('"created": 3', import_stdout.getvalue())
+
 
 class SyncMetadataTests(TestCase):
     def test_shared_model_update_increments_version(self):
@@ -596,6 +643,18 @@ class SyncMetadataTests(TestCase):
 
         bibliography.refresh_from_db()
         self.assertIsNotNone(bibliography.uuid)
+
+    def test_generate_uuids_can_backfill_deterministically(self):
+        bibliography = Bibliography.objects.create(title='Needs deterministic UUID', uuid=None)
+        Bibliography.objects.filter(pk=bibliography.pk).update(uuid=None)
+
+        call_command('generate_uuids', '--model', 'Bibliography', '--strategy', 'deterministic')
+
+        bibliography.refresh_from_db()
+        self.assertEqual(
+            bibliography.uuid,
+            build_deterministic_sync_uuid('indexerapp.Bibliography', bibliography.pk),
+        )
 
     def test_validate_uuid_integrity_reports_success(self):
         Bibliography.objects.create(title='Healthy row')

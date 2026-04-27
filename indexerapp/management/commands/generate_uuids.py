@@ -4,6 +4,7 @@ from django.apps import apps
 from django.core.management.base import BaseCommand, CommandError
 
 from etlapp.model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names
+from etlapp.uuid_utils import build_deterministic_sync_uuid
 
 
 class Command(BaseCommand):
@@ -33,6 +34,12 @@ class Command(BaseCommand):
             action='store_true',
             help='Report how many rows would be updated without modifying the database.',
         )
+        parser.add_argument(
+            '--strategy',
+            choices=['random', 'deterministic'],
+            default='random',
+            help='UUID strategy for missing values (default: random).',
+        )
 
     def handle(self, *args, **options):
         selected_models = options['models'] or self._get_models_for_categories(options['categories'])
@@ -43,6 +50,7 @@ class Command(BaseCommand):
 
         chunk_size = options['chunk_size']
         dry_run = options['dry_run']
+        strategy = options['strategy']
         total_updated = 0
 
         for model_name in selected_models:
@@ -56,17 +64,26 @@ class Command(BaseCommand):
 
             updated = 0
             for instance in queryset.iterator(chunk_size=chunk_size):
-                model.objects.filter(pk=instance.pk, uuid__isnull=True).update(uuid=uuid.uuid4())
+                generated_uuid = (
+                    uuid.uuid4()
+                    if strategy == 'random'
+                    else build_deterministic_sync_uuid(model._meta.label, instance.pk)
+                )
+                model.objects.filter(pk=instance.pk, uuid__isnull=True).update(uuid=generated_uuid)
                 updated += 1
 
             total_updated += updated
-            self.stdout.write(self.style.SUCCESS(f'{model_name}: updated {updated} rows'))
+            self.stdout.write(self.style.SUCCESS(f'{model_name}: updated {updated} rows (strategy={strategy})'))
 
         if dry_run:
             self.stdout.write(self.style.WARNING('Dry-run complete. No rows were updated.'))
             return
 
-        self.stdout.write(self.style.SUCCESS(f'UUID backfill complete. Updated {total_updated} rows in total.'))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'UUID backfill complete. Updated {total_updated} rows in total (strategy={strategy}).'
+            )
+        )
 
     def _get_models_for_categories(self, categories):
         if not categories:
