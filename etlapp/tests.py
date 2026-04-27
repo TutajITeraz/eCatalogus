@@ -519,6 +519,52 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(manuscript_fk['related_model'], 'Manuscripts')
         self.assertEqual(manuscript_fk['model_category'], 'ms')
 
+    def test_export_etl_bundle_writes_main_json_bundle(self):
+        Type.objects.create(short_name='TP1', name='Type One')
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'main_bundle.json'
+
+            call_command('export_etl_bundle', '--category', 'main', '--output', str(output_path))
+
+            self.assertTrue(output_path.exists())
+            payload = json.loads(output_path.read_text(encoding='utf-8'))
+
+        self.assertEqual(payload['category'], 'main')
+        self.assertEqual(payload['model_count'], 1)
+        self.assertEqual(payload['record_count'], 1)
+        self.assertEqual(payload['models'][0]['model'], 'indexerapp.Type')
+        self.assertEqual(payload['models'][0]['results'][0]['short_name'], 'TP1')
+
+    def test_import_etl_bundle_imports_main_json_bundle(self):
+        payload = {
+            'category': 'main',
+            'models': [
+                {
+                    'model': 'indexerapp.Type',
+                    'results': [
+                        {
+                            'uuid': str(uuid4()),
+                            'short_name': 'TP2',
+                            'name': 'Imported bundle',
+                            'entry_date': timezone.now().isoformat(),
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / 'main_bundle.json'
+            input_path.write_text(json.dumps(payload), encoding='utf-8')
+
+            stdout = StringIO()
+            call_command('import_etl_bundle', str(input_path), stdout=stdout)
+
+        self.assertTrue(Type.objects.filter(short_name='TP2', name='Imported bundle').exists())
+        self.assertIn('Imported bundle', Type.objects.get(short_name='TP2').name)
+        self.assertIn('"created": 1', stdout.getvalue())
+
 
 class SyncMetadataTests(TestCase):
     def test_shared_model_update_increments_version(self):
