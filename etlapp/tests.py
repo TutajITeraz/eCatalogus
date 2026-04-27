@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
-from indexerapp.models import Bibliography, Content, ContentTopic, Contributors, DeletedRecord, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -566,6 +566,55 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertTrue(Type.objects.filter(short_name='TP2', name='Imported bundle').exists())
         self.assertIn('Imported bundle', Type.objects.get(short_name='TP2').name)
         self.assertIn('"created": 1', stdout.getvalue())
+
+    def test_import_legacy_main_bundle_handles_self_referential_parent(self):
+        parent_uuid = str(uuid4())
+        child_uuid = str(uuid4())
+        payload = {
+            'site_name': 'legacy-main-bootstrap',
+            'category': 'main',
+            'legacy_source': True,
+            'uuid_strategy': 'deterministic:model_label+pk',
+            'model_count': 1,
+            'record_count': 2,
+            'models': [
+                {
+                    'model': 'indexerapp.Colours',
+                    'category': 'main',
+                    'count': 2,
+                    'results': [
+                        {
+                            'source_pk': 2,
+                            'uuid': child_uuid,
+                            'name': 'Child colour',
+                            'rgb': '#123456',
+                            'parent_colour': 1,
+                            'parent_colour_uuid': parent_uuid,
+                        },
+                        {
+                            'source_pk': 1,
+                            'uuid': parent_uuid,
+                            'name': 'Parent colour',
+                            'rgb': '#abcdef',
+                            'parent_colour': None,
+                            'parent_colour_uuid': None,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / 'legacy_main_bundle.json'
+            input_path.write_text(json.dumps(payload), encoding='utf-8')
+
+            stdout = StringIO()
+            call_command('import_legacy_main_bundle', str(input_path), stdout=stdout)
+
+        parent = Colours.objects.get(uuid=parent_uuid)
+        child = Colours.objects.get(uuid=child_uuid)
+        self.assertEqual(child.parent_colour, parent)
+        self.assertIn('"created": 2', stdout.getvalue())
 
     def test_export_legacy_main_bundle_and_import_it_back(self):
         genre = LiturgicalGenres.objects.create(title='Antiphon')

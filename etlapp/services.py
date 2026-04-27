@@ -563,48 +563,72 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
     force_remote_uuids = set(force_remote_uuids or [])
     keep_local_uuids = set(keep_local_uuids or [])
 
-    for record in records:
-        if not isinstance(record, dict):
-            raise ValueError(f'Each record for {model._meta.label} must be an object.')
+    pending_records = list(records)
+    last_error = None
 
-        record_uuid = record.get('uuid')
-        if not record_uuid:
-            raise ValueError(f'Record for {model._meta.label} is missing uuid.')
+    while pending_records:
+        next_pending = []
+        progress_made = False
 
-        attrs, m2m_values = _prepare_import_values(model, record)
-        existing = model.objects.filter(uuid=record_uuid).first()
+        for record in pending_records:
+            if not isinstance(record, dict):
+                raise ValueError(f'Each record for {model._meta.label} must be an object.')
 
-        if category == 'shared' and existing is not None and record_uuid in keep_local_uuids:
-            model_summary['skipped'] += 1
-            continue
+            record_uuid = record.get('uuid')
+            if not record_uuid:
+                raise ValueError(f'Record for {model._meta.label} is missing uuid.')
 
-        if category == 'shared' and existing is not None:
-            _check_shared_conflict(
-                existing,
-                attrs,
-                m2m_values,
-                incoming_record=record,
-                force_remote=record_uuid in force_remote_uuids,
-            )
+            try:
+                attrs, m2m_values = _prepare_import_values(model, record)
+            except ValueError as exc:
+                next_pending.append(record)
+                last_error = exc
+                continue
 
-        if existing is None:
-            instance = model.objects.create(**_get_create_values(model, attrs))
+            existing = model.objects.filter(uuid=record_uuid).first()
+
+            if category == 'shared' and existing is not None and record_uuid in keep_local_uuids:
+                model_summary['skipped'] += 1
+                progress_made = True
+                continue
+
+            if category == 'shared' and existing is not None:
+                _check_shared_conflict(
+                    existing,
+                    attrs,
+                    m2m_values,
+                    incoming_record=record,
+                    force_remote=record_uuid in force_remote_uuids,
+                )
+
+            if existing is None:
+                instance = model.objects.create(**_get_create_values(model, attrs))
+                if attrs:
+                    model.objects.filter(pk=instance.pk).update(**attrs)
+                instance.refresh_from_db()
+                _apply_m2m_values(instance, m2m_values)
+                model_summary['created'] += 1
+                progress_made = True
+                continue
+
+            if _is_noop(existing, attrs, m2m_values):
+                model_summary['skipped'] += 1
+                progress_made = True
+                continue
+
             if attrs:
-                model.objects.filter(pk=instance.pk).update(**attrs)
-            instance.refresh_from_db()
-            _apply_m2m_values(instance, m2m_values)
-            model_summary['created'] += 1
-            continue
+                model.objects.filter(pk=existing.pk).update(**attrs)
+            existing.refresh_from_db()
+            _apply_m2m_values(existing, m2m_values)
+            model_summary['updated'] += 1
+            progress_made = True
 
-        if _is_noop(existing, attrs, m2m_values):
-            model_summary['skipped'] += 1
-            continue
+        if not next_pending:
+            break
+        if not progress_made:
+            raise last_error or ValueError(f'Unable to import records for {model._meta.label}.')
 
-        if attrs:
-            model.objects.filter(pk=existing.pk).update(**attrs)
-        existing.refresh_from_db()
-        _apply_m2m_values(existing, m2m_values)
-        model_summary['updated'] += 1
+        pending_records = next_pending
 
     return model_summary
 
