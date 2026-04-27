@@ -1,4 +1,5 @@
 import base64
+from decimal import Decimal
 import json
 import os
 from urllib import error as urllib_error
@@ -1028,6 +1029,8 @@ def _normalize_media_relative_path(path):
 def _serialize_value(value):
     if value is None:
         return None
+    if isinstance(value, Decimal):
+        return str(value)
     if hasattr(value, 'isoformat'):
         return value.isoformat()
     return str(value) if value.__class__.__name__ == 'UUID' else value

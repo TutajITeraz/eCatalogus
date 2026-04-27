@@ -1,6 +1,7 @@
 import csv
 import json
 import tempfile
+from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -14,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from etlapp.services import ETLImportConflictError, build_manuscript_export_payload, import_manuscript_payload
+from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from indexerapp.models import Bibliography, Content, ContentTopic, Contributors, DeletedRecord, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
@@ -611,6 +612,11 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(imported_tradition.genre, imported_genre)
         self.assertEqual(list(imported_formula.tradition.values_list('pk', flat=True)), [imported_tradition.pk])
         self.assertIn('"created": 3', import_stdout.getvalue())
+
+    def test_serialize_value_converts_decimal_to_string(self):
+        payload = {'value': _serialize_value(Decimal('52.123456'))}
+        self.assertEqual(payload['value'], '52.123456')
+        self.assertEqual(json.dumps(payload), '{"value": "52.123456"}')
 
 
 class SyncMetadataTests(TestCase):
