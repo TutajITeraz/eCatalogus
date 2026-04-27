@@ -185,3 +185,4 @@ indexerapp/static/.DS_Store
 .DS_Store
 .env.ecatalogus
 .env.mpl
+/static_assets

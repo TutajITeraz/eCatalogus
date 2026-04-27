@@ -246,15 +246,28 @@ fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/css/lightgallery-bundle.m
 
 # Ensure LightGallery CSS is also present under static/css/lib so collectstatic finds it
 mkdir -p "$CSS_LIB_DIR/lightgallery"
+mkdir -p "$CSS_LIB_DIR/lightgallery/images"
 if [ -s "$JS_LIB_DIR/lightgallery/css/lightgallery-bundle.min.css" ]; then
   cp -a "$JS_LIB_DIR/lightgallery/css/lightgallery-bundle.min.css" \
         "$CSS_LIB_DIR/lightgallery/lightgallery-bundle.min.css"
   echo "[sync] copied lightgallery CSS to $CSS_LIB_DIR/lightgallery" >&2
 fi
 
+# LightGallery CSS under css/lib/lightgallery resolves ../images/* to css/lib/images/*,
+# but the copied file keeps its own subdirectory, so mirror image assets there as well.
+cp -a "$JS_LIB_DIR/lightgallery/images"/* "$CSS_LIB_DIR/lightgallery/images/" 2>/dev/null || true
+
 # Also attempt to fetch LightGallery CSS directly into CSS lib (fallback when JS fetch failed)
 fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/css/lightgallery-bundle.min.css" \
       "$CSS_LIB_DIR/lightgallery/lightgallery-bundle.min.css"
+
+# LightGallery bundled CSS references ../images/loading.gif. Fetch it explicitly because
+# fetch() skips already-downloaded CSS files and then does not re-parse nested url(...).
+mkdir -p "$JS_LIB_DIR/lightgallery/images"
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/images/loading.gif" \
+      "$JS_LIB_DIR/lightgallery/images/loading.gif"
+fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/images/loading.gif" \
+      "$CSS_LIB_DIR/lightgallery/images/loading.gif"
 
 # Ensure LightGallery font assets are present (prevents MissingFileError during collectstatic)
 mkdir -p "$JS_LIB_DIR/lightgallery/fonts"
