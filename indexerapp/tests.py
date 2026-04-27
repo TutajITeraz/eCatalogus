@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
+from django.contrib import admin
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
+from indexerapp.models import Content, Manuscripts
 from indexerapp.signals import ensure_env_superuser
 
 
@@ -55,3 +57,15 @@ class EnvSuperuserBootstrapTests(TestCase):
 		self.assertTrue(user.is_staff)
 		self.assertEqual(user.email, 'new@example.com')
 		self.assertTrue(user.check_password('NewSecret123!'))
+
+
+class AdminUUIDVisibilityTests(SimpleTestCase):
+	def test_content_admin_exposes_uuid(self):
+		content_admin = admin.site._registry[Content]
+		self.assertIn('uuid', tuple(content_admin.list_display))
+		self.assertIn('uuid', tuple(content_admin.readonly_fields))
+
+	def test_manuscripts_admin_keeps_uuid_visible(self):
+		manuscripts_admin = admin.site._registry[Manuscripts]
+		self.assertIn('uuid', tuple(manuscripts_admin.list_display))
+		self.assertIn('uuid', tuple(manuscripts_admin.readonly_fields))

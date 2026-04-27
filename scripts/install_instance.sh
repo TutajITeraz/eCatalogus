@@ -1083,14 +1083,34 @@ link_public_assets() {
   resolve_instance_runtime_paths
 
   local legacy_media_dir="${APPDIR}/media"
-  if [[ "$MEDIA_DIR" != "$legacy_media_dir" && -d "$legacy_media_dir" ]]; then
+  local public_media_dir="${PUBLIC_HTML}/media"
+
+  migrate_legacy_media_dir() {
+    local source_dir="$1"
+    if [[ ! -d "$source_dir" || "$MEDIA_DIR" == "$source_dir" ]]; then
+      return 0
+    fi
+
     mkdir -p "$MEDIA_DIR"
     if [[ -z "$(find "$MEDIA_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
-      cp -a "${legacy_media_dir}/." "$MEDIA_DIR/"
-      log "Migrated legacy media from ${legacy_media_dir} to ${MEDIA_DIR}"
+      cp -a "${source_dir}/." "$MEDIA_DIR/"
+      log "Migrated legacy media from ${source_dir} to ${MEDIA_DIR}"
     else
-      log "Skipping legacy media migration because ${MEDIA_DIR} already contains files"
+      log "Skipping legacy media migration from ${source_dir} because ${MEDIA_DIR} already contains files"
     fi
+  }
+
+  migrate_legacy_media_dir "$legacy_media_dir"
+
+  if [[ -L "$public_media_dir" ]]; then
+    local public_media_target=""
+    public_media_target=$(readlink -f "$public_media_dir" 2>/dev/null || true)
+    if [[ -n "$public_media_target" ]]; then
+      migrate_legacy_media_dir "$public_media_target"
+    fi
+  elif [[ -d "$public_media_dir" ]]; then
+    migrate_legacy_media_dir "$public_media_dir"
+    rm -rf "$public_media_dir"
   fi
 
   # Ensure directories exist
@@ -1222,7 +1242,7 @@ location = /favicon.ico {
 }
 
 location /static/ {
-    alias ${PUBLIC_HTML}/static/;
+  alias ${STATIC_DIR}/;
     expires 30d;
     add_header Cache-Control "public, immutable";
 }

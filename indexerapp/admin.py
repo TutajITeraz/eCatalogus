@@ -1152,3 +1152,22 @@ admin.site.register(Topic,TopicAdmin)
 admin.site.register(ContentTopic,ContentTopicAdmin)
 admin.site.register(TextStandarization,TextStandarizationAdmin)
 admin.site.register(AIQuery,AIQueryAdmin)
+
+
+def _ensure_uuid_visible_in_admin():
+    for model, model_admin in admin.site._registry.items():
+        try:
+            model._meta.get_field('uuid')
+        except Exception:
+            continue
+
+        list_display = tuple(getattr(model_admin, 'list_display', ()))
+        if 'uuid' not in list_display:
+            model_admin.list_display = list_display + ('uuid',)
+
+        readonly_fields = tuple(getattr(model_admin, 'readonly_fields', ()))
+        if 'uuid' not in readonly_fields:
+            model_admin.readonly_fields = readonly_fields + ('uuid',)
+
+
+_ensure_uuid_visible_in_admin()
