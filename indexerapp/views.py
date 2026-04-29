@@ -1640,7 +1640,13 @@ class QuiresAjaxView(View):
 class ConditionAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
-        skip_fields = [ 'manuscript']  # Add any other fields to skip
+        skip_fields = [
+            'manuscript',
+            'uuid',
+            'manuscript_uuid',
+            'conservation_date_uuid',
+            'data_contributor_uuid',
+        ]
         info_queryset = ms_instance.ms_condition.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
