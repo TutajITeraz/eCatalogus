@@ -10,6 +10,7 @@ from django.contrib.auth import login, authenticate
 from django.contrib.auth.mixins import LoginRequiredMixin
 from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image, DecorationSubjects
 from django.http import JsonResponse
+from django.http import Http404
 from django.contrib.contenttypes.models import ContentType
 
 from django.forms.models import model_to_dict
@@ -93,6 +94,7 @@ from django.contrib.auth.decorators import login_required
 
 #for data export
 import csv
+import uuid
 
 #from zotero.forms import get_tag_formset
 
@@ -105,6 +107,116 @@ from captcha.helpers import captcha_image_url
 
 #For traditions assignment:
 from django.db import transaction
+
+
+def _get_first_present(mapping, *keys):
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ''):
+            return value
+    return None
+
+
+def _resolve_object_by_uuid_or_pk(model, raw_value):
+    if raw_value in (None, ''):
+        raise Http404()
+
+    raw_text = str(raw_value).strip()
+    if not raw_text:
+        raise Http404()
+
+    try:
+        parsed_uuid = uuid.UUID(raw_text)
+    except ValueError:
+        parsed_uuid = None
+
+    if parsed_uuid is not None:
+        instance = model.objects.filter(uuid=parsed_uuid).first()
+        if instance is not None:
+            return instance
+
+    try:
+        return model.objects.get(pk=int(raw_text))
+    except (model.DoesNotExist, TypeError, ValueError) as exc:
+        raise Http404() from exc
+
+
+def _resolve_manuscript(source, *keys):
+    return _resolve_object_by_uuid_or_pk(Manuscripts, _get_first_present(source, *keys))
+
+
+def _build_uuid_or_pk_filter_kwargs(relation_name, raw_value):
+    raw_text = str(raw_value).strip()
+    if not raw_text:
+        raise ValueError('empty selector value')
+
+    try:
+        parsed_uuid = uuid.UUID(raw_text)
+    except ValueError:
+        parsed_uuid = None
+
+    if relation_name is None:
+        if parsed_uuid is not None:
+            return {'uuid': parsed_uuid}
+        return {'pk': int(raw_text)}
+
+    if parsed_uuid is not None:
+        return {f'{relation_name}__uuid': parsed_uuid}
+
+    return {f'{relation_name}_id': int(raw_text)}
+
+
+def _filter_queryset_by_uuid_or_pk(queryset, relation_name, raw_value):
+    if raw_value in (None, ''):
+        return queryset
+
+    raw_text = str(raw_value).strip()
+    if not raw_text:
+        return queryset
+
+    return queryset.filter(**_build_uuid_or_pk_filter_kwargs(relation_name, raw_text))
+
+
+def _filter_queryset_by_uuid_or_pk_any(queryset, relation_name, raw_value, separator=';'):
+    selectors = _parse_selector_list(raw_value, separator=separator)
+    if not selectors:
+        return queryset
+
+    predicate = Q()
+    for selector in selectors:
+        try:
+            predicate |= Q(**_build_uuid_or_pk_filter_kwargs(relation_name, selector))
+        except (TypeError, ValueError):
+            continue
+
+    if not predicate:
+        return queryset.none()
+
+    return queryset.filter(predicate)
+
+
+def _filter_queryset_by_uuid_or_pk_all(queryset, relation_name, raw_value, separator=';'):
+    for selector in _parse_selector_list(raw_value, separator=separator):
+        try:
+            queryset = _filter_queryset_by_uuid_or_pk(queryset, relation_name, selector)
+        except (TypeError, ValueError):
+            return queryset.none()
+
+    return queryset
+
+
+def _parse_selector_list(raw_value, separator=';'):
+    if raw_value in (None, ''):
+        return []
+
+    return [item.strip() for item in str(raw_value).split(separator) if item.strip()]
+
+
+def _resolve_manuscript_list(raw_value, separator=';'):
+    return [
+        _resolve_object_by_uuid_or_pk(Manuscripts, item)
+        for item in _parse_selector_list(raw_value, separator=separator)
+    ]
 
 
 
@@ -305,9 +417,7 @@ class MainInfoAjaxView(View):
 
 class MSInfoAjaxView(View):
     def get(self, request, *args, **kwargs):
-        # Get the manuscript instance using the provided ID (pk)
-        manuscript_id = self.request.GET.get('pk')
-        instance = get_object_or_404(Manuscripts, id=manuscript_id)
+        instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'pk', 'manuscript_id', 'ms')
 
         # Main info
         info = get_obj_dictionary(instance, [])
@@ -324,7 +434,7 @@ class MSInfoAjaxView(View):
 
 
         # Manuscript comments (debate)
-        debate = AttributeDebate.objects.filter(content_type__model='manuscripts', object_id=manuscript_id)
+        debate = AttributeDebate.objects.filter(content_type__model='manuscripts', object_id=instance.pk)
         debate_data = []
 
         # Iterate over each debate object
@@ -361,18 +471,18 @@ class GlobalCharFilter(GlobalFilter, filters.CharFilter):
 class MSGalleryView(View):
     """Manage manuscript gallery.
 
-    GET: require ?manuscript_id=<id> — returns JSON with images for manuscript
-    POST: accept multipart/form-data with manuscript_id and one or more files in 'images' field
+    GET: require ?manuscript_id=<id> or ?manuscript_uuid=<uuid> — returns JSON with images for manuscript
+    POST: accept multipart/form-data with manuscript_id or manuscript_uuid and one or more files in 'images' field
     """
     def get(self, request, *args, **kwargs):
-        manuscript_id = request.GET.get('manuscript_id')
-        if not manuscript_id:
-            return JsonResponse({'error': 'manuscript_id parameter is required'}, status=400)
+        manuscript_selector = _get_first_present(request.GET, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        if not manuscript_selector:
+            return JsonResponse({'error': 'manuscript_id or manuscript_uuid parameter is required'}, status=400)
 
         try:
-            ms = Manuscripts.objects.get(pk=int(manuscript_id))
-        except (Manuscripts.DoesNotExist, ValueError):
-            return JsonResponse({'error': 'Invalid manuscript_id'}, status=404)
+            ms = _resolve_manuscript(request.GET, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        except Http404:
+            return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
         images_qs = ms.images.all()
         host = request.build_absolute_uri('/')[:-1]
@@ -387,18 +497,18 @@ class MSGalleryView(View):
                 'thumbnail_url': thumb_url,
             })
 
-        return JsonResponse({'manuscript_id': ms.pk, 'images': result})
+        return JsonResponse({'manuscript_id': ms.pk, 'manuscript_uuid': str(ms.uuid) if ms.uuid else None, 'images': result})
 
     def post(self, request, *args, **kwargs):
         # uploading images — expects multipart form
-        manuscript_id = request.POST.get('manuscript_id')
-        if not manuscript_id:
-            return JsonResponse({'error': 'manuscript_id parameter is required'}, status=400)
+        manuscript_selector = _get_first_present(request.POST, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        if not manuscript_selector:
+            return JsonResponse({'error': 'manuscript_id or manuscript_uuid parameter is required'}, status=400)
 
         try:
-            ms = Manuscripts.objects.get(pk=int(manuscript_id))
-        except (Manuscripts.DoesNotExist, ValueError):
-            return JsonResponse({'error': 'Invalid manuscript_id'}, status=404)
+            ms = _resolve_manuscript(request.POST, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        except Http404:
+            return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
         # files may be under 'images' (multiple) or 'image' (single)
         files = request.FILES.getlist('images') or request.FILES.getlist('image')
@@ -425,16 +535,16 @@ class MSGalleryView(View):
         except Exception:
             return JsonResponse({'error': 'Invalid JSON body'}, status=400)
 
-        manuscript_id = payload.get('manuscript_id')
+        manuscript_selector = _get_first_present(payload, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
         image_id = payload.get('image_id')
 
-        if not manuscript_id:
-            return JsonResponse({'error': 'manuscript_id is required'}, status=400)
+        if not manuscript_selector:
+            return JsonResponse({'error': 'manuscript_id or manuscript_uuid is required'}, status=400)
 
         try:
-            ms = Manuscripts.objects.get(pk=int(manuscript_id))
-        except (Manuscripts.DoesNotExist, ValueError):
-            return JsonResponse({'error': 'Invalid manuscript_id'}, status=404)
+            ms = _resolve_manuscript(payload, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        except Http404:
+            return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
         if image_id:
             try:
@@ -547,9 +657,9 @@ class ContentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Content.objects.filter(manuscript__display_as_main=True)
-        manuscript_id = self.request.GET.get('manuscript_id', None)
-        if manuscript_id:
-            queryset = queryset.filter(manuscript_id=manuscript_id)
+        manuscript_selector = _get_first_present(self.request.GET, 'manuscript_uuid', 'manuscript_id', 'ms', 'pk')
+        if manuscript_selector:
+            queryset = _filter_queryset_by_uuid_or_pk(queryset, 'manuscript', manuscript_selector)
             
         #I want to send only if sequence_in_ms is not null or comments is not null
         queryset = queryset.filter(Q(sequence_in_ms__isnull=False) | Q(comments__isnull=False))
@@ -581,20 +691,20 @@ class ManuscriptHandsViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         is_main_text_param = self.request.query_params.get('is_main_text')
-        manuscript_id_param = self.request.query_params.get('ms')
+        manuscript_selector = _get_first_present(self.request.query_params, 'ms_uuid', 'manuscript_uuid', 'ms', 'manuscript_id', 'pk')
         
         # Convert is_main_text_param to a boolean value
         is_main_text = True if is_main_text_param == "true" else False if is_main_text_param == "false" else None
         
-        queryset = ManuscriptHands.objects.all()
+        queryset = ManuscriptHands.objects.all().order_by('pk')
         
         # Apply the filter for is_main_text if provided
         if is_main_text is not None:
             queryset = queryset.filter(is_main_text=is_main_text)
         
         # Apply the filter for manuscript_id if provided
-        if manuscript_id_param is not None:
-            queryset = queryset.filter(manuscript_id=manuscript_id_param)
+        if manuscript_selector is not None:
+            queryset = _filter_queryset_by_uuid_or_pk(queryset, 'manuscript', manuscript_selector)
         
         return queryset
 
@@ -677,7 +787,11 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         musicology_on_lines_true = True if musicology_on_lines_true == "true" else False if musicology_on_lines_true == "false" else None
         musicology_on_lines_false = True if musicology_on_lines_false == "true" else False if musicology_on_lines_false == "false" else None
 
-        projectId = int(self.request.query_params.get('projectId'))
+        raw_project_id = self.request.query_params.get('projectId')
+        try:
+            projectId = int(raw_project_id) if raw_project_id not in (None, '') else 0
+        except (TypeError, ValueError):
+            projectId = 0
 
         #text values
         formula_text = self.request.query_params.get('formula_text')
@@ -691,8 +805,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         if projectId != 0:
             queryset = queryset.filter(ms_projects__project__id=projectId)
 
-        #Always only main
-        queryset = queryset.filter(display_as_main=True)
+        # During the rollout-safe transition, legacy rows may still have display_as_main unset.
+        queryset = queryset.exclude(display_as_main=False)
 
         
         #Main search
@@ -734,15 +848,13 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
                     
         # Apply the filter for name if provided
         if name:
-            name_ids = name.split(';')  # Rozdziel wartość name na listę identyfikatorów
-            queryset = queryset.filter(id__in=name_ids)  # Przefiltruj wyniki, aby pasowały do identyfikatorów z listy
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, None, name)
         if foreign_id:
             queryset = queryset.filter(foreign_id=foreign_id)
         if liturgical_genre:
-            queryset = queryset.filter(ms_genres__genre__id=liturgical_genre)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_genres__genre', liturgical_genre)
         if contemporary_repository_place:
-            contemporary_repository_place_ids = contemporary_repository_place.split(';')
-            queryset = queryset.filter(contemporary_repository_place__in=contemporary_repository_place_ids)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'contemporary_repository_place', contemporary_repository_place)
         if shelfmark:
             shelfmark_ids = shelfmark.split(';')
             queryset = queryset.filter(shelf_mark__in=shelfmark_ids)
@@ -750,11 +862,9 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             dating_ids = dating.split(';')
             queryset = queryset.filter(dating__in=dating_ids)
         if place_of_origin:
-            place_of_origin_ids = place_of_origin.split(';')
-            queryset = queryset.filter(place_of_origin__in=place_of_origin_ids)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'place_of_origin', place_of_origin)
         if main_script:
-            main_script_ids = main_script.split(';')
-            queryset = queryset.filter(main_script__in=main_script_ids)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'main_script', main_script)
         if binding_date:
             binding_date_ids = binding_date.split(';')
             queryset = queryset.filter(binding_date__in=binding_date_ids)
@@ -1190,20 +1300,16 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         clla_liturgical_genre_select = self.request.query_params.get('clla_liturgical_genre_select')
         clla_provenance_place_select = self.request.query_params.get('clla_provenance_place_select')
 
-        if parchment_colour_select: 
-            parchment_colour_select_ids = parchment_colour_select.split(';')
-            queryset = queryset.filter(ms_codicology__parchment_colour__in=parchment_colour_select_ids)
-        if main_script_select: 
-            main_script_select_ids = main_script_select.split(';')
-            queryset = queryset.filter(main_script__in=main_script_select_ids)
+        if parchment_colour_select:
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_codicology__parchment_colour', parchment_colour_select)
+        if main_script_select:
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'main_script', main_script_select)
         if type_of_the_quire_select: 
             type_of_the_quire_select_ids = type_of_the_quire_select.split(';')
             for q in type_of_the_quire_select_ids:
                 queryset = queryset.filter(ms_quires__type_of_the_quire=q)
-        if script_name_select: 
-            script_name_select_ids = script_name_select.split(';')
-            for q in script_name_select_ids:
-                queryset = queryset.filter(ms_hands__script_name=q)
+        if script_name_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_hands__script_name', script_name_select)
         if ruling_method_select: 
             ruling_method_select_ids = ruling_method_select.split(';')
             for q in ruling_method_select_ids:
@@ -1212,46 +1318,31 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             pricking_select_ids = pricking_select.split(';')
             for q in pricking_select_ids:
                 queryset = queryset.filter(ms_layouts__pricking=q)
-        if binding_place_of_origin_select: 
-            binding_place_of_origin_select_ids = binding_place_of_origin_select.split(';')
-            queryset = queryset.filter(ms_binding__place_of_origin__in=binding_place_of_origin_select_ids)
-        if binding_type_select: 
-            binding_type_select_ids = binding_type_select.split(';')
-            queryset = queryset.filter(ms_binding__type_of_binding__in=binding_type_select_ids)
-        if binding_style_select: 
-            binding_style_select_ids = binding_style_select.split(';')
-            queryset = queryset.filter(ms_binding__style_of_binding__in=binding_style_select_ids)
-        if binding_material_select: 
-            binding_material_select_ids = binding_material_select.split(';')
-            for q in binding_material_select_ids:
-                queryset = queryset.filter(ms_binding_materials__material=q)
-        if binding_components_select: 
-            binding_components_select_ids = binding_components_select.split(';')
-            for q in binding_components_select_ids:
-                queryset = queryset.filter(ms_binding_components__component=q)
+        if binding_place_of_origin_select:
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_binding__place_of_origin', binding_place_of_origin_select)
+        if binding_type_select:
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_binding__type_of_binding', binding_type_select)
+        if binding_style_select:
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_binding__style_of_binding', binding_style_select)
+        if binding_material_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_binding_materials__material', binding_material_select)
+        if binding_components_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_binding_components__component', binding_components_select)
         if binding_category_select: 
             binding_category_select_ids = binding_category_select.split(';')
             for q in binding_category_select_ids:
                 queryset = queryset.filter(ms_binding__category=q)
-        if binding_decoration_type_select: 
-            binding_decoration_type_select_ids = binding_decoration_type_select.split(';')
-            for q in binding_decoration_type_select_ids:
-                queryset = queryset.filter(ms_binding_decorations__decoration=q)
-        if formula_select: 
-            formula_select_ids = formula_select.split(';')
-            for q in formula_select_ids:
-                queryset = queryset.filter(ms_content__formula=q)
-        if rubric_select: 
-            rubric_select_ids = rubric_select.split(';')
-            for q in rubric_select_ids:
-                queryset = queryset.filter(ms_content__rubric=q)
+        if binding_decoration_type_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_binding_decorations__decoration', binding_decoration_type_select)
+        if formula_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_content__formula', formula_select)
+        if rubric_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_content__rubric', rubric_select)
         if damage_select: 
             damage_select_ids = damage_select.split(';')
             queryset = queryset.filter(ms_condition__damage__in=damage_select_ids)
-        if provenance_place_select: 
-            provenance_place_select_ids = provenance_place_select.split(';')
-            for q in provenance_place_select_ids:
-                queryset = queryset.filter(ms_provenance__place=q)
+        if provenance_place_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_provenance__place', provenance_place_select)
         if provenance_place_countries_select: 
             provenance_place_countries_select_ids = provenance_place_countries_select.split(';')
             for q in provenance_place_countries_select_ids:
@@ -1260,10 +1351,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             form_of_an_item_select_ids = form_of_an_item_select.split(';')
             queryset = queryset.filter(form_of_an_item__in=form_of_an_item_select_ids)
 
-        if title_select: 
-            title_select_ids = title_select.split(';')
-            for q in title_select_ids:
-                queryset = queryset.filter(ms_bibliography__bibliography=q)
+        if title_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_bibliography__bibliography', title_select)
         if author_select: 
             author_select_ids = author_select.split(';')
             for q in author_select_ids:
@@ -1289,16 +1378,10 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             for q in location_on_the_page_select_ids:
                 queryset = queryset.filter(ms_decorations__location_on_the_page=q)
 
-        if decoration_type_select: 
-            decoration_type_select_ids = decoration_type_select.split(';')
-            #queryset = queryset.filter(ms_decorations__decoration_type__in=decoration_type_select_ids)
-            for q in decoration_type_select_ids:
-                queryset = queryset.filter(ms_decorations__decoration_type=q)
-        if decoration_subtype_select: 
-            decoration_subtype_select_ids = decoration_subtype_select.split(';')
-            #queryset = queryset.filter(ms_decorations__decoration_subtype__in=decoration_subtype_select_ids)
-            for q in decoration_subtype_select_ids:
-                queryset = queryset.filter(ms_decorations__decoration_subtype=q)
+        if decoration_type_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_decorations__decoration_type', decoration_type_select)
+        if decoration_subtype_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_decorations__decoration_subtype', decoration_subtype_select)
 
         if size_characteristic_select: 
             size_characteristic_select_ids = size_characteristic_select.split(';')
@@ -1310,37 +1393,22 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             #queryset = queryset.filter(ms_decorations__monochrome_or_colour__in=monochrome_or_colour_select_ids)
             for q in monochrome_or_colour_select_ids:
                 queryset = queryset.filter(ms_decorations__monochrome_or_colour=q)
-        if technique_select: 
-            technique_select_ids = technique_select.split(';')
-            #queryset = queryset.filter(ms_decorations__technique__in=technique_select_ids)
-            for q in technique_select_ids:
-                queryset = queryset.filter(ms_decorations__technique=q)
+        if technique_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_decorations__technique', technique_select)
         if ornamented_text_select: 
             ornamented_text_select_ids = ornamented_text_select.split(';')
             #queryset = queryset.filter(ms_decorations__ornamented_text__in=ornamented_text_select_ids)
             for q in ornamented_text_select_ids:
                 queryset = queryset.filter(ms_decorations__ornamented_text=q)
-        if decoration_subject_select: 
-            decoration_subject_select_ids = decoration_subject_select.split(';')
-            #queryset = queryset.filter(ms_decorations__decoration_subjects__subject__in=decoration_subject_select_ids)
-            for q in decoration_subject_select_ids:
-                queryset = queryset.filter(ms_decorations__decoration_subjects__subject=q)
-        if decoration_colours_select: 
-            decoration_colours_select_ids = decoration_colours_select.split(';')
-            #queryset = queryset.filter(ms_decorations__decoration_colours__colour__in=decoration_colours_select_ids)
-            for q in decoration_colours_select_ids:
-                queryset = queryset.filter(ms_decorations__decoration_colours__colour=q)
-        if decoration_characteristics_select: 
-            decoration_characteristics_select_ids = decoration_characteristics_select.split(';')
-            #queryset = queryset.filter(ms_decorations__decoration_characteristics__characteristics__in=decoration_characteristics_select_ids)
-            for q in decoration_characteristics_select_ids:
-                queryset = queryset.filter(ms_decorations__decoration_characteristics__characteristics=q)
+        if decoration_subject_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_decorations__decoration_subjects__subject', decoration_subject_select)
+        if decoration_colours_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_decorations__decoration_colours__colour', decoration_colours_select)
+        if decoration_characteristics_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_decorations__decoration_characteristics__characteristics', decoration_characteristics_select)
 
-        if musicology_type_select: 
-            musicology_type_select_ids = musicology_type_select.split(';')
-            #queryset = queryset.filter(ms_decorations__decoration_characteristics__characteristics__in=musicology_type_select_ids)
-            for q in musicology_type_select_ids:
-                queryset = queryset.filter(ms_music_notation__music_notation_name=q)
+        if musicology_type_select:
+            queryset = _filter_queryset_by_uuid_or_pk_all(queryset, 'ms_music_notation__music_notation_name', musicology_type_select)
 
         if formula_text and len(formula_text)>1:
             queryset = queryset.filter(ms_content__formula_text__icontains=formula_text)
@@ -1454,8 +1522,7 @@ class AssistantStatusView(LoginRequiredMixin, View):
 
 class CodicologyAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('pk')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'pk', 'ms', 'manuscript_id')
         skip_fields = ['manuscript']  # Add any other fields to skip
         instance = ms_instance.ms_codicology.first()
         info = get_obj_dictionary(instance,skip_fields)
@@ -1488,8 +1555,7 @@ class CodicologyAjaxView(View):
 
 class LayoutsAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_layouts.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1503,10 +1569,8 @@ class LayoutsAjaxView(View):
 
 class DecorationAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
         decoration_type = self.request.GET.get('decoration_type')
-
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_decorations.all()
 
@@ -1561,8 +1625,7 @@ class DecorationAjaxView(View):
 
 class QuiresAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_quires.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1576,8 +1639,7 @@ class QuiresAjaxView(View):
 
 class ConditionAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_condition.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1591,8 +1653,7 @@ class ConditionAjaxView(View):
 
 class CllaAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = ['id', 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_clla.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1606,8 +1667,7 @@ class CllaAjaxView(View):
 
 class OriginsAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_origins.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1640,15 +1700,12 @@ class OriginsAjaxView(View):
 
 class BindingAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_binding.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
         #Binding materials:
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
         skip_fields = ['id', 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_binding_materials.all()
         materials_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1661,8 +1718,6 @@ class BindingAjaxView(View):
 
 
         #Binding decorations:
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
         skip_fields = ['id', 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_binding_decorations.all()
         decorations_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1708,8 +1763,7 @@ class BindingAjaxView(View):
 
 class MusicNotationAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_music_notation.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1723,11 +1777,8 @@ class MusicNotationAjaxView(View):
 
 class HandsAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
         is_main_text = self.request.GET.get('is_main_text')
-
-
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_hands.all()
 
@@ -1767,8 +1818,7 @@ class HandsAjaxView(View):
 
 class WatermarksAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         info_queryset = ms_instance.ms_watermarks.all()  # ManuscriptWatermarks objects
         
         # Create a list of dictionaries for ManuscriptWatermarks, keeping id
@@ -1788,8 +1838,7 @@ class WatermarksAjaxView(View):
 
 class BibliographyAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
 
         # Get ManuscriptBibliography objects
         bibliography = ms_instance.ms_bibliography.all()
@@ -1811,8 +1860,7 @@ class BibliographyAjaxView(View):
 
 class BibliographyExportView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
 
         #Zotero:
         bibliography = ms_instance.ms_bibliography.all()
@@ -1831,8 +1879,7 @@ class BibliographyExportView(View):
 
 class BibliographyPrintView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
 
         #Zotero:
         bibliography = ms_instance.ms_bibliography.all()
@@ -1854,8 +1901,7 @@ class BibliographyPrintView(View):
         return JsonResponse(data)
 class ProvenanceAjaxView(View):
     def get(self, request, *args, **kwargs):
-        pk = self.request.GET.get('ms')
-        ms_instance = get_object_or_404(Manuscripts, id=pk)
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
         skip_fields = ['manuscript']  # Add any other fields to skip
         
         # Sort the queryset by timeline_sequence
@@ -1930,7 +1976,21 @@ class TraditionsAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class LiturgicalGenresAutocomplete(autocomplete.Select2QuerySetView):
+
+class UUIDAutocompleteResultMixin:
+    def get_results(self, context):
+        return [
+            {
+                'id': self.get_result_value(result),
+                'text': self.get_result_label(result),
+                'selected_text': self.get_selected_result_label(result),
+                'uuid': str(result.uuid) if getattr(result, 'uuid', None) else None,
+                'pk': str(result.pk),
+            }
+            for result in context['object_list']
+        ]
+
+class LiturgicalGenresAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -1969,7 +2029,8 @@ class ContentAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class ManuscriptsAutocompleteMain(autocomplete.Select2QuerySetView):
+
+class ManuscriptsAutocompleteMain(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -1992,7 +2053,7 @@ class ManuscriptsAutocompleteMain(autocomplete.Select2QuerySetView):
 
         return qs
 
-class ManuscriptsAutocomplete(autocomplete.Select2QuerySetView):
+class ManuscriptsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2090,7 +2151,7 @@ class MSShelfMarkAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, item):
         return str(item['shelf_mark'])
 
-class MSContemporaryRepositoryPlaceAutocomplete(autocomplete.Select2QuerySetView):
+class MSContemporaryRepositoryPlaceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = Places.objects.filter(
             manuscripts__contemporary_repository_place__isnull=False,
@@ -2130,7 +2191,7 @@ class MSDatingAutocomplete(autocomplete.Select2QuerySetView):
         # Zwróć etykietę wyniku jako str() z obiektu Places
         return str(item)
 
-class MSPlaceOfOriginsAutocomplete(autocomplete.Select2QuerySetView):
+class MSPlaceOfOriginsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = Places.objects.exclude(
             manuscripts_origin__place_of_origin=None
@@ -2147,7 +2208,7 @@ class MSPlaceOfOriginsAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class MSProvenanceAutocomplete(autocomplete.Select2QuerySetView):
+class MSProvenanceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Pobieramy miejsca powiązane z Provenance, tylko te, które mają przypisany place
         qs = Places.objects.filter(
@@ -2188,7 +2249,7 @@ class MSProvenanceAutocomplete(autocomplete.Select2QuerySetView):
 
         return name
 
-class MSMainScriptAutocomplete(autocomplete.Select2QuerySetView):
+class MSMainScriptAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = ScriptNames.objects.exclude(
             manuscripts__main_script=None
@@ -2251,7 +2312,7 @@ class ContributorsAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class SubjectAutocomplete(autocomplete.Select2QuerySetView):
+class SubjectAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2292,7 +2353,7 @@ class GenreAutocomplete(autocomplete.Select2QuerySetView):
         return qs
 
 
-class ColoursAutocomplete(autocomplete.Select2QuerySetView):
+class ColoursAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2305,7 +2366,7 @@ class ColoursAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class CharacteristicsAutocomplete(autocomplete.Select2QuerySetView):
+class CharacteristicsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2319,7 +2380,7 @@ class CharacteristicsAutocomplete(autocomplete.Select2QuerySetView):
         return qs
 
 #################################
-class DecorationTypeAutocomplete(autocomplete.Select2QuerySetView):
+class DecorationTypeAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2333,7 +2394,7 @@ class DecorationTypeAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class DecorationSubtypeAutocomplete(autocomplete.Select2QuerySetView):
+class DecorationSubtypeAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2347,7 +2408,7 @@ class DecorationSubtypeAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class DecorationTechniquesAutocomplete(autocomplete.Select2QuerySetView):
+class DecorationTechniquesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2382,7 +2443,7 @@ class DecorationOrnamentedTextAutocomplete(autocomplete.Select2QuerySetView):
         return str(item['ornamented_text'])
 
 ######################################
-class ScriptNamesAutocomplete(autocomplete.Select2QuerySetView):
+class ScriptNamesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2395,7 +2456,7 @@ class ScriptNamesAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class BindingTypesAutocomplete(autocomplete.Select2QuerySetView):
+class BindingTypesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2408,7 +2469,7 @@ class BindingTypesAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class BindingStylesAutocomplete(autocomplete.Select2QuerySetView):
+class BindingStylesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2421,7 +2482,7 @@ class BindingStylesAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class BindingMaterialsAutocomplete(autocomplete.Select2QuerySetView):
+class BindingMaterialsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2434,7 +2495,7 @@ class BindingMaterialsAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class BindingDecorationTypeAutocomplete(autocomplete.Select2QuerySetView):
+class BindingDecorationTypeAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2447,7 +2508,7 @@ class BindingDecorationTypeAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class BindingComponentsAutocomplete(autocomplete.Select2QuerySetView):
+class BindingComponentsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2460,7 +2521,7 @@ class BindingComponentsAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class MusicNotationNamesAutocomplete(autocomplete.Select2QuerySetView):
+class MusicNotationNamesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2499,7 +2560,7 @@ class BindingCategoryAutocomplete(autocomplete.Select2ListView):
         })
 
 
-class BibliographyTitleAutocomplete(autocomplete.Select2QuerySetView):
+class BibliographyTitleAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2528,7 +2589,7 @@ class BibliographyAuthorAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, item):
         return item.author
 
-class FormulasAutocomplete(autocomplete.Select2QuerySetView):
+class FormulasAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2544,7 +2605,7 @@ class FormulasAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, item):
         return item.text
 
-class RiteNamesAutocomplete(autocomplete.Select2QuerySetView):
+class RiteNamesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2560,7 +2621,7 @@ class RiteNamesAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, item):
         return item.name
 
-class PlacesAutocomplete(autocomplete.Select2QuerySetView):
+class PlacesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Places.objects.none()
@@ -3859,19 +3920,15 @@ class contentCompareGraph(View):
         left = self.request.GET.get('left')
         right = self.request.GET.get('right')
 
-        ms_ids = [left,right]
         category_column = 'formula_id'
         value_column = 'sequence_in_ms'
 
 
         # Query the database for data
         data = []
-        idx=0
-        for ms_id in ms_ids:
-            manuscript = Manuscripts.objects.get(id=ms_id)
-            content_objects = Content.objects.filter(manuscript_id=ms_id, formula_id__isnull=False).values(category_column, value_column)
+        for manuscript in [_resolve_object_by_uuid_or_pk(Manuscripts, left), _resolve_object_by_uuid_or_pk(Manuscripts, right)]:
+            content_objects = Content.objects.filter(manuscript=manuscript, formula_id__isnull=False).values(category_column, value_column)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
-            idx+=1
         
         # Create a DataFrame from the fetched data
         df = pd.DataFrame(data)
@@ -3929,15 +3986,13 @@ class contentCompareJSON(View):
         left = self.request.GET.get('left')
         right = self.request.GET.get('right')
     
-        ms_ids = [left, right]
         category_column = 'formula_id'
         value_column = 'sequence_in_ms'
 
         # Query the database for data
         data = []
-        for ms_id in ms_ids:
-            manuscript = Manuscripts.objects.get(id=ms_id)
-            content_objects = Content.objects.filter(manuscript_id=ms_id, formula_id__isnull=False)
+        for manuscript in [_resolve_object_by_uuid_or_pk(Manuscripts, left), _resolve_object_by_uuid_or_pk(Manuscripts, right)]:
+            content_objects = Content.objects.filter(manuscript=manuscript, formula_id__isnull=False)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
 
         # Create a DataFrame from the fetched data
@@ -3979,16 +4034,14 @@ class contentCompareEditionGraph(View):
         left = self.request.GET.get('left')
         right = self.request.GET.get('right')
 
-        ms_ids = [left,right]
         category_column = 'edition_index'
         value_column = 'rubric_sequence'
 
 
         # Query the database for data
         data = []
-        for ms_id in ms_ids:
-            manuscript = Manuscripts.objects.get(id=ms_id)
-            content_objects = Content.objects.filter(manuscript_id=ms_id, edition_index__isnull=False)
+        for manuscript in [_resolve_object_by_uuid_or_pk(Manuscripts, left), _resolve_object_by_uuid_or_pk(Manuscripts, right)]:
+            content_objects = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
 
         # Create a DataFrame from the fetched data
@@ -4052,17 +4105,15 @@ class contentCompareEditionGraph(View):
 class contentCompareEditionJSON(View):
 
     def get(self, request, *args, **kwargs):
-        mss = self.request.GET.get('mss');
-        ms_ids = mss.split(';')
+        mss = self.request.GET.get('mss')
 
         category_column = 'edition_index'
         value_column = 'rubric_sequence'
 
         # Query the database for data
         data = []
-        for ms_id in ms_ids:
-            manuscript = Manuscripts.objects.get(id=ms_id)
-            content_objects = Content.objects.filter(manuscript_id=ms_id, edition_index__isnull=False)
+        for manuscript in _resolve_manuscript_list(mss):
+            content_objects = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
 
         # Create a DataFrame from the fetched data
@@ -4090,8 +4141,7 @@ class contentCompareEditionJSON(View):
 
 class MSRitesLookupView(View):
     def get(self, request, *args, **kwargs):
-        ms_id = request.GET.get('ms')
-        manuscript = get_object_or_404(Manuscripts, id=ms_id)
+        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
 
         print("manuscript = "+str(manuscript))
 
@@ -4200,8 +4250,8 @@ class MSRitesLookupView(View):
 
 class ManuscriptTEIView(View):
     def get(self, request, *args, **kwargs):
-        ms_id = request.GET.get('ms')
-        manuscript = get_object_or_404(Manuscripts, id=ms_id)
+        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_id = manuscript.id
         codicology = manuscript.ms_codicology.first()
 
         #xml_header = '''<?xml-model href="https://raw.githubusercontent.com/msDesc/consolidated-tei-schema/master/msdesc.rng" type="application/xml" schematypens="http://relaxng.org/ns/structure/1.0"?>
@@ -4287,11 +4337,8 @@ class ManuscriptTEI(TemplateView):
     template_name = 'manuscript.xml'  # Path to your template
 
     def get(self, request, *args, **kwargs):
-        # Get ms_id from the GET parameters
-        ms_id = request.GET.get('ms')
-
-        # Retrieve manuscript from the database or return 404 if not found
-        manuscript = get_object_or_404(Manuscripts, id=ms_id)
+        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_id = manuscript.id
 
         medieval_hands = manuscript.ms_hands.filter(is_medieval=True)
         added_hands = manuscript.ms_hands.filter(is_medieval=False)
@@ -4322,13 +4369,9 @@ class ManuscriptTEI(TemplateView):
 
 
 class ContentCSVExportView(View):
-    def get(self, request, manuscript_id):
-        # Check if manuscript_id is valid
-        if not (0 < manuscript_id < 99999999):
-            return HttpResponse("Invalid manuscript ID.", status=400)
-
-        # Filter Content records based on manuscript_id
-        contents = Content.objects.filter(manuscript_id=manuscript_id)
+    def get(self, request, manuscript_id=None, manuscript_uuid=None):
+        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid or manuscript_id)
+        contents = Content.objects.filter(manuscript=manuscript)
 
         # Prepare the response as a CSV file
         response = HttpResponse(content_type='text/csv')
@@ -4380,13 +4423,13 @@ class ContentCSVExportView(View):
 
 
 class DeleteContentView(View):
-    def delete(self, request, manuscript_id):
+    def delete(self, request, manuscript_id=None, manuscript_uuid=None):
         # Check if the user is a superuser
         if not request.user.is_superuser:
             return HttpResponseForbidden("Only superusers can delete content.")
 
         # Validate manuscript ID
-        manuscript = get_object_or_404(Manuscripts, pk=manuscript_id)
+        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid or manuscript_id)
         
         # Delete all related content
         deleted_count, _ = Content.objects.filter(manuscript_id=manuscript.id).delete()
@@ -4447,13 +4490,13 @@ class DeleteTraditionFromFormulaView(View):
         })
 
 class AssignMSContentToTraditionView(View):
-    def post(self, request, manuscript_id, tradition_id):
+    def post(self, request, manuscript_id=None, tradition_id=None, manuscript_uuid=None):
         # Check if the user is a superuser
         if not request.user.is_superuser:
             return HttpResponseForbidden("Only superusers can assign content to traditions.")
 
         # Validate manuscript and tradition
-        manuscript = get_object_or_404(Manuscripts, pk=manuscript_id)
+        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid or manuscript_id)
         tradition = get_object_or_404(Traditions, pk=tradition_id)
         
         # Get all formulas associated with the manuscript through content

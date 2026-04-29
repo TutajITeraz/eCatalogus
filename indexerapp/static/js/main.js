@@ -39,6 +39,91 @@ window.pageRoot = pageRoot;
 window.projectId= projectId;
 window.foreign_id_name = foreign_id_name;
 
+window.getManuscriptPageUrl = function (manuscript) {
+    if (manuscript && manuscript.uuid) {
+        return '/static/page.html?p=manuscript&manuscript_uuid=' + encodeURIComponent(manuscript.uuid);
+    }
+
+    if (manuscript && manuscript.id !== undefined && manuscript.id !== null) {
+        return '/static/page.html?p=manuscript&id=' + encodeURIComponent(manuscript.id);
+    }
+
+    return '/static/page.html?p=manuscript';
+};
+
+window.isUuidLike = function (value) {
+    return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+};
+
+window.getManuscriptSelectorValue = function (manuscript) {
+    if (!manuscript) {
+        return null;
+    }
+
+    if (typeof manuscript === 'string') {
+        return manuscript;
+    }
+
+    return manuscript.uuid || manuscript.id || manuscript.pk || null;
+};
+
+window.getSelectedManuscriptSelector = function (selector) {
+    const element = $(selector);
+    if (!element.length) {
+        return null;
+    }
+
+    if (element.hasClass('select2-hidden-accessible')) {
+        const selection = element.select2('data')[0];
+        return window.getManuscriptSelectorValue(selection);
+    }
+
+    return window.getManuscriptSelectorValue(element.val());
+};
+
+window.getManuscriptSelectorQuery = function (manuscript, legacyKey = 'ms') {
+    const selector = window.getManuscriptSelectorValue(manuscript);
+    if (!selector) {
+        return '';
+    }
+
+    if (window.isUuidLike(selector)) {
+        return 'manuscript_uuid=' + encodeURIComponent(selector);
+    }
+
+    return legacyKey + '=' + encodeURIComponent(selector);
+};
+
+window.addManuscriptSelectorParam = function (payload, manuscript, legacyKey = 'manuscript_id') {
+    const selector = window.getManuscriptSelectorValue(manuscript);
+    if (!selector) {
+        return payload;
+    }
+
+    if (window.isUuidLike(selector)) {
+        payload.manuscript_uuid = selector;
+        return payload;
+    }
+
+    payload[legacyKey] = selector;
+    return payload;
+};
+
+window.appendManuscriptSelectorToFormData = function (formData, manuscript, legacyKey = 'manuscript_id') {
+    const selector = window.getManuscriptSelectorValue(manuscript);
+    if (!selector) {
+        return formData;
+    }
+
+    if (window.isUuidLike(selector)) {
+        formData.append('manuscript_uuid', selector);
+        return formData;
+    }
+
+    formData.append(legacyKey, selector);
+    return formData;
+};
+
 const queryString = window.location.search;
 const urlParams = new URLSearchParams(queryString);
 

@@ -1,9 +1,38 @@
 let data;
 let manuscriptId;
+let manuscriptUuid;
 let traditionId;
 let contributorId;
 let dataTable;
 let tableName;
+
+function hasSelectedManuscript() {
+    return !!manuscriptUuid || !!manuscriptId;
+}
+
+function getManuscriptExportUrl() {
+    if (manuscriptUuid) {
+        return pageRoot + `/export/content/by-uuid/${manuscriptUuid}/`;
+    }
+
+    return pageRoot + `/export/content/${manuscriptId}/`;
+}
+
+function getManuscriptDeleteUrl() {
+    if (manuscriptUuid) {
+        return pageRoot + `/delete/content/by-uuid/${manuscriptUuid}/`;
+    }
+
+    return pageRoot + `/delete/content/${manuscriptId}/`;
+}
+
+function getAssignManuscriptContentUrl() {
+    if (manuscriptUuid) {
+        return pageRoot + `/assign-ms-content-to-tradition/by-uuid/${manuscriptUuid}/${traditionId}/`;
+    }
+
+    return pageRoot + `/assign-ms-content-to-tradition/${manuscriptId}/${traditionId}/`;
+}
 
 function browseFile() {
     document.getElementById('file-input').click();
@@ -638,13 +667,13 @@ function handleServerResponse(response) {
 
 function downloadContentCSV() {
 
-    if (!(manuscriptId > 0 && manuscriptId < 99999999)) {
+    if (!hasSelectedManuscript()) {
         alert('You have to select a manuscript from the list!');
         return;
     }
 
     // Trigger the download
-    const url = pageRoot+`/export/content/${manuscriptId}/`;
+    const url = getManuscriptExportUrl();
     window.location.href = url;
 }
 
@@ -670,6 +699,7 @@ importer_init = function()
         console.log(id);
 
         manuscriptId = id;
+        manuscriptUuid = data.uuid || null;
         document.getElementById('download-csv-from-server').style.display = 'block';
         document.getElementById("delete-ms-content").style.display = 'block';
 
@@ -730,13 +760,13 @@ importer_init = function()
 }
 
 function deleteMSContent() {
-    if (!(manuscriptId > 0 && manuscriptId < 99999999)) {
+    if (!hasSelectedManuscript()) {
         alert('You have to select a manuscript from the list!');
         return;
     }
 
     if (confirm('Are you sure you want to delete all content for this manuscript?')) {
-        fetch(pageRoot+`/delete/content/${manuscriptId}/`, {
+        fetch(getManuscriptDeleteUrl(), {
             method: 'DELETE',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security
@@ -780,7 +810,7 @@ function deleteTraditionContent() {
 }
 
 function assignMSContentToTheTradition() {
-    if (!(manuscriptId > 0 && manuscriptId < 99999999)) {
+    if (!hasSelectedManuscript()) {
         alert('You have to select a manuscript from the list!');
         return;
     }
@@ -791,7 +821,7 @@ function assignMSContentToTheTradition() {
     }
 
     if (confirm('Are you sure you want to assign all content from the manuscript to the tradition?')) {
-        fetch(pageRoot+`/assign-ms-content-to-tradition/${manuscriptId}/${traditionId}/`, {
+        fetch(getAssignManuscriptContentUrl(), {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security

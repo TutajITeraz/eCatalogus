@@ -960,46 +960,62 @@ manuscripts_init = function()
             d[key] = value;
         }
 
+        function getSelect2Values(selector, valueGetter) {
+            return $(selector)
+                .select2('data')
+                .map(valueGetter)
+                .filter(Boolean)
+                .join(';');
+        }
+
+        function getUuidAwareSelect2Values(selector) {
+            return getSelect2Values(selector, item => item.uuid || item.id || item.pk || null);
+        }
+
+        function getLegacySelect2Values(selector) {
+            return getSelect2Values(selector, item => item.id);
+        }
+
         // --- Select2 multi-selects (join to ';'-separated id string) ---
-        setIfActive('name',                           $('#ms_name_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('foreign_id',                     $('#ms_foreign_id_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('liturgical_genre',               $('#ms_liturgical_genre_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('contemporary_repository_place',  $('#ms_contemporary_repository_place_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('shelfmark',                      $('#ms_shelfmark_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('place_of_origin',                $('#ms_place_of_origin_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('parchment_colour_select',        $('#parchment_colour_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('main_script_select',             $('#main_script_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('type_of_the_quire_select',       $('#type_of_the_quire_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('script_name_select',             $('#script_name_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('ruling_method_select',           $('#ruling_method_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('pricking_select',                $('#pricking_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_place_of_origin_select', $('#binding_place_of_origin_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_type_select',            $('#binding_type_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_style_select',           $('#binding_style_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_material_select',        $('#binding_material_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_decoration_select',      $('#binding_decoration_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_components_select',      $('#binding_components_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('binding_category_select',        $('#binding_category_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('formula_select',                 $('#formula_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('rubric_select',                  $('#rubric_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('damage_select',                  $('#damage_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('provenance_place_select',        $('#provenance_place_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('provenance_place_countries_select', $('#provenance_place_countries_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('form_of_an_item_select',         $('#form_of_an_item_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('title_select',                   $('#title_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('name',                           getUuidAwareSelect2Values('#ms_name_select'));
+        setIfActive('foreign_id',                     getLegacySelect2Values('#ms_foreign_id_select'));
+        setIfActive('liturgical_genre',               getUuidAwareSelect2Values('#ms_liturgical_genre_select'));
+        setIfActive('contemporary_repository_place',  getUuidAwareSelect2Values('#ms_contemporary_repository_place_select'));
+        setIfActive('shelfmark',                      getLegacySelect2Values('#ms_shelfmark_select'));
+        setIfActive('place_of_origin',                getUuidAwareSelect2Values('#ms_place_of_origin_select'));
+        setIfActive('parchment_colour_select',        getUuidAwareSelect2Values('#parchment_colour_select'));
+        setIfActive('main_script_select',             getUuidAwareSelect2Values('#main_script_select'));
+        setIfActive('type_of_the_quire_select',       getLegacySelect2Values('#type_of_the_quire_select'));
+        setIfActive('script_name_select',             getUuidAwareSelect2Values('#script_name_select'));
+        setIfActive('ruling_method_select',           getLegacySelect2Values('#ruling_method_select'));
+        setIfActive('pricking_select',                getLegacySelect2Values('#pricking_select'));
+        setIfActive('binding_place_of_origin_select', getUuidAwareSelect2Values('#binding_place_of_origin_select'));
+        setIfActive('binding_type_select',            getUuidAwareSelect2Values('#binding_type_select'));
+        setIfActive('binding_style_select',           getUuidAwareSelect2Values('#binding_style_select'));
+        setIfActive('binding_material_select',        getUuidAwareSelect2Values('#binding_material_select'));
+        setIfActive('binding_decoration_select',      getUuidAwareSelect2Values('#binding_decoration_select'));
+        setIfActive('binding_components_select',      getUuidAwareSelect2Values('#binding_components_select'));
+        setIfActive('binding_category_select',        getLegacySelect2Values('#binding_category_select'));
+        setIfActive('formula_select',                 getUuidAwareSelect2Values('#formula_select'));
+        setIfActive('rubric_select',                  getUuidAwareSelect2Values('#rubric_select'));
+        setIfActive('damage_select',                  getLegacySelect2Values('#damage_select'));
+        setIfActive('provenance_place_select',        getUuidAwareSelect2Values('#provenance_place_select'));
+        setIfActive('provenance_place_countries_select', getLegacySelect2Values('#provenance_place_countries_select'));
+        setIfActive('form_of_an_item_select',         getLegacySelect2Values('#form_of_an_item_select'));
+        setIfActive('title_select',                   getUuidAwareSelect2Values('#title_select'));
         setIfActive('author_select',                  $('#author_select').select2('data').map(i => i.text).join(';')); // special: .text not .id
-        setIfActive('original_or_added_select',       $('#original_or_added_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('location_on_the_page_select',    $('#location_on_the_page_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('decoration_type_select',         $('#decoration_type_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('decoration_subtype_select',      $('#decoration_subtype_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('size_characteristic_select',     $('#size_characteristic_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('monochrome_or_colour_select',    $('#monochrome_or_colour_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('technique_select',               $('#technique_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('ornamented_text_select',         $('#ornamented_text_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('decoration_subject_select',      $('#decoration_subject_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('decoration_colours_select',      $('#decoration_colours_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('decoration_characteristics_select', $('#decoration_characteristics_select').select2('data').map(i => i.id).join(';'));
-        setIfActive('musicology_type_select',         $('#musicology_type_select').select2('data').map(i => i.id).join(';'));
+        setIfActive('original_or_added_select',       getLegacySelect2Values('#original_or_added_select'));
+        setIfActive('location_on_the_page_select',    getLegacySelect2Values('#location_on_the_page_select'));
+        setIfActive('decoration_type_select',         getUuidAwareSelect2Values('#decoration_type_select'));
+        setIfActive('decoration_subtype_select',      getUuidAwareSelect2Values('#decoration_subtype_select'));
+        setIfActive('size_characteristic_select',     getLegacySelect2Values('#size_characteristic_select'));
+        setIfActive('monochrome_or_colour_select',    getLegacySelect2Values('#monochrome_or_colour_select'));
+        setIfActive('technique_select',               getUuidAwareSelect2Values('#technique_select'));
+        setIfActive('ornamented_text_select',         getLegacySelect2Values('#ornamented_text_select'));
+        setIfActive('decoration_subject_select',      getUuidAwareSelect2Values('#decoration_subject_select'));
+        setIfActive('decoration_colours_select',      getUuidAwareSelect2Values('#decoration_colours_select'));
+        setIfActive('decoration_characteristics_select', getUuidAwareSelect2Values('#decoration_characteristics_select'));
+        setIfActive('musicology_type_select',         getUuidAwareSelect2Values('#musicology_type_select'));
 
         // --- Checkboxes: multi-value (columns) ---
         var colVal = [$('#ms_how_many_columns1').is(':checked') ? '1' : '',
@@ -1159,22 +1175,25 @@ manuscripts_init = function()
 
         // Group manuscripts by coordinates
         data.forEach((item, index) => {
-            let lat, lon, name, id;
+            let lat, lon, name, id, uuid;
             if (currentPlaceType === 'contemporary_repository_place') {
                 lat = item.contemporary_repository_place_latitude;
                 lon = item.contemporary_repository_place_longitude;
                 name = item.contemporary_repository_place_name;
                 id = item.id;
+                uuid = item.uuid;
             } else if (currentPlaceType === 'place_of_origin') {
                 lat = item.place_of_origin_latitude;
                 lon = item.place_of_origin_longitude;
                 name = item.place_of_origin_name;
                 id = item.id;
+                uuid = item.uuid;
             } else {
                 lat = item.binding_place_latitude;
                 lon = item.binding_place_longitude;
                 name = item.binding_place_name;
                 id = item.id;
+                uuid = item.uuid;
             }
 
             if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
@@ -1182,7 +1201,7 @@ manuscripts_init = function()
                 if (!manuscriptsByLocation[key]) {
                     manuscriptsByLocation[key] = { lat, lon, name, manuscripts: [] };
                 }
-                manuscriptsByLocation[key].manuscripts.push({ id, name: item.name, shelf_mark: item.shelf_mark });
+                manuscriptsByLocation[key].manuscripts.push({ id, uuid, name: item.name, shelf_mark: item.shelf_mark });
             }
         });
 
@@ -1192,7 +1211,7 @@ manuscripts_init = function()
             location.manuscripts.forEach(ms => {
                 const shelfMark = ms.shelf_mark || ''; // Fallback to empty string if shelf_mark is undefined
                 const displayName = shelfMark ? `${shelfMark}, ${ms.name || 'Manuscript ' + ms.id}` : ms.name || 'Manuscript ' + ms.id;
-                popupContent += `<li><a href="/static/page.html?p=manuscript&id=${ms.id}" class="text-blue-600 hover:underline">${displayName}</a></li>`;
+                popupContent += `<li><a href="${window.getManuscriptPageUrl(ms)}" class="text-blue-600 hover:underline">${displayName}</a></li>`;
             });
             popupContent += '</ul>';
             var marker = L.marker([location.lat, location.lon], {
@@ -1257,7 +1276,7 @@ manuscripts_init = function()
                 "data": "name",
                 "title": "Info",
                 "fnCreatedCell": function (nTd, sData, oData, iRow, iCol) {
-                    let html = "<h3 class='ms_name'><a href='/static/page.html?p=manuscript&id=" + oData.id + "' class='text-blue-600 hover:underline'>" + oData.rism_id + " " + (oData.name || '') + "</a></h3>"
+                    let html = "<h3 class='ms_name'><a href='" + window.getManuscriptPageUrl(oData) + "' class='text-blue-600 hover:underline'>" + oData.rism_id + " " + (oData.name || '') + "</a></h3>"
                         + "<div class='left_script_content'>"
                         + "<div class='ms_foreign_id'><span class='mspltext'> " + (oData.contemporary_repository_place_name || '') + ":</span> "+ (oData.shelf_mark || '') + "<span class='mspltext'> (Shelfmark), </span><br /><span class='mspltext'>Manuscripta.pl: </span>" + (oData.foreign_id || '') + "</div>"
                         + "<div class='ms_dating'><b>Dating: </b>" + (oData.dating || '') + "</div>"
@@ -1275,6 +1294,7 @@ manuscripts_init = function()
                     $(nTd).html(html);
                 }
             },
+            { "data": "uuid", "title": "UUID", visible: false },
             { "data": "id", "title": "ID", visible: false },
             { "data": "rism_id", "title": "RISM ID", visible: false },
             { "data": "ms_provenance", "title": "Medieval Provenance", visible: false },

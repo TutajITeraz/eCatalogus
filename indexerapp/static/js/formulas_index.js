@@ -99,7 +99,7 @@ formulas_init = function() {
                         
                         var html = '<div style="max-height: 120px; overflow-y: auto;" class="whitespace-pre-wrap break-words">';
                         data.forEach(function(ms) {
-                            html += '<div><a href="/static/page.html?p=manuscript&id=' + ms.id + '" target="_blank" class="text-blue-600 hover:underline">' + ms.name + '</a></div>';
+                            html += '<div><a href="' + window.getManuscriptPageUrl(ms) + '" target="_blank" class="text-blue-600 hover:underline">' + ms.name + '</a></div>';
                         });
                         html += '</div>';
                         return html;

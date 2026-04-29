@@ -22,7 +22,7 @@ function import_gallery_init() {
     });
 
     $('.manuscript_filter').on('select2:select', function(e) {
-        gallerySelectedMs = e.params.data.id;
+        gallerySelectedMs = e.params.data;
         loadGalleryForMs(gallerySelectedMs);
     });
     
@@ -120,7 +120,7 @@ function uploadSelectedFiles() {
 
     const csrfToken = getCookie('csrftoken');
     const form = new FormData();
-    form.append('manuscript_id', gallerySelectedMs);
+    window.appendManuscriptSelectorToFormData(form, gallerySelectedMs);
     
     for (let i = 0; i < galleryFiles.length; i++) {
         form.append('images', galleryFiles[i]);
@@ -187,7 +187,7 @@ function loadGalleryForMs(msId) {
         lightGalleryInstance = null;
     }
 
-    fetch(`/ms-gallery/?manuscript_id=${msId}`)
+    fetch(`/ms-gallery/?${window.getManuscriptSelectorQuery(msId, 'manuscript_id')}`)
     .then(r => r.json())
     .then(data => {
         container.innerHTML = '';
@@ -254,7 +254,7 @@ function deleteSelectedImage() {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken
         }, 
-        body: JSON.stringify({ manuscript_id: gallerySelectedMs, image_id: image_id }) 
+        body: JSON.stringify(window.addManuscriptSelectorParam({ image_id: image_id }, gallerySelectedMs)) 
     })
     .then(r => r.json())
     .then(data => { 
@@ -276,7 +276,7 @@ function deleteAllImagesForMs() {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken
         }, 
-        body: JSON.stringify({manuscript_id: gallerySelectedMs}) 
+        body: JSON.stringify(window.addManuscriptSelectorParam({}, gallerySelectedMs)) 
     })
     .then(r => r.json())
     .then(data => { 

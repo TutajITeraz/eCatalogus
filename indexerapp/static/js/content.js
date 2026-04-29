@@ -194,13 +194,14 @@ content_init = function()
 
     function content_table_init(reinit=false)
     {
-        ms_id = parseInt($('.manuscript_filter').val());
-        if(isNaN(ms_id))
-            ms_id = null;
+        const manuscriptSelector = window.getSelectedManuscriptSelector('.manuscript_filter');
         content_table = $('#content').DataTable({
             "destroy": reinit,
             "ajax": {
                 "url": pageRoot + "/api/content/?format=datatables", // Add your URL here
+                "data": function (d) {
+                    return window.addManuscriptSelectorParam(d, manuscriptSelector);
+                },
                 "dataSrc": function (data) {
                     var processedData = []
 
@@ -348,30 +349,6 @@ content_init = function()
                 { data: "comments", title: "comments", width: "30%" },
                 // Add more columns as needed
             ],
-            "searchCols":[
-                {search:ms_id},
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-            ],
             "order": [
                 [1, "asc"]  // kolumna 1 to sequence_in_ms, rosnąco
                 //{ "data": "sequence_in_ms", "order": "asc" },  // Sort by the "manuscript_name" column in ascending order
@@ -421,8 +398,6 @@ content_init = function()
         });
     }
 
-    content_table_init();
-
     $('.manuscript_filter').select2({
         ajax: {
             url: pageRoot+'/manuscripts-autocomplete-main/',
@@ -434,9 +409,11 @@ content_init = function()
           allowClear: false // Prevent clearing the selection
     });
 
+    content_table_init();
+
     $('.manuscript_filter').on('select2:select', function (e) {
         var data = e.params.data;
-        var id = data.id;
+        var id = window.getManuscriptSelectorValue(data);
         console.log(id);
 
         //content_table.columns(0).search(id).draw();

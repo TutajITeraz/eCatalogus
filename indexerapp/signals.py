@@ -7,6 +7,7 @@ import logging
 import uuid
 
 from etlapp.model_categories import get_model_category, get_sync_model_names
+from etlapp.uuid_fk import get_model_uuid_shadow_fk_specs, resolve_shadow_uuid
 
 from .models import Bibliography, Content, Contributors, DeletedRecord, Hands, Layouts, Quires, Calendar, Decoration, ManuscriptHands, ManuscriptMusicNotations, Watermarks
 
@@ -63,6 +64,14 @@ def _ensure_sync_uuid(sender, instance, **kwargs):
         instance.uuid = uuid.uuid4()
 
 
+def _sync_shadow_fk_uuids(sender, instance, **kwargs):
+    if kwargs.get('raw'):
+        return
+
+    for field, shadow_field in get_model_uuid_shadow_fk_specs(sender):
+        setattr(instance, shadow_field.attname, resolve_shadow_uuid(instance, field))
+
+
 def _has_shared_model_changes(sender, instance):
     if not instance.pk:
         return False
@@ -103,6 +112,12 @@ for model_name in get_sync_model_names():
         sender=apps.get_model('indexerapp', model_name),
         weak=False,
         dispatch_uid=f'etl_assign_uuid_{model_name}',
+    )
+    pre_save.connect(
+        _sync_shadow_fk_uuids,
+        sender=apps.get_model('indexerapp', model_name),
+        weak=False,
+        dispatch_uid=f'etl_sync_shadow_fk_uuids_{model_name}',
     )
     pre_delete.connect(
         _record_deleted_sync_instance,

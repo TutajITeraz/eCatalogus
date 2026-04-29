@@ -50,7 +50,7 @@ ms_edition_graph_init = function() {
         }
 
         showSpinner('Data loading');
-        fetch(pageRoot + '/compare_edition_json/?mss=' + mss)
+        fetch(pageRoot + '/compare_edition_json/?mss=' + encodeURIComponent(mss))
             .then(response => response.json())
             .then(data => {
                 originalData = data;
@@ -114,7 +114,7 @@ ms_edition_graph_init = function() {
     });
 
     $('#ms_select').on('select2:select select2:unselect', function() {
-        const mss = $('#ms_select').select2('data').map(item => item.id).join(';');
+        const mss = $('#ms_select').select2('data').map(item => window.getManuscriptSelectorValue(item)).filter(Boolean).join(';');
         fetchDataAndDrawChart(mss);
     });
 

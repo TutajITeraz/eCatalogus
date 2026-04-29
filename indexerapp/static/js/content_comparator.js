@@ -299,13 +299,14 @@ content_comparator_init = function()
 
     function content_table_init(reinit=false, filter_selector, table_selector)
     {
-        ms_id = parseInt($(filter_selector).val());
-        if(isNaN(ms_id))
-            ms_id = null;
+        const manuscriptSelector = window.getSelectedManuscriptSelector(filter_selector);
         content_table = $(table_selector).DataTable({
             "destroy": reinit,
             "ajax": {
                 "url": pageRoot + "/api/content/?format=datatables", // Add your URL here
+                "data": function (d) {
+                    return window.addManuscriptSelectorParam(d, manuscriptSelector);
+                },
                 "dataSrc": function (data) {
                     var processedData = []
 
@@ -452,30 +453,6 @@ content_comparator_init = function()
                 { data: "comments", title: "comments", width: "30%" },
                 // Add more columns as needed
             ],
-            "searchCols":[
-                {search:ms_id},
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-            ],
             "order": [
                 [1, "asc"]  // kolumna 1 to sequence_in_ms, rosnąco
 
@@ -525,9 +502,6 @@ content_comparator_init = function()
         });
     }
 
-    content_table_init(false,'.manuscript_filter_left','#content_left');
-
-
     $('.manuscript_filter_left').select2({
         ajax: {
             url: pageRoot+'/manuscripts-autocomplete-main/',
@@ -539,9 +513,11 @@ content_comparator_init = function()
           }
     });
 
+    content_table_init(false,'.manuscript_filter_left','#content_left');
+
     $('.manuscript_filter_left').on('select2:select', function (e) {
         var data = e.params.data;
-        var id = data.id;
+        var id = window.getManuscriptSelectorValue(data);
         console.log(id);
 
         //content_table_left.columns(0).search(id).draw();
@@ -550,10 +526,6 @@ content_comparator_init = function()
         content_table_init(true,'.manuscript_filter_left','#content_left');
 
     });
-
-    content_table_init(false,'.manuscript_filter_right','#content_right');
-
-
     $('.manuscript_filter_right').select2({
         ajax: {
             url: pageRoot+'/manuscripts-autocomplete-main/',
@@ -565,9 +537,11 @@ content_comparator_init = function()
           }
     });
 
+    content_table_init(false,'.manuscript_filter_right','#content_right');
+
     $('.manuscript_filter_right').on('select2:select', function (e) {
         var data = e.params.data;
-        var id = data.id;
+        var id = window.getManuscriptSelectorValue(data);
         console.log(id);
 
         //content_table_right.columns(0).search(id).draw();
@@ -589,17 +563,17 @@ content_comparator_init = function()
     
 
     $('#compareButton').click(function() {
-        var leftId = $('.manuscript_filter_left').val();
-        var rightId = $('.manuscript_filter_right').val();
-        var url = pageRoot+"/compare_graph/?left=" + leftId + "&right=" + rightId;
+        var leftId = window.getSelectedManuscriptSelector('.manuscript_filter_left');
+        var rightId = window.getSelectedManuscriptSelector('.manuscript_filter_right');
+        var url = pageRoot+"/compare_graph/?left=" + encodeURIComponent(leftId) + "&right=" + encodeURIComponent(rightId);
         window.open(url, '_blank');
     });
 
 
     $('#compareEditionButton').click(function() {
-        var leftId = $('.manuscript_filter_left').val();
-        var rightId = $('.manuscript_filter_right').val();
-        var url = pageRoot+"/compare_edition_graph/?left=" + leftId + "&right=" + rightId;
+        var leftId = window.getSelectedManuscriptSelector('.manuscript_filter_left');
+        var rightId = window.getSelectedManuscriptSelector('.manuscript_filter_right');
+        var url = pageRoot+"/compare_edition_graph/?left=" + encodeURIComponent(leftId) + "&right=" + encodeURIComponent(rightId);
         window.open(url, '_blank');
     });
 

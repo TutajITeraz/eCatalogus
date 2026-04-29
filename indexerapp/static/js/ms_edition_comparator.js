@@ -164,7 +164,7 @@ $(window).resize(function() {
 
 async function getSimilarMSbyEditionIndex(id) 
 {
-    return fetchOnce(pageRoot+`/rites_lookup/?ms=${id}`);
+    return fetchOnce(pageRoot + `/rites_lookup/?${window.getManuscriptSelectorQuery(id)}`);
 }
 
 content_init = function()
@@ -182,7 +182,7 @@ content_init = function()
 
     $('.manuscript_filter').on('select2:select', function (e) {
         var data = e.params.data;
-        var id = data.id;
+        var id = window.getManuscriptSelectorValue(data);
         console.log(id);
 
         getAndShowSimilarMSbyEditionIndex(id, data.text);

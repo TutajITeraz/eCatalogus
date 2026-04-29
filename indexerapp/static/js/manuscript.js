@@ -1,4 +1,5 @@
 let manuscriptId = null;
+let manuscriptUuid = null;
 var map = null;
 var map_bounds = null;
 
@@ -27,7 +28,31 @@ let traditionMap = {};
 let IDENTIFY_TRADITIONS = false;
 let colorIndex = 0;
 
-manuscriptId = urlParams.get("id");
+manuscriptUuid = urlParams.get("manuscript_uuid") || urlParams.get("uuid");
+manuscriptId = manuscriptUuid || urlParams.get("id");
+
+function getCurrentManuscriptQuery(legacyKey = "ms") {
+  if (manuscriptUuid) {
+    return `manuscript_uuid=${encodeURIComponent(manuscriptUuid)}`;
+  }
+
+  return `${legacyKey}=${encodeURIComponent(manuscriptId)}`;
+}
+
+function getManuscriptEndpoint(path, legacyKey = "ms") {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${pageRoot}${normalizedPath}?${getCurrentManuscriptQuery(legacyKey)}`;
+}
+
+function addCurrentManuscriptParam(payload, legacyKey = "ms") {
+  if (manuscriptUuid) {
+    payload.manuscript_uuid = manuscriptUuid;
+    return payload;
+  }
+
+  payload[legacyKey] = manuscriptId;
+  return payload;
+}
 
 function setTableHeight() {
   var windowHeight = $(window).height();
@@ -129,13 +154,17 @@ window.openDataTablePopup = (url, tableToRefresh = null) => {
 };
 
 async function getMSInfo() {
-  return fetchOnce(pageRoot + `/ms_info/?pk=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("ms_info/", "pk"));
 }
 
 async function getTEIUrl() {
-  //return pageRoot + '/ms_tei/?ms=' + (await getMSInfo()).manuscript.id;
+  const msInfo = await getMSInfo();
 
-  return pageRoot + "/manuscript_tei/?ms=" + (await getMSInfo()).manuscript.id;
+  if (msInfo.manuscript.uuid) {
+    return pageRoot + "/manuscript_tei/?manuscript_uuid=" + encodeURIComponent(msInfo.manuscript.uuid);
+  }
+
+  return getManuscriptEndpoint("manuscript_tei/");
 }
 
 async function getMSInfoFiltered() {
@@ -187,7 +216,7 @@ async function getMSInfoFiltered() {
 }
 
 async function getCodicologyInfo() {
-  return fetchOnce(pageRoot + `/codicology_info/?pk=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("codicology_info/", "pk"));
 }
 
 async function getCodicologyFiltered() {
@@ -230,7 +259,7 @@ async function getCodicologyFiltered() {
 }
 
 async function getProvenanceInfo() {
-  return fetchOnce(pageRoot + `/provenance_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("provenance_info/"));
 }
 
 async function getProvenanceColumns() {
@@ -247,7 +276,7 @@ async function getProvenanceColumns() {
 }
 
 async function getBibliographyInfo() {
-  return fetchOnce(pageRoot + `/bibliography_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("bibliography_info/"));
 }
 
 async function getBooksHTML() {
@@ -260,27 +289,27 @@ async function getBooksHTML() {
 }
 
 async function getDecorationInfo() {
-  return fetchOnce(pageRoot + `/decoration_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("decoration_info/"));
 }
 async function getQuiresInfo() {
-  return fetchOnce(pageRoot + `/quires_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("quires_info/"));
 }
 async function getConditionInfo() {
-  return fetchOnce(pageRoot + `/condition_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("condition_info/"));
 }
 async function getCLLAInfo() {
-  return fetchOnce(pageRoot + `/clla_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("clla_info/"));
 }
 async function getOriginsInfo() {
-  return fetchOnce(pageRoot + `/origins_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("origins_info/"));
 }
 
 async function getBindingInfo() {
-  return fetchOnce(pageRoot + `/binding_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("binding_info/"));
 }
 
 async function getMusicNotationInfo() {
-  return fetchOnce(pageRoot + `/music_notation_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("music_notation_info/"));
 }
 
 /*
@@ -289,10 +318,10 @@ async function getHandsInfo() {
 }
 */
 async function getWatermarksInfo() {
-  return fetchOnce(pageRoot + `/watermarks_info/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("watermarks_info/"));
 }
 async function getBibliographyPrintableInfo() {
-  return fetchOnce(pageRoot + `/bibliography_print/?ms=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("bibliography_print/"));
 }
 
 // LAYOUTS
@@ -301,7 +330,7 @@ var layouts_table;
 function init_layouts_table() {
   layouts_table = $("#layouts").DataTable({
     ajax: {
-      url: pageRoot + "/layouts_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("layouts_info/"),
       dataSrc: (data) => data.data,
     },
     processing: false,
@@ -475,7 +504,7 @@ var music_table;
 function init_music_table() {
   music_table = $("#music_notation").DataTable({
     ajax: {
-      url: pageRoot + "/music_notation_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("music_notation_info/"),
       dataSrc: (data) => data.data,
     },
     bAutoWidth: false,
@@ -570,7 +599,7 @@ function init_content_table(reinit = false) {
           d.order_column = d.columns[colIndex].data;
           d.order_direction = dir;
         }
-        return d;
+        return addCurrentManuscriptParam(d);
       },
     },
     processing: false,
@@ -819,7 +848,7 @@ function init_content_table(reinit = false) {
         displayTraditionLegend(content_table, "#content");
     },
   });
-  content_table.columns(0).search(manuscriptId).draw();
+  content_table.draw();
 }
 
 // Quires----------------------------------------------------------------
@@ -827,7 +856,7 @@ var quires_table;
 function init_quires_table() {
   quires_table = $("#quires").DataTable({
     ajax: {
-      url: pageRoot + "/quires_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("quires_info/"),
       dataSrc: (data) => data.data,
     },
     processing: false,
@@ -1158,11 +1187,9 @@ function init_decoration_table(table_info) {
   table_info.table = $(table_info.tableSelector).DataTable({
     ajax: {
       url:
-        pageRoot +
-        "/decoration_info/?ms=" +
-        manuscriptId +
+        getManuscriptEndpoint("decoration_info/") +
         "&decoration_type=" +
-        table_info.typeQuery,
+        encodeURIComponent(table_info.typeQuery),
       dataSrc: function (data) {
         return data.data;
       },
@@ -1552,7 +1579,7 @@ var origins_table;
 function init_origins_table() {
   origins_table = $("#origins").DataTable({
     ajax: {
-      url: pageRoot + "/origins_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("origins_info/"),
       dataSrc: function (data) {
         return data.data;
       },
@@ -1638,7 +1665,7 @@ var binding_materials_table;
 function init_binding_materials_table() {
   binding_materials_table = $("#binding_materials").DataTable({
     ajax: {
-      url: pageRoot + "/binding_materials_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("binding_materials_info/"),
       dataSrc: function (data) {
         return data.data;
       },
@@ -1654,7 +1681,7 @@ function init_main_hands() {
     ajax: {
       url: pageRoot + "/hands_info/",
       type: "GET",
-      data: (d) => ({ is_main_text: true, ms: manuscriptId }),
+      data: (d) => addCurrentManuscriptParam({ is_main_text: true }),
       dataSrc: (data) => {
         const processedData = [];
         for (const c in data.data) {
@@ -1772,7 +1799,7 @@ function init_additions_hands() {
     ajax: {
       url: pageRoot + "/hands_info/",
       type: "GET",
-      data: (d) => ({ is_main_text: false, ms: manuscriptId }),
+      data: (d) => addCurrentManuscriptParam({ is_main_text: false }),
       dataSrc: (data) => {
         const processedData = [];
         for (const c in data.data) {
@@ -1889,7 +1916,7 @@ var watermarks_table;
 function init_watermarks_table() {
   watermarks_table = $("#watermarks").DataTable({
     ajax: {
-      url: pageRoot + "/watermarks_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("watermarks_info/"),
       dataSrc: (data) => data.data,
     },
     bAutoWidth: false,
@@ -1946,7 +1973,7 @@ var provenance_table;
 function init_provenance_table() {
   provenance_table = $("#provenance").DataTable({
     ajax: {
-      url: pageRoot + "/provenance_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("provenance_info/"),
       dataSrc: function (data) {
         return data.data;
       },
@@ -2017,7 +2044,7 @@ var bibliography_table;
 function init_bibliography_table() {
   bibliography_table = $("#bibliography").DataTable({
     ajax: {
-      url: pageRoot + "/bibliography_info/?ms=" + manuscriptId,
+      url: getManuscriptEndpoint("bibliography_info/"),
       dataSrc: function (data) {
         return data.data;
       },
@@ -3062,7 +3089,7 @@ async function map_refresh() {
 }
 
 async function getGallery() {
-  return fetchOnce(pageRoot + `/ms-gallery/?manuscript_id=${manuscriptId}`);
+  return fetchOnce(getManuscriptEndpoint("ms-gallery/", "manuscript_id"));
 }
 
 async function init_gallery() {

@@ -39,8 +39,8 @@ function assignTraditionColor(traditionName, preferredIndex) {
 
 ms_formulas_graph_init = function() {
     let originalData = [];
-    let leftId = -1;
-    let rightId = -1;
+    let leftId = null;
+    let rightId = null;
 
     $('#traditionFilter').select2();
     $('#genreSelect').select2({
@@ -172,13 +172,13 @@ ms_formulas_graph_init = function() {
     }
 
     function fetchDataAndDrawChart(left, right) {
-        if (left === -1 || right === -1) {
+        if (!left || !right) {
             return;
         }
 
         showSpinner('Data loading');
 
-        fetch(pageRoot + '/compare_formulas_json/?left=' + left + '&right=' + right)
+        fetch(pageRoot + '/compare_formulas_json/?left=' + encodeURIComponent(left) + '&right=' + encodeURIComponent(right))
             .then(response => response.json())
             .then(data => {
                 originalData = data;
@@ -395,12 +395,12 @@ ms_formulas_graph_init = function() {
     });
 
     $('.manuscript_filter_left').on('select2:select', function(event) {
-        leftId = event.params.data.id;
+        leftId = window.getManuscriptSelectorValue(event.params.data);
         fetchDataAndDrawChart(leftId, rightId);
     });
 
     $('.manuscript_filter_right').on('select2:select', function(event) {
-        rightId = event.params.data.id;
+        rightId = window.getManuscriptSelectorValue(event.params.data);
         fetchDataAndDrawChart(leftId, rightId);
     });
 };

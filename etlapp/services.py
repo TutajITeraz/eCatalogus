@@ -947,8 +947,16 @@ def _build_manuscript_model_queryset(model, included_pks):
 
 def _serialize_instance(instance):
     payload = {}
+    relation_shadow_field_names = {
+        f'{field.name}_uuid'
+        for field in instance._meta.concrete_fields
+        if field.is_relation and field.many_to_one
+    }
 
     for field in instance._meta.concrete_fields:
+        if field.name in relation_shadow_field_names:
+            continue
+
         value = getattr(instance, field.attname)
 
         if field.is_relation and field.many_to_one:

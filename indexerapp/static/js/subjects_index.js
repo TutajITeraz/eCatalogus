@@ -45,7 +45,7 @@ subjects_init = function() {
                         if (!data || data.length === 0) return "-";
                         var html = '<div style="max-height: 140px; overflow-y: auto;" class="whitespace-pre-wrap break-words">';
                         data.forEach(function(ms) {
-                            html += '<div><a href="/static/page.html?p=manuscript&id=' + ms.id + '" target="_blank" class="text-blue-600 hover:underline">' + ms.name + '</a></div>';
+                            html += '<div><a href="' + window.getManuscriptPageUrl(ms) + '" target="_blank" class="text-blue-600 hover:underline">' + ms.name + '</a></div>';
                         });
                         html += '</div>';
                         return html;

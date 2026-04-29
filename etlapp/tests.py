@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -374,6 +374,61 @@ class ETLDeltaImportViewTests(TestCase):
         self.assertEqual(response.json()['updated'], 0)
         self.assertEqual(response.json()['skipped'], 2)
 
+    def test_shared_import_prefers_m2m_uuid_lists_over_integer_ids(self):
+        contributor = Contributors.objects.create(
+            initials='AB',
+            first_name='Anna',
+            last_name='Baker',
+        )
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'shared'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Contributors',
+                        'results': [
+                            {
+                                'uuid': str(contributor.uuid),
+                                'initials': contributor.initials,
+                                'first_name': contributor.first_name,
+                                'last_name': contributor.last_name,
+                                'affiliation': contributor.affiliation,
+                                'email': contributor.email,
+                                'url': contributor.url,
+                                'version': contributor.version,
+                                'entry_date': contributor.entry_date.isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.Watermarks',
+                        'results': [
+                            {
+                                'uuid': str(uuid4()),
+                                'name': 'UUID-first watermark',
+                                'external_id': None,
+                                'watermark_img': None,
+                                'comment': 'uuid m2m import',
+                                'entry_date': timezone.now().isoformat(),
+                                'version': 1,
+                                'data_contributor_uuid': str(contributor.uuid),
+                                'authors': [],
+                                'authors_uuids': [str(contributor.uuid)],
+                            }
+                        ],
+                    },
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        watermark = Watermarks.objects.get(name='UUID-first watermark')
+        self.assertEqual(list(watermark.authors.values_list('pk', flat=True)), [contributor.pk])
+
 
 @override_settings(
     SITE_NAME='Test Site',
@@ -421,6 +476,24 @@ class ETLManuscriptPackageViewTests(TestCase):
         exported_content_topic = models_by_label['indexerapp.ContentTopic']['results'][0]
         self.assertEqual(exported_content_topic['uuid'], str(content_topic.uuid))
         self.assertEqual(exported_content_topic['content_uuid'], str(content.uuid))
+        exported_content = models_by_label['indexerapp.Content']['results'][0]
+        self.assertEqual(exported_content['manuscript_uuid'], str(manuscript.uuid))
+
+    def test_manuscript_export_includes_uuid_foreign_keys_for_main_and_shared_relations(self):
+        bibliography = Bibliography.objects.create(title='MS Bibliography')
+        formula = Formulas.objects.create(co_no='CO-MS', text='Formula')
+        manuscript = Manuscripts.objects.create(name='MS Export With FK')
+        Content.objects.create(manuscript=manuscript, formula=formula, formula_text='Lorem ipsum')
+        ManuscriptBibliography.objects.create(manuscript=manuscript, bibliography=bibliography)
+
+        payload = build_manuscript_export_payload(manuscript.uuid)
+        models_by_label = {model_payload['model']: model_payload for model_payload in payload['models']}
+
+        exported_content = models_by_label['indexerapp.Content']['results'][0]
+        exported_manuscript_bibliography = models_by_label['indexerapp.ManuscriptBibliography']['results'][0]
+
+        self.assertEqual(exported_content['formula_uuid'], str(formula.uuid))
+        self.assertEqual(exported_manuscript_bibliography['bibliography_uuid'], str(bibliography.uuid))
 
     def test_manuscript_import_creates_ms_package(self):
         manuscript_uuid = str(uuid4())
@@ -521,6 +594,31 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(manuscript_fk['related_model'], 'Manuscripts')
         self.assertEqual(manuscript_fk['model_category'], 'ms')
 
+    def test_export_m2m_uuid_plan_writes_sync_many_to_many_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'etl_uuid_m2m_plan.tsv'
+
+            call_command('export_m2m_uuid_plan', output=str(output_path))
+
+            self.assertTrue(output_path.exists())
+            with output_path.open('r', encoding='utf-8', newline='') as handle:
+                rows = list(csv.DictReader(handle, delimiter='\t'))
+
+        tradition_m2m = next(
+            row for row in rows
+            if row['model_name'] == 'Formulas' and row['m2m_field'] == 'tradition'
+        )
+        self.assertEqual(tradition_m2m['related_model'], 'Traditions')
+        self.assertEqual(tradition_m2m['through_auto_created'], 'yes')
+        self.assertEqual(tradition_m2m['suggested_uuid_list_key'], 'tradition_uuids')
+
+        authors_m2m = next(
+            row for row in rows
+            if row['model_name'] == 'Watermarks' and row['m2m_field'] == 'authors'
+        )
+        self.assertEqual(authors_m2m['related_model'], 'Contributors')
+        self.assertEqual(authors_m2m['related_category'], 'shared')
+
     def test_export_etl_bundle_writes_main_json_bundle(self):
         Type.objects.create(short_name='TP1', name='Type One')
 
@@ -537,6 +635,24 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(payload['record_count'], 1)
         self.assertEqual(payload['models'][0]['model'], 'indexerapp.Type')
         self.assertEqual(payload['models'][0]['results'][0]['short_name'], 'TP1')
+
+    def test_export_etl_bundle_prefers_related_uuid_over_stale_shadow_uuid(self):
+        genre = LiturgicalGenres.objects.create(title='Antiphon')
+        tradition = Traditions.objects.create(name='Roman', genre=genre)
+
+        expected_genre_uuid = str(genre.uuid)
+        stale_shadow_uuid = uuid4()
+        Traditions.objects.filter(pk=tradition.pk).update(genre_uuid=stale_shadow_uuid)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / 'main_bundle.json'
+
+            call_command('export_etl_bundle', '--category', 'main', '--output', str(output_path))
+            payload = json.loads(output_path.read_text(encoding='utf-8'))
+
+        traditions_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.Traditions')
+        self.assertEqual(traditions_payload['results'][0]['genre_uuid'], expected_genre_uuid)
+        self.assertNotEqual(traditions_payload['results'][0]['genre_uuid'], str(stale_shadow_uuid))
 
     def test_import_etl_bundle_imports_main_json_bundle(self):
         payload = {
@@ -859,6 +975,119 @@ class SyncMetadataTests(TestCase):
         with self.assertRaises(CommandError):
             call_command('validate_uuid_integrity', '--model', 'Bibliography', '--fail-on-issues')
 
+    def test_shadow_uuid_fk_is_synced_on_save(self):
+        type_one = Type.objects.create(short_name='TPA', name='Type A')
+        type_two = Type.objects.create(short_name='TPB', name='Type B')
+
+        mass_hour = MassHour.objects.create(short_name='MHA', name='Mass Hour A', type=type_one)
+        self.assertEqual(mass_hour.type_uuid, type_one.uuid)
+
+        setattr(mass_hour, 'type_id', type_two.pk)
+        mass_hour.save()
+        mass_hour.refresh_from_db()
+        self.assertEqual(mass_hour.type_uuid, type_two.uuid)
+
+        setattr(mass_hour, 'type_id', None)
+        mass_hour.save()
+        mass_hour.refresh_from_db()
+        self.assertIsNone(mass_hour.type_uuid)
+
+    def test_ms_shadow_uuid_fk_is_synced_on_save(self):
+        bibliography = Bibliography.objects.create(title='Shadow bibliography')
+        other_bibliography = Bibliography.objects.create(title='Shadow bibliography two')
+        manuscript = Manuscripts.objects.create(name='Shadow manuscript')
+        relation = ManuscriptBibliography.objects.create(manuscript=manuscript, bibliography=bibliography)
+
+        self.assertEqual(relation.bibliography_uuid, bibliography.uuid)
+
+        setattr(relation, 'bibliography_id', other_bibliography.pk)
+        relation.save()
+        relation.refresh_from_db()
+        self.assertEqual(relation.bibliography_uuid, other_bibliography.uuid)
+
+    def test_ms_internal_shadow_uuid_fk_is_synced_on_save(self):
+        manuscript = Manuscripts.objects.create(name='Source manuscript')
+        other_manuscript = Manuscripts.objects.create(name='Other manuscript')
+        content = Content.objects.create(manuscript=manuscript, formula_text='Internal shadow')
+
+        self.assertEqual(content.manuscript_uuid, manuscript.uuid)
+
+        setattr(content, 'manuscript_id', other_manuscript.pk)
+        content.save()
+        content.refresh_from_db()
+        self.assertEqual(content.manuscript_uuid, other_manuscript.uuid)
+
+    def test_populate_uuid_fk_backfills_shadow_columns(self):
+        type_one = Type.objects.create(short_name='TPC', name='Type C')
+        mass_hour = MassHour.objects.create(short_name='MHC', name='Mass Hour C', type=type_one)
+        MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=None)
+
+        call_command('populate_uuid_fk', '--model', 'MassHour')
+
+        mass_hour.refresh_from_db()
+        self.assertEqual(mass_hour.type_uuid, type_one.uuid)
+
+    def test_validate_uuid_shadow_fks_can_fail_on_mismatch(self):
+        type_one = Type.objects.create(short_name='TPD', name='Type D')
+        mass_hour = MassHour.objects.create(short_name='MHD', name='Mass Hour D', type=type_one)
+        MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=uuid4())
+
+        with self.assertRaises(CommandError):
+            call_command('validate_uuid_shadow_fks', '--model', 'MassHour', '--fail-on-issues')
+
+    def test_validate_uuid_shadow_fks_reports_success_after_backfill(self):
+        type_one = Type.objects.create(short_name='TPE', name='Type E')
+        mass_hour = MassHour.objects.create(short_name='MHE', name='Mass Hour E', type=type_one)
+        MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=None)
+
+        call_command('populate_uuid_fk', '--model', 'MassHour')
+        stdout = StringIO()
+
+        call_command('validate_uuid_shadow_fks', '--model', 'MassHour', stdout=stdout)
+
+        self.assertIn('status=OK', stdout.getvalue())
+        self.assertIn('validation passed', stdout.getvalue().lower())
+
+    def test_validate_uuid_m2m_reports_success(self):
+        contributor = Contributors.objects.create(initials='CD', first_name='Cara', last_name='Doe')
+        watermark = Watermarks.objects.create(name='Healthy watermark', data_contributor=contributor)
+        watermark.authors.add(contributor)
+        stdout = StringIO()
+
+        call_command('validate_uuid_m2m', '--model', 'Watermarks', stdout=stdout)
+
+        self.assertIn('Watermarks.authors: status=OK', stdout.getvalue())
+        self.assertIn('validation passed', stdout.getvalue().lower())
+
+    def test_validate_uuid_m2m_can_fail_on_missing_related_uuid(self):
+        contributor = Contributors.objects.create(initials='EF', first_name='Evan', last_name='Fox')
+        watermark = Watermarks.objects.create(name='Broken watermark', data_contributor=contributor)
+        watermark.authors.add(contributor)
+        Contributors.objects.filter(pk=contributor.pk).update(uuid=None)
+
+        with self.assertRaises(CommandError):
+            call_command('validate_uuid_m2m', '--model', 'Watermarks', '--fail-on-issues')
+
+    def test_validate_uuid_transition_readiness_reports_self_reference_without_failing(self):
+        colour = Colours.objects.create(name='Self colour', rgb='#123456')
+        Colours.objects.filter(pk=colour.pk).update(parent_colour_id=colour.pk, parent_colour_uuid=colour.uuid)
+        stdout = StringIO()
+
+        call_command('validate_uuid_transition_readiness', '--model', 'Colours', stdout=stdout)
+
+        self.assertIn('FK Colours.parent_colour [main]', stdout.getvalue())
+        self.assertIn('self_reference=1', stdout.getvalue())
+        self.assertIn('validation passed', stdout.getvalue().lower())
+
+    def test_validate_uuid_transition_readiness_can_fail_on_missing_related_uuid(self):
+        type_one = Type.objects.create(short_name='TPF', name='Type F')
+        mass_hour = MassHour.objects.create(short_name='MHF', name='Mass Hour F', type=type_one)
+        Type.objects.filter(pk=type_one.pk).update(uuid=None)
+        MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=None)
+
+        with self.assertRaises(CommandError):
+            call_command('validate_uuid_transition_readiness', '--model', 'MassHour', '--fail-on-issues')
+
     def test_manuscript_export_and_import_transfers_media_files(self):
         with tempfile.TemporaryDirectory() as source_media_dir, tempfile.TemporaryDirectory() as target_media_dir:
             source_file_path = Path(source_media_dir) / 'images' / 'Kwaternion.jpg'
@@ -1038,6 +1267,48 @@ class ETLUIViewTests(ETLUIEditorMixin, TestCase):
         self.assertEqual(manuscript.name, 'Remote manuscript')
         self.assertEqual(content.manuscript_id, manuscript.pk)
         self.assertEqual(response.json()['result']['import_summary']['created'], 2)
+
+    @patch('indexerapp.management.commands.pull_etl_category.pull_remote_category')
+    def test_pull_etl_category_command_returns_json_summary(self, pull_remote_category_mock):
+        stdout = StringIO()
+        pull_remote_category_mock.return_value = {
+            'category': 'main',
+            'import_summary': {'created': 1, 'updated': 0, 'skipped': 0},
+            'delete_summary': {'deleted': 0, 'missing': 0, 'skipped': 0},
+        }
+
+        call_command('pull_etl_category', '--peer', 'master', '--category', 'main', stdout=stdout)
+
+        self.assertIn('"category": "main"', stdout.getvalue())
+        self.assertIn('"created": 1', stdout.getvalue())
+
+    @patch('indexerapp.management.commands.pull_etl_manuscript.pull_remote_manuscript')
+    def test_pull_etl_manuscript_command_returns_json_summary(self, pull_remote_manuscript_mock):
+        stdout = StringIO()
+        manuscript_uuid = str(uuid4())
+        pull_remote_manuscript_mock.return_value = {
+            'manuscript_uuid': manuscript_uuid,
+            'import_summary': {'created': 2, 'updated': 0, 'skipped': 0},
+        }
+
+        call_command('pull_etl_manuscript', '--peer', 'master', '--manuscript-uuid', manuscript_uuid, stdout=stdout)
+
+        self.assertIn(f'"manuscript_uuid": "{manuscript_uuid}"', stdout.getvalue())
+        self.assertIn('"created": 2', stdout.getvalue())
+
+    @patch('indexerapp.management.commands.list_etl_manuscripts.fetch_remote_etl_json')
+    def test_list_etl_manuscripts_command_returns_remote_payload(self, fetch_remote_etl_json_mock):
+        stdout = StringIO()
+        manuscript_uuid = str(uuid4())
+        fetch_remote_etl_json_mock.return_value = {
+            'count': 1,
+            'results': [{'uuid': manuscript_uuid, 'name': 'Remote manuscript'}],
+        }
+
+        call_command('list_etl_manuscripts', '--peer', 'master', stdout=stdout)
+
+        self.assertIn('"count": 1', stdout.getvalue())
+        self.assertIn(f'"uuid": "{manuscript_uuid}"', stdout.getvalue())
 
     @patch('etlapp.views.pull_remote_category')
     def test_pull_category_returns_structured_conflict_payload(self, pull_remote_category_mock):

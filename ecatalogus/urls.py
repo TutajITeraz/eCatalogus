@@ -141,7 +141,6 @@ urlpatterns = [
     path('set_api_key/', views.SetAPIKeyView.as_view(), name='set_api_key'), 
 
     path('manuscripts/', views.ManuscriptsView.as_view(), name='manuscripts'),
-    path('manuscripts/<int:pk>/', views.ManuscriptDetail.as_view(), name='manuscript-detail'),
     #path('autocomplete/', views.AutocompleteView.as_view(), name='content_autocomplete'),
 
     #autocomplete:
@@ -260,10 +259,13 @@ urlpatterns = [
     path('api/etl/', include((etl_urls, 'etlapp'), namespace='etl')),
 
     path('export/content/<int:manuscript_id>/', views.ContentCSVExportView.as_view(), name='content_csv_export'),
+    path('export/content/by-uuid/<uuid:manuscript_uuid>/', views.ContentCSVExportView.as_view(), name='content_csv_export_uuid'),
     path('delete/content/<int:manuscript_id>/', views.DeleteContentView.as_view(), name='delete_content'),
+    path('delete/content/by-uuid/<uuid:manuscript_uuid>/', views.DeleteContentView.as_view(), name='delete_content_uuid'),
     
     path('delete/tradition-formulas/<int:tradition_id>/', views.DeleteTraditionFromFormulaView.as_view(), name='delete_tradition_from_formula'),
     path('assign-ms-content-to-tradition/<int:manuscript_id>/<int:tradition_id>/', views.AssignMSContentToTraditionView.as_view(), name='assign_ms_content_to_tradition'),
+    path('assign-ms-content-to-tradition/by-uuid/<uuid:manuscript_uuid>/<int:tradition_id>/', views.AssignMSContentToTraditionView.as_view(), name='assign_ms_content_to_tradition_uuid'),
 
 
     path(
