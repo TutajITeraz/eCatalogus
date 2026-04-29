@@ -485,6 +485,17 @@ run_download_libs() {
   fi
 }
 
+ensure_parent_traversal() {
+  local target_path=$1
+  local current_path
+
+  current_path=$(dirname "$target_path")
+  while [[ -n "$current_path" && "$current_path" != "/" ]]; do
+    chmod o+x "$current_path" 2>/dev/null || true
+    current_path=$(dirname "$current_path")
+  done
+}
+
 link_public_assets() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would refresh media/static symlinks under ${PUBLIC_HTML}"
@@ -533,6 +544,9 @@ link_public_assets() {
   chmod 755 "$PUBLIC_HTML" 2>/dev/null || true
   find "$MEDIA_DIR" "$STATIC_DIR" -type d -exec chmod 755 {} + 2>/dev/null || true
   find "$MEDIA_DIR" "$STATIC_DIR" -type f -exec chmod 644 {} + 2>/dev/null || true
+  ensure_parent_traversal "$STATIC_DIR"
+  ensure_parent_traversal "$MEDIA_DIR"
+  ensure_parent_traversal "$PUBLIC_HTML"
 }
 
 render_nginx_snippet() {

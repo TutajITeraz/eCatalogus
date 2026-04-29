@@ -999,6 +999,17 @@ run_manage() {
     return 0
   fi
   (
+
+ensure_parent_traversal() {
+  local target_path=$1
+  local current_path
+
+  current_path=$(dirname "$target_path")
+  while [[ -n "$current_path" && "$current_path" != "/" ]]; do
+    chmod o+x "$current_path" 2>/dev/null || true
+    current_path=$(dirname "$current_path")
+  done
+}
     cd "$APPDIR"
     "$venv_python" manage.py "$@"
   )
@@ -1138,6 +1149,9 @@ link_public_assets() {
     log "Set symlink owner for public_html entries"
   fi
   chmod -R u+rwX,g+rX,o+rX "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
+  ensure_parent_traversal "$STATIC_DIR"
+  ensure_parent_traversal "$MEDIA_DIR"
+  ensure_parent_traversal "$PUBLIC_HTML"
 }
 
 save_effective_config() {
