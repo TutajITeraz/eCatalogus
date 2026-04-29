@@ -44,6 +44,7 @@ cd "$APPDIR"
 
 export DJANGO_SETTINGS_MODULE="$SETTINGS_MODULE"
 
+"$PYTHON_CMD" manage.py makemigrations indexerapp --noinput
 "$PYTHON_CMD" manage.py migrate indexerapp
 "$PYTHON_CMD" manage.py populate_uuid_fk --chunk-size 500
 "$PYTHON_CMD" manage.py validate_uuid_shadow_fks --chunk-size 500 --fail-on-issues

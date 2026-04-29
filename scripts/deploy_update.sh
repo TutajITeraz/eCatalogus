@@ -245,6 +245,12 @@ path_is_managed_generated() {
     "ecatalogus/${module_name}.py")
       return 0
       ;;
+    "deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf")
+      return 0
+      ;;
+    "deploy/gunicorn_${SERVICE_SHORTNAME}.service")
+      return 0
+      ;;
   esac
 
   return 1
@@ -522,8 +528,11 @@ link_public_assets() {
   ln -sfn "$MEDIA_DIR" "$PUBLIC_HTML/media"
   ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"
   chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML" 2>/dev/null || true
   chown -h "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML/media" "$PUBLIC_HTML/static" 2>/dev/null || true
-  chmod -R u+rwX,g+rX,o+rX "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
+  chmod 755 "$PUBLIC_HTML" 2>/dev/null || true
+  find "$MEDIA_DIR" "$STATIC_DIR" -type d -exec chmod 755 {} + 2>/dev/null || true
+  find "$MEDIA_DIR" "$STATIC_DIR" -type f -exec chmod 644 {} + 2>/dev/null || true
 }
 
 render_nginx_snippet() {
@@ -568,6 +577,64 @@ location / {
 }
 EOF
   log "Rendered DirectAdmin nginx CUSTOM3 snippet to ${out_snippet}"
+}
+
+install_directadmin_snippet() {
+  local snippet_src="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
+  [[ -f "$snippet_src" ]] || die "Nginx snippet not found: ${snippet_src}"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would install DirectAdmin CUSTOM3 snippet for ${DOMAIN}"
+    return 0
+  fi
+
+  if [[ $EUID -ne 0 ]]; then
+    log "Not running as root — saved DirectAdmin nginx snippet to ${snippet_src}. If the site returns 403 for /static or /media, install it manually with: sudo bash scripts/install_directadmin_custom3.sh ${CONFIG_SOURCE}"
+    return 0
+  fi
+
+  local da_user_dir="/usr/local/directadmin/data/users/${DEPLOY_USER}/domains"
+  local target_file="${da_user_dir}/${DOMAIN}.conf"
+  local begin_marker="# BEGIN COPILOT_CUSTOM3 ${SERVICE_SHORTNAME}"
+  local end_marker="# END COPILOT_CUSTOM3 ${SERVICE_SHORTNAME}"
+  local temp_file
+
+  if [[ ! -d "$da_user_dir" ]]; then
+    warn "DirectAdmin user domains directory not found: ${da_user_dir}; not installing snippet automatically"
+    return 0
+  fi
+
+  mkdir -p "$da_user_dir"
+  if [[ -f "$target_file" ]]; then
+    cp -a "$target_file" "${target_file}.bak_$(timestamp)" || true
+  fi
+
+  temp_file=$(mktemp)
+  if [[ -f "$target_file" ]]; then
+    awk -v begin="$begin_marker" -v end="$end_marker" '
+      $0 == begin { skip = 1; next }
+      $0 == end { skip = 0; next }
+      !skip { print }
+    ' "$target_file" > "$temp_file"
+  fi
+
+  {
+    cat "$temp_file"
+    printf "\n%s\n" "$begin_marker"
+    cat "$snippet_src"
+    printf "%s\n" "$end_marker"
+  } > "$target_file"
+  rm -f "$temp_file"
+
+  log "Installed DirectAdmin CUSTOM3 snippet into ${target_file}"
+
+  if [[ -x "/usr/local/directadmin/custombuild/build" ]]; then
+    /usr/local/directadmin/custombuild/build rewrite_confs || warn "custombuild rewrite_confs failed"
+  elif [[ -x "/usr/local/directadmin/scripts/rewrite_confs.sh" ]]; then
+    /usr/local/directadmin/scripts/rewrite_confs.sh || warn "rewrite_confs.sh failed"
+  else
+    warn "Could not find DirectAdmin build script; run rewrite_confs manually"
+  fi
 }
 
 restart_service() {
@@ -634,10 +701,12 @@ main() {
   run_download_libs
   validate_settings_module
   run_manage check
+  run_manage makemigrations indexerapp --noinput
   run_manage migrate --noinput
   run_manage collectstatic --noinput
   link_public_assets
   render_nginx_snippet
+  install_directadmin_snippet
   restart_service
 
   log "Deploy finished successfully"
