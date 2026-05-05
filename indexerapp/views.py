@@ -128,17 +128,13 @@ def _resolve_object_by_uuid_or_pk(model, raw_value):
     try:
         parsed_uuid = uuid.UUID(raw_text)
     except ValueError:
-        parsed_uuid = None
+        raise Http404() from None
 
-    if parsed_uuid is not None:
-        instance = model.objects.filter(uuid=parsed_uuid).first()
-        if instance is not None:
-            return instance
+    instance = model.objects.filter(uuid=parsed_uuid).first()
+    if instance is None:
+        raise Http404()
 
-    try:
-        return model.objects.get(pk=int(raw_text))
-    except (model.DoesNotExist, TypeError, ValueError) as exc:
-        raise Http404() from exc
+    return instance
 
 
 def _resolve_manuscript(source, *keys):
@@ -153,17 +149,12 @@ def _build_uuid_or_pk_filter_kwargs(relation_name, raw_value):
     try:
         parsed_uuid = uuid.UUID(raw_text)
     except ValueError:
-        parsed_uuid = None
+        raise ValueError('selector must be a UUID') from None
 
     if relation_name is None:
-        if parsed_uuid is not None:
-            return {'uuid': parsed_uuid}
-        return {'pk': int(raw_text)}
+        return {'uuid': parsed_uuid}
 
-    if parsed_uuid is not None:
-        return {f'{relation_name}__uuid': parsed_uuid}
-
-    return {f'{relation_name}_id': int(raw_text)}
+    return {f'{relation_name}__uuid': parsed_uuid}
 
 
 def _filter_queryset_by_uuid_or_pk(queryset, relation_name, raw_value):
@@ -417,7 +408,7 @@ class MainInfoAjaxView(View):
 
 class MSInfoAjaxView(View):
     def get(self, request, *args, **kwargs):
-        instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'pk', 'manuscript_id', 'ms')
+        instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
 
         # Main info
         info = get_obj_dictionary(instance, [])
@@ -471,16 +462,16 @@ class GlobalCharFilter(GlobalFilter, filters.CharFilter):
 class MSGalleryView(View):
     """Manage manuscript gallery.
 
-    GET: require ?manuscript_id=<id> or ?manuscript_uuid=<uuid> — returns JSON with images for manuscript
-    POST: accept multipart/form-data with manuscript_id or manuscript_uuid and one or more files in 'images' field
+    GET: require ?manuscript_uuid=<uuid> — returns JSON with images for manuscript
+    POST: accept multipart/form-data with manuscript_uuid and one or more files in 'images' field
     """
     def get(self, request, *args, **kwargs):
-        manuscript_selector = _get_first_present(request.GET, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        manuscript_selector = _get_first_present(request.GET, 'manuscript_uuid', 'ms_uuid')
         if not manuscript_selector:
-            return JsonResponse({'error': 'manuscript_id or manuscript_uuid parameter is required'}, status=400)
+            return JsonResponse({'error': 'manuscript_uuid parameter is required'}, status=400)
 
         try:
-            ms = _resolve_manuscript(request.GET, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+            ms = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms_uuid')
         except Http404:
             return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
@@ -501,12 +492,12 @@ class MSGalleryView(View):
 
     def post(self, request, *args, **kwargs):
         # uploading images — expects multipart form
-        manuscript_selector = _get_first_present(request.POST, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        manuscript_selector = _get_first_present(request.POST, 'manuscript_uuid', 'ms_uuid')
         if not manuscript_selector:
-            return JsonResponse({'error': 'manuscript_id or manuscript_uuid parameter is required'}, status=400)
+            return JsonResponse({'error': 'manuscript_uuid parameter is required'}, status=400)
 
         try:
-            ms = _resolve_manuscript(request.POST, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+            ms = _resolve_manuscript(request.POST, 'manuscript_uuid', 'ms_uuid')
         except Http404:
             return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
@@ -527,7 +518,7 @@ class MSGalleryView(View):
         """Delete a single image or all images for a manuscript.
 
         Expects JSON body with:
-        - manuscript_id (required)
+        - manuscript_uuid (required)
         - image_id (optional) -> deletes single image; if omitted deletes all images for manuscript
         """
         try:
@@ -535,14 +526,14 @@ class MSGalleryView(View):
         except Exception:
             return JsonResponse({'error': 'Invalid JSON body'}, status=400)
 
-        manuscript_selector = _get_first_present(payload, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+        manuscript_selector = _get_first_present(payload, 'manuscript_uuid', 'ms_uuid')
         image_id = payload.get('image_id')
 
         if not manuscript_selector:
-            return JsonResponse({'error': 'manuscript_id or manuscript_uuid is required'}, status=400)
+            return JsonResponse({'error': 'manuscript_uuid is required'}, status=400)
 
         try:
-            ms = _resolve_manuscript(payload, 'manuscript_uuid', 'manuscript_id', 'pk', 'ms')
+            ms = _resolve_manuscript(payload, 'manuscript_uuid', 'ms_uuid')
         except Http404:
             return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
@@ -657,7 +648,7 @@ class ContentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Content.objects.filter(manuscript__display_as_main=True)
-        manuscript_selector = _get_first_present(self.request.GET, 'manuscript_uuid', 'manuscript_id', 'ms', 'pk')
+        manuscript_selector = _get_first_present(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         if manuscript_selector:
             queryset = _filter_queryset_by_uuid_or_pk(queryset, 'manuscript', manuscript_selector)
             
@@ -691,7 +682,7 @@ class ManuscriptHandsViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         is_main_text_param = self.request.query_params.get('is_main_text')
-        manuscript_selector = _get_first_present(self.request.query_params, 'ms_uuid', 'manuscript_uuid', 'ms', 'manuscript_id', 'pk')
+        manuscript_selector = _get_first_present(self.request.query_params, 'ms_uuid', 'manuscript_uuid')
         
         # Convert is_main_text_param to a boolean value
         is_main_text = True if is_main_text_param == "true" else False if is_main_text_param == "false" else None
@@ -1522,7 +1513,7 @@ class AssistantStatusView(LoginRequiredMixin, View):
 
 class CodicologyAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'pk', 'ms', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['manuscript']  # Add any other fields to skip
         instance = ms_instance.ms_codicology.first()
         info = get_obj_dictionary(instance,skip_fields)
@@ -1555,7 +1546,7 @@ class CodicologyAjaxView(View):
 
 class LayoutsAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_layouts.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1570,7 +1561,7 @@ class LayoutsAjaxView(View):
 class DecorationAjaxView(View):
     def get(self, request, *args, **kwargs):
         decoration_type = self.request.GET.get('decoration_type')
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_decorations.all()
 
@@ -1625,7 +1616,7 @@ class DecorationAjaxView(View):
 
 class QuiresAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_quires.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1639,7 +1630,7 @@ class QuiresAjaxView(View):
 
 class ConditionAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [
             'manuscript',
             'uuid',
@@ -1659,7 +1650,7 @@ class ConditionAjaxView(View):
 
 class CllaAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['id', 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_clla.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1673,7 +1664,7 @@ class CllaAjaxView(View):
 
 class OriginsAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_origins.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1706,7 +1697,7 @@ class OriginsAjaxView(View):
 
 class BindingAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_binding.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1769,7 +1760,7 @@ class BindingAjaxView(View):
 
 class MusicNotationAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_music_notation.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
@@ -1784,7 +1775,7 @@ class MusicNotationAjaxView(View):
 class HandsAjaxView(View):
     def get(self, request, *args, **kwargs):
         is_main_text = self.request.GET.get('is_main_text')
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [ 'manuscript']  # Add any other fields to skip
         info_queryset = ms_instance.ms_hands.all()
 
@@ -1824,7 +1815,7 @@ class HandsAjaxView(View):
 
 class WatermarksAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         info_queryset = ms_instance.ms_watermarks.all()  # ManuscriptWatermarks objects
         
         # Create a list of dictionaries for ManuscriptWatermarks, keeping id
@@ -1844,7 +1835,7 @@ class WatermarksAjaxView(View):
 
 class BibliographyAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
 
         # Get ManuscriptBibliography objects
         bibliography = ms_instance.ms_bibliography.all()
@@ -1866,7 +1857,7 @@ class BibliographyAjaxView(View):
 
 class BibliographyExportView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
 
         #Zotero:
         bibliography = ms_instance.ms_bibliography.all()
@@ -1885,7 +1876,7 @@ class BibliographyExportView(View):
 
 class BibliographyPrintView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
 
         #Zotero:
         bibliography = ms_instance.ms_bibliography.all()
@@ -1907,7 +1898,7 @@ class BibliographyPrintView(View):
         return JsonResponse(data)
 class ProvenanceAjaxView(View):
     def get(self, request, *args, **kwargs):
-        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = ['manuscript']  # Add any other fields to skip
         
         # Sort the queryset by timeline_sequence
@@ -1984,12 +1975,21 @@ class TraditionsAutocomplete(autocomplete.Select2QuerySetView):
 
 
 class UUIDAutocompleteResultMixin:
+    uuid_result_exempt = False
+
+    def get_result_value(self, item):
+        if not self.uuid_result_exempt:
+            item_uuid = getattr(item, 'uuid', None)
+            if item_uuid:
+                return str(item_uuid)
+        return autocomplete.Select2QuerySetView.get_result_value(self, item)
+
     def get_results(self, context):
         return [
             {
                 'id': self.get_result_value(result),
-                'text': self.get_result_label(result),
-                'selected_text': self.get_selected_result_label(result),
+                'text': getattr(self, 'get_result_label')(result),
+                'selected_text': getattr(self, 'get_selected_result_label')(result),
                 'uuid': str(result.uuid) if getattr(result, 'uuid', None) else None,
                 'pk': str(result.pk),
             }
@@ -2009,7 +2009,7 @@ class LiturgicalGenresAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Sel
 
         return qs
 
-class FormulaAutocomplete(autocomplete.Select2QuerySetView):
+class FormulaAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2022,7 +2022,7 @@ class FormulaAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class ContentAutocomplete(autocomplete.Select2QuerySetView):
+class ContentAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2178,7 +2178,7 @@ class MSContemporaryRepositoryPlaceAutocomplete(UUIDAutocompleteResultMixin, aut
 
 
 
-class MSDatingAutocomplete(autocomplete.Select2QuerySetView):
+class MSDatingAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = TimeReference.objects.exclude(
             manuscripts_dating__dating=None
@@ -2274,7 +2274,7 @@ class MSMainScriptAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2
         # Zwróć etykietę wyniku jako str() z obiektu Places
         return str(item)
 
-class MSBindingDateAutocomplete(autocomplete.Select2QuerySetView):
+class MSBindingDateAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = TimeReference.objects.exclude(
             manuscripts_binding_date__binding_date=None
@@ -2293,7 +2293,7 @@ class MSBindingDateAutocomplete(autocomplete.Select2QuerySetView):
         # Zwróć etykietę wyniku jako str() z obiektu Places
         return str(item)
 
-class ContributorsAutocomplete(autocomplete.Select2QuerySetView):
+class ContributorsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2331,7 +2331,7 @@ class SubjectAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2Query
 
         return qs
 
-class RiteNamesAutocomplete(autocomplete.Select2QuerySetView):
+class RiteNamesAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2344,7 +2344,7 @@ class RiteNamesAutocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-class GenreAutocomplete(autocomplete.Select2QuerySetView):
+class GenreAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
         if not self.request.user.is_authenticated:
@@ -2740,6 +2740,13 @@ class ContentImportView(View):
             # Obsłuż wyjątek, jeśli nie można odnaleźć modelu o danej nazwie
             return False
 
+    def resolve_manuscript_id(self, row):
+        manuscript_uuid = row.get('manuscript_uuid')
+        if manuscript_uuid:
+            return _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid).pk
+
+        return row.get('manuscript_id')
+
     def import_content(self, data):
 
         content_list = []
@@ -2750,6 +2757,12 @@ class ContentImportView(View):
                 for key, value in row.items():
                     if value == '':
                         row[key] = None
+
+                try:
+                    manuscript_id = self.resolve_manuscript_id(row)
+                except Http404:
+                    selector = row.get('manuscript_uuid') or row.get('manuscript_id')
+                    return JsonResponse({'info': f'error: could not resolve manuscript selector "{selector}"'}, status=200)
 
                 # Convert names to IDs
                 new_liturgical_genre_id = None
@@ -2766,7 +2779,7 @@ class ContentImportView(View):
                     # Create a new ManuscriptMusicNotations entry
                     try:
                         manuscript_music_notation = ManuscriptMusicNotations(
-                            manuscript_id=row.get('manuscript_id'),
+                            manuscript_id=manuscript_id,
                             music_notation_name_id=music_notation_name_id,
                             where_in_ms_from=row.get('where_in_ms_from') or "",
                             where_in_ms_to=row.get('where_in_ms_to') or "",
@@ -2901,7 +2914,7 @@ class ContentImportView(View):
 
 
                 content = Content(
-                    manuscript_id=row.get('manuscript_id'),
+                    manuscript_id=manuscript_id,
                     formula_id=row.get('formula_id'),
                     rubric_id=row.get('rubric_id'),
                     rubric_name_from_ms=row.get('rubric_name_from_ms'),
@@ -4147,7 +4160,7 @@ class contentCompareEditionJSON(View):
 
 class MSRitesLookupView(View):
     def get(self, request, *args, **kwargs):
-        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms_uuid')
 
         print("manuscript = "+str(manuscript))
 
@@ -4256,7 +4269,7 @@ class MSRitesLookupView(View):
 
 class ManuscriptTEIView(View):
     def get(self, request, *args, **kwargs):
-        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms_uuid')
         ms_id = manuscript.id
         codicology = manuscript.ms_codicology.first()
 
@@ -4343,7 +4356,7 @@ class ManuscriptTEI(TemplateView):
     template_name = 'manuscript.xml'  # Path to your template
 
     def get(self, request, *args, **kwargs):
-        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms', 'pk', 'manuscript_id')
+        manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms_uuid')
         ms_id = manuscript.id
 
         medieval_hands = manuscript.ms_hands.filter(is_medieval=True)
@@ -4375,8 +4388,8 @@ class ManuscriptTEI(TemplateView):
 
 
 class ContentCSVExportView(View):
-    def get(self, request, manuscript_id=None, manuscript_uuid=None):
-        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid or manuscript_id)
+    def get(self, request, manuscript_uuid):
+        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
         contents = Content.objects.filter(manuscript=manuscript)
 
         # Prepare the response as a CSV file
@@ -4429,13 +4442,12 @@ class ContentCSVExportView(View):
 
 
 class DeleteContentView(View):
-    def delete(self, request, manuscript_id=None, manuscript_uuid=None):
+    def delete(self, request, manuscript_uuid):
         # Check if the user is a superuser
         if not request.user.is_superuser:
             return HttpResponseForbidden("Only superusers can delete content.")
 
-        # Validate manuscript ID
-        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid or manuscript_id)
+        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
         
         # Delete all related content
         deleted_count, _ = Content.objects.filter(manuscript_id=manuscript.id).delete()
@@ -4496,13 +4508,12 @@ class DeleteTraditionFromFormulaView(View):
         })
 
 class AssignMSContentToTraditionView(View):
-    def post(self, request, manuscript_id=None, tradition_id=None, manuscript_uuid=None):
+    def post(self, request, manuscript_uuid, tradition_id=None):
         # Check if the user is a superuser
         if not request.user.is_superuser:
             return HttpResponseForbidden("Only superusers can assign content to traditions.")
 
-        # Validate manuscript and tradition
-        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid or manuscript_id)
+        manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
         tradition = get_object_or_404(Traditions, pk=tradition_id)
         
         # Get all formulas associated with the manuscript through content

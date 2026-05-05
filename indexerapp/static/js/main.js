@@ -44,10 +44,6 @@ window.getManuscriptPageUrl = function (manuscript) {
         return '/static/page.html?p=manuscript&manuscript_uuid=' + encodeURIComponent(manuscript.uuid);
     }
 
-    if (manuscript && manuscript.id !== undefined && manuscript.id !== null) {
-        return '/static/page.html?p=manuscript&id=' + encodeURIComponent(manuscript.id);
-    }
-
     return '/static/page.html?p=manuscript';
 };
 
@@ -61,10 +57,10 @@ window.getManuscriptSelectorValue = function (manuscript) {
     }
 
     if (typeof manuscript === 'string') {
-        return manuscript;
+        return window.isUuidLike(manuscript) ? manuscript : null;
     }
 
-    return manuscript.uuid || manuscript.id || manuscript.pk || null;
+    return manuscript.uuid || null;
 };
 
 window.getSelectedManuscriptSelector = function (selector) {
@@ -87,11 +83,7 @@ window.getManuscriptSelectorQuery = function (manuscript, legacyKey = 'ms') {
         return '';
     }
 
-    if (window.isUuidLike(selector)) {
-        return 'manuscript_uuid=' + encodeURIComponent(selector);
-    }
-
-    return legacyKey + '=' + encodeURIComponent(selector);
+    return 'manuscript_uuid=' + encodeURIComponent(selector);
 };
 
 window.addManuscriptSelectorParam = function (payload, manuscript, legacyKey = 'manuscript_id') {
@@ -100,12 +92,7 @@ window.addManuscriptSelectorParam = function (payload, manuscript, legacyKey = '
         return payload;
     }
 
-    if (window.isUuidLike(selector)) {
-        payload.manuscript_uuid = selector;
-        return payload;
-    }
-
-    payload[legacyKey] = selector;
+    payload.manuscript_uuid = selector;
     return payload;
 };
 
@@ -115,12 +102,7 @@ window.appendManuscriptSelectorToFormData = function (formData, manuscript, lega
         return formData;
     }
 
-    if (window.isUuidLike(selector)) {
-        formData.append('manuscript_uuid', selector);
-        return formData;
-    }
-
-    formData.append(legacyKey, selector);
+    formData.append('manuscript_uuid', selector);
     return formData;
 };
 

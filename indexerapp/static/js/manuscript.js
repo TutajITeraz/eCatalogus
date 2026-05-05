@@ -29,14 +29,14 @@ let IDENTIFY_TRADITIONS = false;
 let colorIndex = 0;
 
 manuscriptUuid = urlParams.get("manuscript_uuid") || urlParams.get("uuid");
-manuscriptId = manuscriptUuid || urlParams.get("id");
+manuscriptId = manuscriptUuid;
 
 function getCurrentManuscriptQuery(legacyKey = "ms") {
-  if (manuscriptUuid) {
-    return `manuscript_uuid=${encodeURIComponent(manuscriptUuid)}`;
+  if (!manuscriptUuid) {
+    return "";
   }
 
-  return `${legacyKey}=${encodeURIComponent(manuscriptId)}`;
+  return `manuscript_uuid=${encodeURIComponent(manuscriptUuid)}`;
 }
 
 function getManuscriptEndpoint(path, legacyKey = "ms") {
@@ -47,11 +47,72 @@ function getManuscriptEndpoint(path, legacyKey = "ms") {
 function addCurrentManuscriptParam(payload, legacyKey = "ms") {
   if (manuscriptUuid) {
     payload.manuscript_uuid = manuscriptUuid;
-    return payload;
+  }
+  return payload;
+}
+
+function isUuidLike(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+function getAdminObjectId(objectOrValue) {
+  if (objectOrValue && typeof objectOrValue === "object") {
+    return objectOrValue.uuid || "";
   }
 
-  payload[legacyKey] = manuscriptId;
-  return payload;
+  return isUuidLike(objectOrValue) ? objectOrValue : "";
+}
+
+function getAdminChangeUrl(modelName, objectOrValue) {
+  const objectId = encodeURIComponent(getAdminObjectId(objectOrValue));
+  if (!objectId) {
+    return "";
+  }
+
+  return `/admin/indexerapp/${modelName}/${objectId}/change/?_to_field=uuid&_popup=1`;
+}
+
+function getAdminObjectReference(row, fallbackValue) {
+  const rawValue = row && row.uuid ? row.uuid : fallbackValue;
+  if (!isUuidLike(rawValue)) {
+    return "";
+  }
+  return encodeURIComponent(rawValue);
+}
+
+function renderAdminPopupActions(
+  modelName,
+  objectLabel,
+  tableReference,
+  data,
+  type,
+  row
+) {
+  if (type !== "display") {
+    return data;
+  }
+
+  const objectReference = getAdminObjectReference(row, data);
+  if (!objectReference) {
+    return "";
+  }
+
+  return `
+    <a href="/admin/indexerapp/${modelName}/${objectReference}/change/?_to_field=uuid&_popup=1"
+       class="edit_widget related-widget-wrapper-link change-related"
+       data-popup="yes"
+       title="Change ${objectLabel}"
+       onclick="window.openDataTablePopup(this.href, ${tableReference}); return false;">
+      <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
+    </a>
+    <a href="/admin/indexerapp/${modelName}/${objectReference}/delete/?_to_field=uuid&_popup=1"
+       class="delete_widget related-widget-wrapper-link delete-related"
+       data-popup="yes"
+       title="Delete ${objectLabel}"
+       onclick="window.openDataTablePopup(this.href, ${tableReference}); return false;">
+      <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
+    </a>
+  `;
 }
 
 function setTableHeight() {
@@ -102,18 +163,18 @@ window.openUniversalPopup = async function (event) {
 
     if (idSource === "getMSInfo") {
       const msInfo = await window.getMSInfo();
-      idValue = msInfo?.manuscript?.id;
+      idValue = msInfo?.manuscript?.uuid;
     } else if (idSource === "static") {
       idValue = event.currentTarget.getAttribute("data-id");
     } else if (window[idSource] && typeof window[idSource] === "function") {
       const result = await window[idSource]();
-      idValue = result?.id;
+      idValue = result?.uuid || result?.info?.uuid;
     } else {
       throw new Error(`Nieznane źródło ID: ${idSource}`);
     }
 
-    if (!idValue) {
-      throw new Error("ID not found");
+    if (!isUuidLike(idValue)) {
+      throw new Error("UUID not found");
     }
 
     // Pobierz bazowy URL z href linku
@@ -436,25 +497,8 @@ function init_layouts_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "5%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/layouts/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change layout"
-             onclick="window.openDataTablePopup(this.href, window.layouts_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/layouts/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete layout"
-             onclick="window.openDataTablePopup(this.href, window.layouts_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions("layouts", "layout", "window.layouts_table", data, type, row),
       },
     ],
     order: [[1, "asc"]],
@@ -547,25 +591,15 @@ function init_music_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/manuscriptmusicnotations/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change music notation"
-             onclick="window.openDataTablePopup(this.href, window.music_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/manuscriptmusicnotations/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete music notation"
-             onclick="window.openDataTablePopup(this.href, window.music_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "manuscriptmusicnotations",
+            "music notation",
+            "window.music_table",
+            data,
+            type,
+            row
+          ),
       },
     ],
     initComplete: () =>
@@ -763,27 +797,8 @@ function init_content_table(reinit = false) {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: function (data, type) {
-          if (type === "display") {
-            return `
-              <a href="/admin/indexerapp/content/${data}/change/?_to_field=id&_popup=1"
-                 class="edit_widget related-widget-wrapper-link change-related"
-                 data-popup="yes"
-                 title="Change content"
-                 onclick="window.openDataTablePopup(this.href, window.content_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-              </a>
-              <a href="/admin/indexerapp/content/${data}/delete/?_to_field=id&_popup=1"
-                 class="delete_widget related-widget-wrapper-link delete-related"
-                 data-popup="yes"
-                 title="Delete content"
-                 onclick="window.openDataTablePopup(this.href, window.content_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-              </a>
-            `;
-          }
-          return data;
-        },
+        render: (data, type, row) =>
+          renderAdminPopupActions("content", "content", "window.content_table", data, type, row),
       },
     ],
     order: [
@@ -909,25 +924,8 @@ function init_quires_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/quires/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change quire"
-             onclick="window.openDataTablePopup(this.href, window.quires_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/quires/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete quire"
-             onclick="window.openDataTablePopup(this.href, window.quires_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions("quires", "quire", "window.quires_table", data, type, row),
       },
     ],
     order: [
@@ -1402,31 +1400,15 @@ function init_decoration_table(table_info) {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/decoration/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change decoration"
-             onclick="window.openDataTablePopup(this.href, ${table_info.tableSelector.replace(
-               "#",
-               "decoration_tables_"
-             )}.table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/decoration/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete decoration"
-             onclick="window.openDataTablePopup(this.href, ${table_info.tableSelector.replace(
-               "#",
-               "decoration_tables_"
-             )}.table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "decoration",
+            "decoration",
+            `${table_info.tableSelector.replace("#", "decoration_tables_")}.table`,
+            data,
+            type,
+            row
+          ),
       },
       //{ "data": "comments", "title": "Comments" },
       { data: "authors", title: "authors", visible: false },
@@ -1603,27 +1585,8 @@ function init_origins_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: function (data, type) {
-          if (type === "display") {
-            return `
-              <a href="/admin/indexerapp/origins/${data}/change/?_to_field=id&_popup=1"
-                 class="edit_widget related-widget-wrapper-link change-related"
-                 data-popup="yes"
-                 title="Change origin"
-                 onclick="window.openDataTablePopup(this.href, window.origins_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-              </a>
-              <a href="/admin/indexerapp/origins/${data}/delete/?_to_field=id&_popup=1"
-                 class="delete_widget related-widget-wrapper-link delete-related"
-                 data-popup="yes"
-                 title="Delete origin"
-                 onclick="window.openDataTablePopup(this.href, window.origins_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-              </a>
-            `;
-          }
-          return data;
-        },
+        render: (data, type, row) =>
+          renderAdminPopupActions("origins", "origin", "window.origins_table", data, type, row),
       },
     ],
     initComplete: function () {
@@ -1750,25 +1713,15 @@ function init_main_hands() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/manuscripthands/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change hand"
-             onclick="window.openDataTablePopup(this.href, window.main_hands); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/manuscripthands/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete hand"
-             onclick="window.openDataTablePopup(this.href, window.main_hands); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "manuscripthands",
+            "hand",
+            "window.main_hands",
+            data,
+            type,
+            row
+          ),
       },
     ],
     order: [
@@ -1868,25 +1821,15 @@ function init_additions_hands() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/manuscripthands/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change hand"
-             onclick="window.openDataTablePopup(this.href, window.additions_hands); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/manuscripthands/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete hand"
-             onclick="window.openDataTablePopup(this.href, window.additions_hands); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Edit" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "manuscripthands",
+            "hand",
+            "window.additions_hands",
+            data,
+            type,
+            row
+          ),
       },
     ],
     order: [
@@ -1940,25 +1883,15 @@ function init_watermarks_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: (data, type) =>
-          type === "display"
-            ? `
-          <a href="/admin/indexerapp/manuscriptwatermarks/${data}/change/?_to_field=id&_popup=1"
-             class="edit_widget related-widget-wrapper-link change-related"
-             data-popup="yes"
-             title="Change watermark"
-             onclick="window.openDataTablePopup(this.href, window.watermarks_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-          </a>
-          <a href="/admin/indexerapp/manuscriptwatermarks/${data}/delete/?_to_field=id&_popup=1"
-             class="delete_widget related-widget-wrapper-link delete-related"
-             data-popup="yes"
-             title="Delete watermark"
-             onclick="window.openDataTablePopup(this.href, window.watermarks_table); return false;">
-            <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-          </a>
-        `
-            : data,
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "manuscriptwatermarks",
+            "watermark",
+            "window.watermarks_table",
+            data,
+            type,
+            row
+          ),
       },
     ],
     order: [{ data: "where_in_manuscript", order: "asc" }],
@@ -2004,27 +1937,15 @@ function init_provenance_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: function (data, type) {
-          if (type === "display") {
-            return `
-              <a href="/admin/indexerapp/provenance/${data}/change/?_to_field=id&_popup=1"
-                 class="edit_widget related-widget-wrapper-link change-related"
-                 data-popup="yes"
-                 title="Change provenance"
-                 onclick="window.openDataTablePopup(this.href, window.provenance_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-              </a>
-              <a href="/admin/indexerapp/provenance/${data}/delete/?_to_field=id&_popup=1"
-                 class="delete_widget related-widget-wrapper-link delete-related"
-                 data-popup="yes"
-                 title="Delete provenance"
-                 onclick="window.openDataTablePopup(this.href, window.provenance_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-              </a>
-            `;
-          }
-          return data;
-        },
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "provenance",
+            "provenance",
+            "window.provenance_table",
+            data,
+            type,
+            row
+          ),
       },
     ],
     order: [
@@ -2068,27 +1989,15 @@ function init_bibliography_table() {
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
         width: "10%",
-        render: function (data, type) {
-          if (type === "display") {
-            return `
-              <a href="/admin/indexerapp/manuscriptbibliography/${data}/change/?_to_field=id&_popup=1"
-                 class="edit_widget related-widget-wrapper-link change-related"
-                 data-popup="yes"
-                 title="Change bibliography"
-                 onclick="window.openDataTablePopup(this.href, window.bibliography_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-changelink.svg" alt="Edit" width="20" height="20">
-              </a>
-              <a href="/admin/indexerapp/manuscriptbibliography/${data}/delete/?_to_field=id&_popup=1"
-                 class="delete_widget related-widget-wrapper-link delete-related"
-                 data-popup="yes"
-                 title="Delete bibliography"
-                 onclick="window.openDataTablePopup(this.href, window.bibliography_table); return false;">
-                <img src="${pageRoot}/static/admin/img/icon-deletelink.svg" alt="Delete" width="20" height="20">
-              </a>
-            `;
-          }
-          return data;
-        },
+        render: (data, type, row) =>
+          renderAdminPopupActions(
+            "manuscriptbibliography",
+            "bibliography",
+            "window.bibliography_table",
+            data,
+            type,
+            row
+          ),
       },
     ],
   });

@@ -1,12 +1,15 @@
+import json
 from unittest.mock import patch
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
-from indexerapp.models import Content, Formulas, Hands, Image, LiturgicalGenres, ManuscriptGenres, ManuscriptHands, Manuscripts, ScriptNames, Traditions
+from indexerapp.models import Content, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, RiteNames, ScriptNames, Traditions
 from indexerapp.signals import ensure_env_superuser
 
 
@@ -61,7 +64,7 @@ class EnvSuperuserBootstrapTests(TestCase):
 		self.assertTrue(user.check_password('NewSecret123!'))
 
 
-class AdminUUIDVisibilityTests(SimpleTestCase):
+class AdminUUIDVisibilityTests(TestCase):
 	def test_content_admin_exposes_uuid(self):
 		content_admin = admin.site._registry[Content]
 		self.assertIn('uuid', tuple(content_admin.list_display))
@@ -71,6 +74,22 @@ class AdminUUIDVisibilityTests(SimpleTestCase):
 		manuscripts_admin = admin.site._registry[Manuscripts]
 		self.assertIn('uuid', tuple(manuscripts_admin.list_display))
 		self.assertIn('uuid', tuple(manuscripts_admin.readonly_fields))
+
+	def test_layout_admin_form_uses_uuid_for_manuscript_field(self):
+		request = RequestFactory().get('/admin/')
+		request.user = AnonymousUser()
+		layouts_admin = admin.site._registry[Layouts]
+		form_class = layouts_admin.get_form(request)
+
+		self.assertEqual(form_class.base_fields['manuscript'].to_field_name, 'uuid')
+
+	def test_content_admin_form_uses_uuid_for_formula_field(self):
+		request = RequestFactory().get('/admin/')
+		request.user = AnonymousUser()
+		content_admin = admin.site._registry[Content]
+		form_class = content_admin.get_form(request)
+
+		self.assertEqual(form_class.base_fields['formula'].to_field_name, 'uuid')
 
 
 class ManuscriptUUIDLookupViewTests(TestCase):
@@ -156,7 +175,36 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = response.json()
 		result = next(item for item in payload['results'] if item['text'] == genre.title)
 		self.assertEqual(result['uuid'], str(genre.uuid))
-		self.assertEqual(result['id'], str(genre.pk))
+		self.assertEqual(result['id'], str(genre.uuid))
+		self.assertEqual(result['pk'], str(genre.pk))
+
+	def test_formula_autocomplete_returns_uuid(self):
+		user = get_user_model().objects.create_user('formula-autocomplete-user', 'formula-auto@example.com', 'secret')
+		formula = Formulas.objects.create(co_no='F-autocomplete', text='Formula autocomplete')
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('formula-autocomplete'), {'q': 'Formula'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		result = next(item for item in payload['results'] if item['text'] == formula.text)
+		self.assertEqual(result['uuid'], str(formula.uuid))
+		self.assertEqual(str(result['id']), str(formula.uuid))
+		self.assertEqual(str(result['pk']), str(formula.pk))
+
+	def test_ritenames_autocomplete_returns_uuid(self):
+		user = get_user_model().objects.create_user('ritename-autocomplete-user', 'rite-auto@example.com', 'secret')
+		ritename = RiteNames.objects.create(name='Rite autocomplete')
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('ritenames-autocomplete'), {'q': 'Rite'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		result = next(item for item in payload['results'] if item['text'] == ritename.name)
+		self.assertEqual(result['uuid'], str(ritename.uuid))
+		self.assertEqual(str(result['id']), str(ritename.uuid))
+		self.assertEqual(str(result['pk']), str(ritename.pk))
 
 	def test_ms_info_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='UUID manuscript')
@@ -167,6 +215,13 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = response.json()
 		self.assertEqual(payload['manuscript']['uuid'], str(manuscript.uuid))
 		self.assertEqual(payload['manuscript']['name'], 'UUID manuscript')
+
+	def test_ms_info_rejects_legacy_manuscript_id_selector(self):
+		manuscript = Manuscripts.objects.create(name='Legacy selector manuscript')
+
+		response = self.client.get(reverse('ms_info'), {'manuscript_id': manuscript.id})
+
+		self.assertEqual(response.status_code, 404)
 
 	def test_ms_gallery_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Gallery manuscript')
@@ -194,7 +249,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_content_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected manuscript', display_as_main=True)
 		other = Manuscripts.objects.create(name='Other manuscript', display_as_main=True)
-		Content.objects.create(manuscript=selected, comments='selected')
+		selected_content = Content.objects.create(manuscript=selected, comments='selected')
 		Content.objects.create(manuscript=other, comments='other')
 
 		response = self.client.get(reverse('content-list'), {'manuscript_uuid': str(selected.uuid)})
@@ -204,6 +259,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(payload['count'], 1)
 		self.assertEqual(len(payload['results']), 1)
 		self.assertEqual(payload['results'][0]['manuscript_name'], 'Selected manuscript')
+		self.assertEqual(payload['results'][0]['uuid'], str(selected_content.uuid))
 
 	def test_hands_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected hands manuscript')
@@ -258,6 +314,13 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response['Content-Type'], 'application/xml')
 
+	def test_ms_tei_rejects_legacy_manuscript_id_selector(self):
+		manuscript = Manuscripts.objects.create(name='Legacy TEI manuscript')
+
+		response = self.client.get(reverse('ms_tei'), {'manuscript_id': manuscript.id})
+
+		self.assertEqual(response.status_code, 404)
+
 	def test_manuscript_tei_xml_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='TEI XML manuscript')
 
@@ -276,6 +339,52 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertIn('content_export.csv', response['Content-Disposition'])
 		self.assertIn(str(manuscript.id), response.content.decode())
 
+	def test_content_csv_export_legacy_int_route_is_unavailable(self):
+		with self.assertRaises(NoReverseMatch):
+			reverse('content_csv_export', kwargs={'manuscript_id': 1})
+
+	def test_content_import_accepts_manuscript_uuid_payload(self):
+		manuscript = Manuscripts.objects.create(name='Imported manuscript')
+
+		response = self.client.post(
+			reverse('content_import'),
+			data=json.dumps([
+				{
+					'manuscript_uuid': str(manuscript.uuid),
+					'formula_id': '',
+					'formula_text_from_ms': 'Imported text',
+					'sequence_in_ms': 1,
+					'where_in_ms_from': '1r',
+					'where_in_ms_to': '1v',
+					'digital_page_number': '',
+					'rubric_name_from_ms': '',
+					'subrubric_name_from_ms': '',
+					'rubric_id': '',
+					'rubric_sequence_in_the_MS': '',
+					'original_or_added': '',
+					'biblical_reference': '',
+					'reference_to_other_items': '',
+					'edition_index': '',
+					'edition_subindex': '',
+					'comments': '',
+					'function_id': '',
+					'subfunction_id': '',
+					'liturgical_genre_id': '',
+					'music_notation_id': '',
+					'quire_id': '',
+					'section_id': '',
+					'subsection_id': '',
+					'contributor_id': '',
+					'entry_date': '',
+				}
+			]),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertJSONEqual(response.content, {'info': 'success'})
+		self.assertTrue(Content.objects.filter(manuscript=manuscript, formula_text='Imported text').exists())
+
 	def test_delete_content_uuid_route_accepts_manuscript_uuid(self):
 		admin_user = get_user_model().objects.create_superuser('uuid-admin', 'uuid-admin@example.com', 'secret')
 		self.client.force_login(admin_user)
@@ -287,6 +396,10 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json()['deleted_count'], 1)
 		self.assertFalse(Content.objects.filter(manuscript=manuscript).exists())
+
+	def test_delete_content_legacy_int_route_is_unavailable(self):
+		with self.assertRaises(NoReverseMatch):
+			reverse('delete_content', kwargs={'manuscript_id': 1})
 
 	def test_assign_ms_content_to_tradition_uuid_route_accepts_manuscript_uuid(self):
 		admin_user = get_user_model().objects.create_superuser('uuid-admin-2', 'uuid-admin-2@example.com', 'secret')
@@ -306,3 +419,29 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json()['added_count'], 1)
 		self.assertTrue(formula.tradition.filter(pk=tradition.pk).exists())
+
+	def test_assign_ms_content_to_tradition_legacy_int_route_is_unavailable(self):
+		with self.assertRaises(NoReverseMatch):
+			reverse('assign_ms_content_to_tradition', kwargs={'manuscript_id': 1, 'tradition_id': 1})
+
+class AdminUUIDLookupTests(TestCase):
+	def test_layout_admin_change_view_accepts_uuid_path(self):
+		admin_user = get_user_model().objects.create_superuser('uuid-admin-3', 'uuid-admin-3@example.com', 'secret')
+		self.client.force_login(admin_user)
+		manuscript = Manuscripts.objects.create(name='Admin UUID manuscript')
+		layout = Layouts.objects.create(manuscript=manuscript, where_in_ms_from='1r')
+
+		response = self.client.get(reverse('admin:indexerapp_layouts_change', args=[layout.uuid]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Change layout')
+
+	def test_layout_admin_changelist_link_uses_uuid(self):
+		manuscript = Manuscripts.objects.create(name='Admin UUID changelist manuscript')
+		layout = Layouts.objects.create(manuscript=manuscript, where_in_ms_from='2r')
+		layouts_admin = admin.site._registry[Layouts]
+
+		self.assertEqual(
+			layouts_admin.url_for_result(layout),
+			reverse('admin:indexerapp_layouts_change', args=[layout.uuid]),
+		)

@@ -923,6 +923,9 @@ class Manuscripts(models.Model):
         #managed = False
         db_table = 'manuscripts'
         verbose_name_plural = 'Manuscripts'
+        constraints = [
+            models.UniqueConstraint(fields=['uuid'], name='uq_manuscripts_uuid'),
+        ]
 
     def __str__(self):
         txt = self.name
@@ -1026,6 +1029,9 @@ class Projects(models.Model):
     class Meta:
         #managed = False
         verbose_name_plural = 'Projects'
+        constraints = [
+            models.UniqueConstraint(fields=['uuid'], name='uq_projects_uuid'),
+        ]
 
     def __str__(self): 
         return self.name

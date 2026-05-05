@@ -84,8 +84,8 @@
                 
                 <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                     
-                    <a x-show="DISPLAY_EDIT_OPTIONS" class="add_widget" data-popup="yes" href="/admin/indexerapp/manuscripts/add/?_to_field=id&_popup=1" title="Add manuscript"><img src="/static/admin/img/icon-addlink.svg" alt="Add"></a>
-                    <a x-show="DISPLAY_EDIT_OPTIONS" class="edit_widget" data-href-template="/admin/indexerapp/manuscripts/__fk__/change/?_to_field=id&_popup=1" data-popup="yes" title="Change selected manuscripts" x-bind:href="'/admin/indexerapp/manuscripts/'+(await getMSInfo()).manuscript.id+'/change/?_to_field=id&amp;_popup=1'"><img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20"></a> 
+                    <a x-show="DISPLAY_EDIT_OPTIONS" class="add_widget" data-popup="yes" href="/admin/indexerapp/manuscripts/add/?_to_field=uuid&_popup=1" title="Add manuscript"><img src="/static/admin/img/icon-addlink.svg" alt="Add"></a>
+                    <a x-show="DISPLAY_EDIT_OPTIONS" class="edit_widget" data-href-template="/admin/indexerapp/manuscripts/__fk__/change/?_to_field=uuid&_popup=1" data-popup="yes" title="Change selected manuscripts" x-bind:href="getAdminChangeUrl('manuscripts', (await getMSInfo()).manuscript)"><img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20"></a> 
                     
                     <table class="printIt verticalTable">
                         <template x-for="(fvalue, fname) in (await getMSInfoFiltered()).manuscript">
@@ -168,7 +168,7 @@
                 data-popup="yes"
                 data-param="manuscript"
                 data-id-source="getMSInfo"
-                href="/admin/indexerapp/codicology/add/?_to_field=id&_popup=1"
+                href="/admin/indexerapp/codicology/add/?_to_field=uuid&_popup=1"
                 @click.prevent="openUniversalPopup($event)"
                 title="Add codicology and paleography"
             >
@@ -190,11 +190,11 @@
 
                             <a x-show="DISPLAY_EDIT_OPTIONS" 
                                 class="edit_widget" 
-                                data-href-template="/admin/indexerapp/codicology/__fk__/change/?_to_field=id&_popup=1" 
+                                data-href-template="/admin/indexerapp/codicology/__fk__/change/?_to_field=uuid&_popup=1" 
                                 data-popup="yes" 
                                 title="Change codicology and paleography" 
                                 target="_blank"
-                                x-bind:href="'/admin/indexerapp/codicology/'+(await getCodicologyInfo()).info.id+'/change/?_to_field=id&amp;_popup=1'"
+                                x-bind:href="getAdminChangeUrl('codicology', (await getCodicologyInfo()).info)"
                             >
                                 <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
                             </a> 
@@ -273,7 +273,7 @@
                                             data-popup="yes"
                                             data-param="manuscript"
                                             data-id-source="getMSInfo"
-                                            href="/admin/indexerapp/manuscriptwatermarks/add/?_to_field=id&_popup=1"
+                                            href="/admin/indexerapp/manuscriptwatermarks/add/?_to_field=uuid&_popup=1"
                                             @click.prevent="openUniversalPopup($event)"
                                             title="Add watermark"
                                         >
@@ -302,7 +302,7 @@
                                             data-popup="yes"
                                             data-param="manuscript"
                                             data-id-source="getMSInfo"
-                                            href="/admin/indexerapp/quires/add/?_to_field=id&_popup=1"
+                                            href="/admin/indexerapp/quires/add/?_to_field=uuid&_popup=1"
                                             @click.prevent="openUniversalPopup($event)"
                                             title="Add quire"
                                         >
@@ -330,7 +330,7 @@
                                             data-popup="yes"
                                             data-param="manuscript"
                                             data-id-source="getMSInfo"
-                                            href="/admin/indexerapp/layouts/add/?_to_field=id&_popup=1"
+                                            href="/admin/indexerapp/layouts/add/?_to_field=uuid&_popup=1"
                                             @click.prevent="openUniversalPopup($event)"
                                             title="Add layout"
                                         >
@@ -360,7 +360,7 @@
                                                 data-popup="yes"
                                                 data-param="manuscript"
                                                 data-id-source="getMSInfo"
-                                                href="/admin/indexerapp/manuscripthands/add/?_to_field=id&_popup=1"
+                                                href="/admin/indexerapp/manuscripthands/add/?_to_field=uuid&_popup=1"
                                                 @click.prevent="openUniversalPopup($event)"
                                                 title="Add hand"
                                             >
@@ -396,7 +396,7 @@
                                                 data-popup="yes"
                                                 data-param="manuscript"
                                                 data-id-source="getMSInfo"
-                                                href="/admin/indexerapp/manuscripthands/add/?_to_field=id&_popup=1"
+                                                href="/admin/indexerapp/manuscripthands/add/?_to_field=uuid&_popup=1"
                                                 @click.prevent="openUniversalPopup($event)"
                                                 title="Add hand"
                                             >
@@ -426,7 +426,7 @@
                                                 data-popup="yes"
                                                 data-param="manuscript"
                                                 data-id-source="getMSInfo"
-                                                href="/admin/indexerapp/manuscriptmusicnotations/add/?_to_field=id&_popup=1"
+                                                href="/admin/indexerapp/manuscriptmusicnotations/add/?_to_field=uuid&_popup=1"
                                                 @click.prevent="openUniversalPopup($event)"
                                                 title="Add music notation"
                                             >
@@ -456,7 +456,7 @@
                 data-popup="yes"
                 data-param="manuscript"
                 data-id-source="getMSInfo"
-                href="/admin/indexerapp/binding/add/?_to_field=id&_popup=1"
+                href="/admin/indexerapp/binding/add/?_to_field=uuid&_popup=1"
                 @click.prevent="openUniversalPopup($event)"
                 title="Add binding"
             >
@@ -473,11 +473,11 @@
 
                             <a x-show="DISPLAY_EDIT_OPTIONS" 
                                 class="edit_widget" 
-                                data-href-template="/admin/indexerapp/binding/__fk__/change/?_to_field=id&_popup=1" 
+                                data-href-template="/admin/indexerapp/binding/__fk__/change/?_to_field=uuid&_popup=1" 
                                 data-popup="yes" 
                                 title="Change binding" 
                                 target="_blank"
-                                x-bind:href="'/admin/indexerapp/binding/'+(await getBindingInfo()).info.id+'/change/?_to_field=id&amp;_popup=1'"
+                                x-bind:href="getAdminChangeUrl('binding', (await getBindingInfo()).info)"
                             >
                                 <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
                             </a> 
@@ -572,7 +572,7 @@
                 data-popup="yes"
                 data-param="manuscript"
                 data-id-source="getMSInfo"
-                href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                href="/admin/indexerapp/decoration/add/?_to_field=uuid&_popup=1"
                 @click.prevent="openUniversalPopup($event)"
                 title="Add decoration"
             >
@@ -587,7 +587,7 @@
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                         <div>
                             
-                            <a x-show="DISPLAY_EDIT_OPTIONS" target="_blank" class="edit_widget" data-href-template="/admin/indexerapp/manuscripts/__fk__/change/?_to_field=id&_popup=1" data-popup="yes" title="Edit decoration comments in MS" x-bind:href="'/admin/indexerapp/manuscripts/'+(await getMSInfo()).manuscript.id+'/change/?_to_field=id&amp;_popup=1'"><img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20"></a> 
+                            <a x-show="DISPLAY_EDIT_OPTIONS" target="_blank" class="edit_widget" data-href-template="/admin/indexerapp/manuscripts/__fk__/change/?_to_field=uuid&_popup=1" data-popup="yes" title="Edit decoration comments in MS" x-bind:href="getAdminChangeUrl('manuscripts', (await getMSInfo()).manuscript)"><img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20"></a> 
 
                             <p class="printIt indent-8 m-3" x-text="(await getMSInfo()).manuscript.decoration_comments"></p>
                     
@@ -606,7 +606,7 @@
                                         data-popup="yes"
                                         data-param="manuscript"
                                         data-id-source="getMSInfo"
-                                        href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                                        href="/admin/indexerapp/decoration/add/?_to_field=uuid&_popup=1"
                                         @click.prevent="openUniversalPopup($event)"
                                         title="Add initials"
                                     >
@@ -629,7 +629,7 @@
                                 data-popup="yes"
                                 data-param="manuscript"
                                 data-id-source="getMSInfo"
-                                href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                                href="/admin/indexerapp/decoration/add/?_to_field=uuid&_popup=1"
                                 @click.prevent="openUniversalPopup($event)"
                                 title="Add miniatures"
                             >
@@ -654,7 +654,7 @@
                                     data-popup="yes"
                                     data-param="manuscript"
                                     data-id-source="getMSInfo"
-                                    href="/admin/indexerapp/decoration/add/?_to_field=id&_popup=1"
+                                    href="/admin/indexerapp/decoration/add/?_to_field=uuid&_popup=1"
                                     @click.prevent="openUniversalPopup($event)"
                                     title="Add borders"
                                 >
@@ -680,7 +680,7 @@
                 data-popup="yes"
                 data-param="manuscript"
                 data-id-source="getMSInfo"
-                href="/admin/indexerapp/condition/add/?_to_field=id&_popup=1"
+                href="/admin/indexerapp/condition/add/?_to_field=uuid&_popup=1"
                 @click.prevent="openUniversalPopup($event)"
                 title="Add condition"
             >
@@ -697,11 +697,11 @@
 
                             <a x-show="DISPLAY_EDIT_OPTIONS" 
                                 class="edit_widget" 
-                                data-href-template="/admin/indexerapp/condition/__fk__/change/?_to_field=id&_popup=1" 
+                                data-href-template="/admin/indexerapp/condition/__fk__/change/?_to_field=uuid&_popup=1" 
                                 data-popup="yes" 
                                 title="Change condition" 
                                 target="_blank"
-                                x-bind:href="'/admin/indexerapp/condition/'+(await getConditionInfo()).data[0].id+'/change/?_to_field=id&amp;_popup=1'"
+                                x-bind:href="getAdminChangeUrl('condition', (await getConditionInfo()).data[0])"
                             >
                                 <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
                             </a> 
@@ -739,7 +739,7 @@
                         data-popup="yes"
                         data-param="manuscript"
                         data-id-source="getMSInfo"
-                        href="/admin/indexerapp/content/add/?_to_field=id&_popup=1"
+                        href="/admin/indexerapp/content/add/?_to_field=uuid&_popup=1"
                         @click.prevent="openUniversalPopup($event)"
                         title="Add content"
                     >
@@ -771,7 +771,7 @@
                 data-popup="yes"
                 data-param="manuscript"
                 data-id-source="getMSInfo"
-                href="/admin/indexerapp/origins/add/?_to_field=id&_popup=1"
+                href="/admin/indexerapp/origins/add/?_to_field=uuid&_popup=1"
                 @click.prevent="openUniversalPopup($event)"
                 title="Add origins"
             >
@@ -800,7 +800,7 @@
                                     data-popup="yes"
                                     data-param="manuscript"
                                     data-id-source="getMSInfo"
-                                    href="/admin/indexerapp/origins/add/?_to_field=id&_popup=1"
+                                    href="/admin/indexerapp/origins/add/?_to_field=uuid&_popup=1"
                                     @click.prevent="openUniversalPopup($event)"
                                     title="Add origins"
                                 >
@@ -830,7 +830,7 @@
                                             data-popup="yes"
                                             data-param="manuscript"
                                             data-id-source="getMSInfo"
-                                            href="/admin/indexerapp/provenance/add/?_to_field=id&_popup=1"
+                                            href="/admin/indexerapp/provenance/add/?_to_field=uuid&_popup=1"
                                             @click.prevent="openUniversalPopup($event)"
                                             title="Add provenance"
                                         >
@@ -893,7 +893,7 @@
                 data-popup="yes"
                 data-param="manuscript"
                 data-id-source="getMSInfo"
-                href="/admin/indexerapp/manuscriptbibliography/add/?_to_field=id&_popup=1"
+                href="/admin/indexerapp/manuscriptbibliography/add/?_to_field=uuid&_popup=1"
                 @click.prevent="openUniversalPopup($event)"
                 title="Add bibliography"
             >
@@ -913,7 +913,7 @@
                             data-popup="yes"
                             data-param="manuscript"
                             data-id-source="getMSInfo"
-                            href="/admin/indexerapp/manuscriptbibliography/add/?_to_field=id&_popup=1"
+                            href="/admin/indexerapp/manuscriptbibliography/add/?_to_field=uuid&_popup=1"
                             @click.prevent="openUniversalPopup($event)"
                             title="Add bibliography"
                         >
@@ -924,7 +924,7 @@
 
                         <div>
                             <table  x-init="init_bibliography_table" id="bibliography" class="table table-striped  table-bordered table-hover" style="width:100%"></table>
-                            <a class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5" x-bind:href="'/bibliography_export/?ms='+(await getMSInfo()).manuscript.id" x-bind:download="(await getMSInfo()).manuscript.name+' bibliography.bib'">Save all to Zotero compatible BibTeX .bib file</a>    
+                            <a class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5" x-bind:href="'/bibliography_export/?manuscript_uuid='+(await getMSInfo()).manuscript.uuid" x-bind:download="(await getMSInfo()).manuscript.name+' bibliography.bib'">Save all to Zotero compatible BibTeX .bib file</a>
                         
                         </div>
                     </div>

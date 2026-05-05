@@ -1,5 +1,7 @@
 from django.contrib import admin
+from django.contrib.admin.options import BaseModelAdmin
 from .models import *
+from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 
 from django.db import models
 from django.forms import TextInput, Textarea
@@ -13,11 +15,14 @@ from django.template.defaultfilters import linebreaksbr
 
 #for add debate:
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.admin.utils import quote
 from django.urls import reverse
 from django.utils.html import format_html
 
 from decimal import Decimal
 import math
+import uuid
+from types import MethodType
 
 import modelclone
 
@@ -27,6 +32,21 @@ from django.db.models import Q
 
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
+
+
+UUID_LOOKUP_EXEMPT_MODELS = set()
+
+
+def _model_prefers_uuid_lookup(model):
+    if model in UUID_LOOKUP_EXEMPT_MODELS:
+        return False
+
+    try:
+        model._meta.get_field('uuid')
+    except Exception:
+        return False
+
+    return True
 
 
 
@@ -1170,4 +1190,125 @@ def _ensure_uuid_visible_in_admin():
             model_admin.readonly_fields = readonly_fields + ('uuid',)
 
 
+def _enable_uuid_lookup_in_admin():
+    for model, model_admin in admin.site._registry.items():
+        if not _model_prefers_uuid_lookup(model):
+            continue
+
+        if getattr(model_admin, '_uuid_lookup_enabled', False):
+            continue
+
+        original_get_object = model_admin.get_object
+        original_url_for_result = getattr(model_admin, 'url_for_result', None)
+        original_response_add = model_admin.response_add
+        original_response_change = model_admin.response_change
+
+        def get_uuid_reference(obj):
+            value = getattr(obj, 'uuid', None)
+            return quote(value) if value else None
+
+        def rewrite_admin_redirect(response, obj):
+            uuid_reference = get_uuid_reference(obj)
+            if not uuid_reference or not hasattr(response, 'url') or not response.url:
+                return response
+
+            pk_fragment = f'/{quote(obj.pk)}/'
+            uuid_fragment = f'/{uuid_reference}/'
+            response['Location'] = response.url.replace(pk_fragment, uuid_fragment, 1)
+            return response
+
+        def get_object_with_uuid(self, request, object_id, from_field=None, _original_get_object=original_get_object):
+            if from_field is None:
+                try:
+                    parsed_uuid = uuid.UUID(str(object_id).strip())
+                except (AttributeError, TypeError, ValueError):
+                    parsed_uuid = None
+
+                if parsed_uuid is not None:
+                    instance = self.model._default_manager.filter(uuid=parsed_uuid).first()
+                    if instance is not None:
+                        return instance
+
+            return _original_get_object(request, object_id, from_field=from_field)
+
+        def url_for_result_with_uuid(self, result, _original_url_for_result=original_url_for_result):
+            uuid_reference = get_uuid_reference(result)
+            if uuid_reference:
+                return reverse(
+                    'admin:%s_%s_change' % (self.opts.app_label, self.opts.model_name),
+                    args=(uuid_reference,),
+                    current_app=self.admin_site.name,
+                )
+
+            if _original_url_for_result is not None:
+                return _original_url_for_result(result)
+
+            return reverse(
+                'admin:%s_%s_change' % (self.opts.app_label, self.opts.model_name),
+                args=(quote(result.pk),),
+                current_app=self.admin_site.name,
+            )
+
+        def response_add_with_uuid(self, request, obj, _original_response_add=original_response_add):
+            return rewrite_admin_redirect(_original_response_add(request, obj), obj)
+
+        def response_change_with_uuid(self, request, obj, _original_response_change=original_response_change):
+            return rewrite_admin_redirect(_original_response_change(request, obj), obj)
+
+        model_admin.get_object = MethodType(get_object_with_uuid, model_admin)
+        model_admin.url_for_result = MethodType(url_for_result_with_uuid, model_admin)
+        model_admin.response_add = MethodType(response_add_with_uuid, model_admin)
+        model_admin.response_change = MethodType(response_change_with_uuid, model_admin)
+        model_admin._uuid_lookup_enabled = True
+
+
 _ensure_uuid_visible_in_admin()
+_enable_uuid_lookup_in_admin()
+
+
+def _patch_uuid_related_widget_wrapper():
+    if getattr(RelatedFieldWidgetWrapper, '_uuid_lookup_patched', False):
+        return
+
+    original_get_context = RelatedFieldWidgetWrapper.get_context
+
+    def get_context_with_uuid(self, name, value, attrs, _original_get_context=original_get_context):
+        context = _original_get_context(self, name, value, attrs)
+        if not _model_prefers_uuid_lookup(self.rel.model):
+            return context
+
+        context['url_params'] = '_to_field=uuid&_popup=1'
+        if 'view_related_url_params' in context:
+            context['view_related_url_params'] = '_to_field=uuid'
+        return context
+
+    RelatedFieldWidgetWrapper.get_context = get_context_with_uuid
+    RelatedFieldWidgetWrapper._uuid_lookup_patched = True
+
+
+def _patch_uuid_relation_formfields():
+    if getattr(BaseModelAdmin, '_uuid_relation_lookup_patched', False):
+        return
+
+    original_fk = BaseModelAdmin.formfield_for_foreignkey
+    original_m2m = BaseModelAdmin.formfield_for_manytomany
+
+    def formfield_for_foreignkey_with_uuid(self, db_field, request, **kwargs):
+        remote_model = getattr(db_field.remote_field, 'model', None)
+        if remote_model is not None and _model_prefers_uuid_lookup(remote_model):
+            kwargs.setdefault('to_field_name', 'uuid')
+        return original_fk(self, db_field, request, **kwargs)
+
+    def formfield_for_manytomany_with_uuid(self, db_field, request, **kwargs):
+        remote_model = getattr(db_field.remote_field, 'model', None)
+        if remote_model is not None and _model_prefers_uuid_lookup(remote_model):
+            kwargs.setdefault('to_field_name', 'uuid')
+        return original_m2m(self, db_field, request, **kwargs)
+
+    BaseModelAdmin.formfield_for_foreignkey = formfield_for_foreignkey_with_uuid
+    BaseModelAdmin.formfield_for_manytomany = formfield_for_manytomany_with_uuid
+    BaseModelAdmin._uuid_relation_lookup_patched = True
+
+
+_patch_uuid_related_widget_wrapper()
+_patch_uuid_relation_formfields()

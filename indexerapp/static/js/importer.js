@@ -7,31 +7,19 @@ let dataTable;
 let tableName;
 
 function hasSelectedManuscript() {
-    return !!manuscriptUuid || !!manuscriptId;
+    return !!manuscriptUuid;
 }
 
 function getManuscriptExportUrl() {
-    if (manuscriptUuid) {
-        return pageRoot + `/export/content/by-uuid/${manuscriptUuid}/`;
-    }
-
-    return pageRoot + `/export/content/${manuscriptId}/`;
+    return pageRoot + `/export/content/by-uuid/${manuscriptUuid}/`;
 }
 
 function getManuscriptDeleteUrl() {
-    if (manuscriptUuid) {
-        return pageRoot + `/delete/content/by-uuid/${manuscriptUuid}/`;
-    }
-
-    return pageRoot + `/delete/content/${manuscriptId}/`;
+    return pageRoot + `/delete/content/by-uuid/${manuscriptUuid}/`;
 }
 
 function getAssignManuscriptContentUrl() {
-    if (manuscriptUuid) {
-        return pageRoot + `/assign-ms-content-to-tradition/by-uuid/${manuscriptUuid}/${traditionId}/`;
-    }
-
-    return pageRoot + `/assign-ms-content-to-tradition/${manuscriptId}/${traditionId}/`;
+    return pageRoot + `/assign-ms-content-to-tradition/by-uuid/${manuscriptUuid}/${traditionId}/`;
 }
 
 function browseFile() {
@@ -536,14 +524,14 @@ function sendToServer() {
     if(tableName == 'Content')
     {
 
-        if (! (manuscriptId > 0 && manuscriptId < 99999999))
+        if (!hasSelectedManuscript())
         {
             alert('You have to select manuscript from the list!');
             return;
         }
 
         data.forEach(row => {
-            row.manuscript_id = manuscriptId;
+            row.manuscript_uuid = manuscriptUuid;
         });
     }
 
@@ -698,8 +686,8 @@ importer_init = function()
         var id = data.id;
         console.log(id);
 
-        manuscriptId = id;
-        manuscriptUuid = data.uuid || null;
+        manuscriptId = null;
+        manuscriptUuid = data.uuid || id || null;
         document.getElementById('download-csv-from-server').style.display = 'block';
         document.getElementById("delete-ms-content").style.display = 'block';
 
