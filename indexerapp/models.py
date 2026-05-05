@@ -1040,9 +1040,9 @@ class Projects(models.Model):
 class MSProjects(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_projects')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     project = models.ForeignKey(Projects, models.DO_NOTHING)
-    project_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    project_uuid = models.ForeignKey(Projects, models.DO_NOTHING, to_field='uuid', db_column='project_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1061,7 +1061,7 @@ class Image(models.Model):
     """
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='images')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey('Manuscripts', models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     name = models.CharField(max_length=255, blank=True, null=True)
     image = models.ImageField(upload_to='images/gallery/', blank=True, null=True)
     thumbnail = models.ImageField(upload_to='images/thumbnails/', blank=True, null=True)

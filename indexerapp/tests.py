@@ -424,6 +424,25 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		with self.assertRaises(NoReverseMatch):
 			reverse('assign_ms_content_to_tradition', kwargs={'manuscript_id': 1, 'tradition_id': 1})
 
+	def test_image_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Image UUID FK manuscript')
+
+		image = Image.objects.create(manuscript=manuscript, name='UUID image')
+
+		self.assertEqual(image.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(image.manuscript_uuid, manuscript)
+
+	def test_msprojects_shadow_uuids_are_real_uuid_fks(self):
+		manuscript = Manuscripts.objects.create(name='MSProjects UUID FK manuscript')
+		project = Projects.objects.create(name='UUID project')
+
+		relation = MSProjects.objects.create(manuscript=manuscript, project=project)
+
+		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(relation.project_uuid_id, project.uuid)
+		self.assertEqual(relation.manuscript_uuid, manuscript)
+		self.assertEqual(relation.project_uuid, project)
+
 class AdminUUIDLookupTests(TestCase):
 	def test_layout_admin_change_view_accepts_uuid_path(self):
 		admin_user = get_user_model().objects.create_superuser('uuid-admin-3', 'uuid-admin-3@example.com', 'secret')
