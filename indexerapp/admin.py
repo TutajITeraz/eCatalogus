@@ -16,6 +16,7 @@ from django.template.defaultfilters import linebreaksbr
 #for add debate:
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.admin.utils import quote
+from django.contrib.admin.views.main import ChangeList
 from django.urls import reverse
 from django.utils.html import format_html
 
@@ -1199,6 +1200,7 @@ def _enable_uuid_lookup_in_admin():
             continue
 
         original_get_object = model_admin.get_object
+        original_get_changelist = model_admin.get_changelist
         original_url_for_result = getattr(model_admin, 'url_for_result', None)
         original_response_add = model_admin.response_add
         original_response_change = model_admin.response_change
@@ -1249,6 +1251,20 @@ def _enable_uuid_lookup_in_admin():
                 current_app=self.admin_site.name,
             )
 
+        def get_changelist_with_uuid(self, request, _original_get_changelist=original_get_changelist):
+            base_changelist = _original_get_changelist(request)
+            model_admin_instance = self
+            change_list_base = ChangeList
+
+            if isinstance(base_changelist, type) and issubclass(base_changelist, ChangeList):
+                change_list_base = base_changelist
+
+            class UUIDChangeList(change_list_base):
+                def url_for_result(self, result):
+                    return url_for_result_with_uuid(model_admin_instance, result)
+
+            return UUIDChangeList
+
         def response_add_with_uuid(self, request, obj, _original_response_add=original_response_add):
             return rewrite_admin_redirect(_original_response_add(request, obj), obj)
 
@@ -1256,10 +1272,11 @@ def _enable_uuid_lookup_in_admin():
             return rewrite_admin_redirect(_original_response_change(request, obj), obj)
 
         model_admin.get_object = MethodType(get_object_with_uuid, model_admin)
-        model_admin.url_for_result = MethodType(url_for_result_with_uuid, model_admin)
+        model_admin.get_changelist = MethodType(get_changelist_with_uuid, model_admin)
+        setattr(model_admin, 'url_for_result', MethodType(url_for_result_with_uuid, model_admin))
         model_admin.response_add = MethodType(response_add_with_uuid, model_admin)
         model_admin.response_change = MethodType(response_change_with_uuid, model_admin)
-        model_admin._uuid_lookup_enabled = True
+        setattr(model_admin, '_uuid_lookup_enabled', True)
 
 
 _ensure_uuid_visible_in_admin()
@@ -1283,7 +1300,7 @@ def _patch_uuid_related_widget_wrapper():
         return context
 
     RelatedFieldWidgetWrapper.get_context = get_context_with_uuid
-    RelatedFieldWidgetWrapper._uuid_lookup_patched = True
+    setattr(RelatedFieldWidgetWrapper, '_uuid_lookup_patched', True)
 
 
 def _patch_uuid_relation_formfields():
@@ -1307,8 +1324,24 @@ def _patch_uuid_relation_formfields():
 
     BaseModelAdmin.formfield_for_foreignkey = formfield_for_foreignkey_with_uuid
     BaseModelAdmin.formfield_for_manytomany = formfield_for_manytomany_with_uuid
-    BaseModelAdmin._uuid_relation_lookup_patched = True
+    setattr(BaseModelAdmin, '_uuid_relation_lookup_patched', True)
+
+
+def _patch_uuid_to_field_allowed():
+    if getattr(BaseModelAdmin, '_uuid_to_field_allowed_patched', False):
+        return
+
+    original_to_field_allowed = BaseModelAdmin.to_field_allowed
+
+    def to_field_allowed_with_uuid(self, request, to_field, _original_to_field_allowed=original_to_field_allowed):
+        if to_field == 'uuid' and _model_prefers_uuid_lookup(self.model):
+            return True
+        return _original_to_field_allowed(self, request, to_field)
+
+    BaseModelAdmin.to_field_allowed = to_field_allowed_with_uuid
+    setattr(BaseModelAdmin, '_uuid_to_field_allowed_patched', True)
 
 
 _patch_uuid_related_widget_wrapper()
 _patch_uuid_relation_formfields()
+_patch_uuid_to_field_allowed()

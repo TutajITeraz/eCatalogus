@@ -80,6 +80,12 @@ function getAdminObjectReference(row, fallbackValue) {
   return encodeURIComponent(rawValue);
 }
 
+function shouldShowEditableSection(hasData) {
+  return Boolean(DISPLAY_EDIT_OPTIONS || hasData);
+}
+
+window.shouldShowEditableSection = shouldShowEditableSection;
+
 function renderAdminPopupActions(
   modelName,
   objectLabel,

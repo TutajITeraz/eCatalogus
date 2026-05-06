@@ -9,7 +9,7 @@ from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
 
-from indexerapp.models import Content, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, RiteNames, ScriptNames, Traditions
+from indexerapp.models import Codicology, Content, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, RiteNames, ScriptNames, Traditions
 from indexerapp.signals import ensure_env_superuser
 
 
@@ -65,6 +65,14 @@ class EnvSuperuserBootstrapTests(TestCase):
 
 
 class AdminUUIDVisibilityTests(TestCase):
+	def setUp(self):
+		self.user = get_user_model().objects.create_superuser(
+			username='uuid-admin',
+			email='uuid-admin@example.com',
+			password='Secret123!pass',
+		)
+		self.client.force_login(self.user)
+
 	def test_content_admin_exposes_uuid(self):
 		content_admin = admin.site._registry[Content]
 		self.assertIn('uuid', tuple(content_admin.list_display))
@@ -90,6 +98,50 @@ class AdminUUIDVisibilityTests(TestCase):
 		form_class = content_admin.get_form(request)
 
 		self.assertEqual(form_class.base_fields['formula'].to_field_name, 'uuid')
+
+	def test_projects_admin_changelist_links_use_uuid(self):
+		project = Projects.objects.create(name='UUID admin project')
+
+		response = self.client.get(reverse('admin:indexerapp_projects_changelist'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(
+			response,
+			reverse('admin:indexerapp_projects_change', args=(str(project.uuid),)),
+		)
+
+	def test_projects_admin_change_view_accepts_uuid(self):
+		project = Projects.objects.create(name='UUID change view project')
+
+		response = self.client.get(reverse('admin:indexerapp_projects_change', args=(str(project.uuid),)))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'UUID change view project')
+
+	def test_codicology_admin_change_view_accepts_uuid_to_field(self):
+		manuscript = Manuscripts.objects.create(name='UUID codicology manuscript', display_as_main=True)
+		codicology = Codicology.objects.create(manuscript=manuscript)
+
+		response = self.client.get(
+			reverse('admin:indexerapp_codicology_change', args=(str(codicology.uuid),)),
+			{'_to_field': 'uuid', '_popup': '1'},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Change codicology')
+		self.assertContains(response, 'name="_to_field" value="uuid"', html=False)
+
+	def test_manuscript_watermarks_add_view_accepts_uuid_to_field(self):
+		manuscript = Manuscripts.objects.create(name='UUID watermark manuscript', display_as_main=True)
+
+		response = self.client.get(
+			reverse('admin:indexerapp_manuscriptwatermarks_add'),
+			{'_to_field': 'uuid', '_popup': '1', 'manuscript': str(manuscript.uuid)},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Add manuscript watermarks')
+		self.assertContains(response, 'name="_to_field" value="uuid"', html=False)
 
 
 class ManuscriptUUIDLookupViewTests(TestCase):

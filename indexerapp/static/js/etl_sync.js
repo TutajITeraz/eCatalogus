@@ -76,6 +76,7 @@ function bindETLSyncEvents() {
 
 async function loadETLOverview() {
     beginETLBusyState('Loading ETL overview...');
+    await waitForNextPaint();
     try {
         const payload = await etlFetchJson('/api/etl/ui/overview/');
         etlOverview = payload;
@@ -188,6 +189,7 @@ async function triggerCategoryPull(category) {
     clearActiveConflict();
     appendETLLog(`Pulling ${category} from ${peer.url}${sinceValue ? ` since ${sinceValue}` : ''}...`);
     beginETLBusyState(`Pulling ${category} data...`);
+    await waitForNextPaint();
 
     try {
         const payload = await etlFetchJson('/api/etl/ui/pull-category/', {
@@ -234,6 +236,7 @@ async function loadPeerManuscripts() {
 
     appendETLLog(`Loading manuscript packages from ${peer.url}...`);
     beginETLBusyState('Loading manuscript packages...');
+    await waitForNextPaint();
     try {
         const payload = await etlFetchJson(`/api/etl/ui/manuscripts/?peer=${encodeURIComponent(peer.id)}`);
         etlPeerManuscripts = ((payload.payload || {}).results || []);
@@ -326,6 +329,7 @@ async function triggerManuscriptPull(manuscriptUuid) {
 
     appendETLLog(`Importing manuscript package ${manuscriptUuid} from ${peer.url}...`);
     beginETLBusyState('Importing manuscript package...');
+    await waitForNextPaint();
     try {
         const payload = await etlFetchJson('/api/etl/ui/pull-manuscript/', {
             method: 'POST',
@@ -384,6 +388,7 @@ async function resolveActiveConflict(resolution) {
     }
 
     beginETLBusyState('Resolving shared conflict...');
+    await waitForNextPaint();
     try {
         const payload = await etlFetchJson('/api/etl/ui/resolve-conflict/', {
             method: 'POST',
@@ -587,9 +592,19 @@ function appendETLLog(message) {
         return;
     }
     const timestamp = new Date().toISOString().replace('T', ' ').replace('Z', ' UTC');
-    const separator = container.textContent ? '\n' : '';
-    container.textContent += `${separator}[${timestamp}] ${message}`;
+    const nextLine = `[${timestamp}] ${message}`;
+    container.textContent = container.textContent
+        ? `${container.textContent}\n${nextLine}`
+        : nextLine;
     container.scrollTop = container.scrollHeight;
+}
+
+function waitForNextPaint() {
+    return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+        });
+    });
 }
 
 function beginETLBusyState(message) {
@@ -615,6 +630,8 @@ function renderETLBusyState(message) {
 
     if (text && message) {
         text.textContent = message;
+    } else if (text && isBusy) {
+        text.textContent = 'Working... Do not close this browser tab.';
     }
 
     controls.forEach((element) => {

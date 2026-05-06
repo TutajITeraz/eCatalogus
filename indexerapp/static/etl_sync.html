@@ -46,6 +46,7 @@
             <div>
                 <div class="text-sm font-semibold text-[#6f4e37]">Synchronization in progress</div>
                 <div id="etl-busy-text" class="text-sm text-[#8a6d55]">Working...</div>
+                <div class="text-xs text-[#8a6d55] mt-1">Do not close the browser tab until the operation finishes.</div>
             </div>
         </div>
         <div class="etl-sync-progress-bar relative mt-3 h-2 overflow-hidden rounded bg-[#ead7c7]"></div>
@@ -159,6 +160,6 @@
 
     <section class="bg-[#fffaf6] border border-[#e3d5ca] rounded-lg shadow-sm p-4">
         <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold mb-3">Operation log</h2>
-        <div id="etl-log" class="bg-[#fff] border border-[#eadfd6] rounded p-3 min-h-[120px] text-sm text-[#203040] break-words" style="white-space: pre-wrap;"></div>
+        <pre id="etl-log" class="bg-[#fff] border border-[#eadfd6] rounded p-3 min-h-[120px] max-h-[320px] overflow-auto text-sm text-[#203040] break-words whitespace-pre-wrap"></pre>
     </section>
 </div>

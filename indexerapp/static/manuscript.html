@@ -134,27 +134,31 @@
             </div>
 
 
-            <template x-if="(await getCLLAInfo()).data?.length && projectId==1">
+            <template x-if="shouldShowEditableSection((await getCLLAInfo()).data?.length) && projectId==1">
                 <div data-ui-scope="manuscriptSections" data-ui-key="clla" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/books.svg"></img><span class="printIt title">CLLA</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
-                        
-                        <div>
-                            <table class="printIt verticalTable">
-                                <template x-for="(fvalue, fname) in ((await getCLLAInfo()).data[0])">
-                                    <tr x-data="getPrintableValues(fname, fvalue)">
+                        <template x-if="(await getCLLAInfo()).data?.length">
+                            <div>
+                                <table class="printIt verticalTable">
+                                    <template x-for="(fvalue, fname) in ((await getCLLAInfo()).data[0])">
+                                        <tr x-data="getPrintableValues(fname, fvalue)">
 
-                                        <th>
-                                            <div class="field-name"><span x-text="name"></span></div>
-                                        </th>
-                                        <td style="width: 100%">
-                                            <span x-text="value"></span> <!-- <a data-popup="yes" href="{{ ms_comment_add_url_with_parameters }}{{ field }}">+</a>-->
-                                        </td>
-                                    </tr>
-                                </template>
-                            </table>
-                        </div>
+                                            <th>
+                                                <div class="field-name"><span x-text="name"></span></div>
+                                            </th>
+                                            <td style="width: 100%">
+                                                <span x-text="value"></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </table>
+                            </div>
+                        </template>
+                        <template x-if="!(await getCLLAInfo()).data?.length">
+                            <p class="m-3 text-sm text-[#6f4e37]">No CLLA data yet.</p>
+                        </template>
                     </div>
                 </div>
             </template>
@@ -175,7 +179,7 @@
                 <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add codicology and paleography
             </span>
 
-            <template x-if="(await getCodicologyInfo()).info">
+            <template x-if="shouldShowEditableSection((await getCodicologyInfo()).info)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="codicology" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open">
                         <img class="button-icon" src="/static/img/icons/codicology.svg"></img>
@@ -185,6 +189,7 @@
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
 
 
+                        <template x-if="(await getCodicologyInfo()).info">
                         <div>
 
 
@@ -255,11 +260,17 @@
                                     </ul>
                                 </div>
                             </template>
+                        </div>
+                        </template>
+
+                        <template x-if="!(await getCodicologyInfo()).info">
+                            <p class="m-3 text-sm text-[#6f4e37]">No codicology and paleography record yet. Use the add action to create the first entry.</p>
+                        </template>
 
 
 
 
-                            <template x-if="(await getWatermarksInfo()).data?.length">
+                            <template x-if="shouldShowEditableSection((await getWatermarksInfo()).data?.length)">
                                 <div data-ui-scope="manuscriptSections" data-ui-key="watermarks" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Watermarks</span>
@@ -289,7 +300,7 @@
                                 </div>
                             </template>
 
-                            <template x-if="(await getQuiresInfo()).data?.length">
+                            <template x-if="shouldShowEditableSection((await getQuiresInfo()).data?.length)">
                                 <div data-ui-scope="manuscriptSections" data-ui-key="quires" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Quires</span></button>
@@ -412,7 +423,7 @@
                                 </div>
                             </div>
 
-                            <template x-if="(await getMusicNotationInfo()).data">
+                            <template x-if="shouldShowEditableSection((await getMusicNotationInfo()).data)">
                                 <div data-ui-scope="manuscriptSections" data-ui-key="musicNotation" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Music Notation</span></button>
@@ -463,12 +474,13 @@
                 <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add binding
             </span>
 
-            <template x-if="(await getBindingInfo()).info">
+            <template x-if="shouldShowEditableSection((await getBindingInfo()).info)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="binding" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/binding.svg"></img>
                         <span class="printIt title">Binding</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
+                        <template x-if="(await getBindingInfo()).info">
                         <div>
 
                             <a x-show="DISPLAY_EDIT_OPTIONS" 
@@ -562,6 +574,11 @@
                             </table>
                         
                         </div>
+                        </template>
+
+                        <template x-if="!(await getBindingInfo()).info">
+                            <p class="m-3 text-sm text-[#6f4e37]">No binding record yet. Use the add action to create the first entry.</p>
+                        </template>
                     </div>
                 </div>
             </template>
@@ -580,7 +597,7 @@
             </span>
 
             
-            <template x-if="(await getDecorationInfo()).data?.length">
+            <template x-if="shouldShowEditableSection((await getDecorationInfo()).data?.length)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="decoration" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/decoration.svg"></img><span class="printIt title">Decoration</span></button>
                     
@@ -687,7 +704,7 @@
                 <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add condition
             </span>
 
-            <template x-if="(await getConditionInfo()).data?.length">
+            <template x-if="shouldShowEditableSection((await getConditionInfo()).data?.length)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="condition" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/condition.svg"></img><span class="printIt title">Condition</span></button>
                     
@@ -695,7 +712,7 @@
                         
 
 
-                            <a x-show="DISPLAY_EDIT_OPTIONS" 
+                            <a x-show="DISPLAY_EDIT_OPTIONS && (await getConditionInfo()).data?.length" 
                                 class="edit_widget" 
                                 data-href-template="/admin/indexerapp/condition/__fk__/change/?_to_field=uuid&_popup=1" 
                                 data-popup="yes" 
@@ -706,6 +723,7 @@
                                 <img src="/static/admin/img/icon-changelink.svg" alt="change" width="20" height="20" />
                             </a> 
                         
+                        <template x-if="(await getConditionInfo()).data?.length">
                         <div>
                             <table class="printIt verticalTable">
                                 <template x-for="(fvalue, fname) in ((await getConditionInfo()).data[0])">
@@ -722,6 +740,11 @@
                                 </template>
                             </table>
                         </div>
+                        </template>
+
+                        <template x-if="!((await getConditionInfo()).data?.length)">
+                            <p class="m-3 text-sm text-[#6f4e37]">No condition record yet. Use the add action to create the first entry.</p>
+                        </template>
                     </div>
                 </div>
             </template>
@@ -779,7 +802,7 @@
             </span>
 
 
-            <template x-if="(await getOriginsInfo()).data?.length">
+            <template x-if="shouldShowEditableSection((await getOriginsInfo()).data?.length)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="history" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/history.svg"></img>
                         <span class="printIt title">History of the manuscript</span></button>
@@ -814,7 +837,7 @@
                             </div>
                         </div>
 
-                        <template x-if="(await getProvenanceInfo()).data?.length">
+                        <template x-if="shouldShowEditableSection((await getProvenanceInfo()).data?.length)">
                             <div data-ui-scope="manuscriptSections" data-ui-key="provenanceHistory" class="openbox open-lvl-1" x-data="{ open2: false }">
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                     <span class="printIt title">Provenance History</span></button>
@@ -875,7 +898,7 @@
                                         <div id="map" x-init="map_init()"></div>
                                         
                                         <h3 class="m-3 text-lg">Comments:</h3>
-                                        <p class="printIt" x-text="(await getOriginsInfo()).data[0].provenance_comments"></p>
+                                        <p class="printIt" x-text="(await getOriginsInfo()).data?.length ? (await getOriginsInfo()).data[0].provenance_comments : ''"></p>
 
 
                                     </div>
@@ -900,7 +923,7 @@
                 <img src="/static/admin/img/icon-addlink.svg" alt="Add" /> Add bibliography
             </span>
 
-            <template x-if="(await getBibliographyInfo()).data?.length">
+            <template x-if="shouldShowEditableSection((await getBibliographyInfo()).data?.length)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="bibliography" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/bibliography.svg"></img>
                         <span class="printIt title">Bibliography</span></button>
