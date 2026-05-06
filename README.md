@@ -262,3 +262,18 @@ pip install -r requirements.txt
 python manage.py makemigrations
 python manage.py migrate
 python manage.py collectstatic
+
+
+#  instance:
+
+cd /Users/lukasz/Developer/LiturgicaPoloniae
+export DJANGO_SETTINGS_MODULE=ecatalogus.settings_mpl
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py makemigrations
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py migrate
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py collectstatic
+
+cd /Users/lukasz/Developer/LiturgicaPoloniae
+export DJANGO_SETTINGS_MODULE=ecatalogus.settings_ecatalogus
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py makemigrations
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py migrate
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py collectstatic

@@ -11,7 +11,7 @@ from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
 
-from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Clla, Codicology, Condition, Content, Decoration, DecorationSubjects, DecorationTypes, FeastRanks, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, Provenance, RiteNames, ScriptNames, Subjects, Traditions
+from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
 from indexerapp.signals import ensure_env_superuser
 
 
@@ -839,42 +839,205 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(relation.manuscript_uuid, manuscript)
 
-	def test_next_content_decoration_calendar_slice_has_unique_uuid_prerequisites(self):
-		model_names = [
-			'Calendar',
-			'Characteristics',
-			'Colours',
-			'Content',
-			'ContentFunctions',
-			'Contributors',
-			'Day',
-			'Decoration',
-			'DecorationCharacteristics',
-			'DecorationColours',
-			'DecorationSubjects',
-			'DecorationTechniques',
-			'DecorationTypes',
-			'EditionContent',
-			'FeastRanks',
-			'Formulas',
-			'Genre',
-			'Layer',
-			'LiturgicalGenres',
-			'ManuscriptMusicNotations',
-			'MassHour',
-			'Quires',
-			'RiteNames',
-			'SeasonMonth',
-			'Sections',
-			'Subjects',
-			'TextStandarization',
-			'TimeReference',
-			'Week',
-		]
+	def test_calendar_shadow_uuids_are_real_uuid_fks(self):
+		manuscript = Manuscripts.objects.create(name='Calendar UUID FK manuscript')
+		formula = Formulas.objects.create(co_no='CAL-UUID', text='Calendar UUID formula')
+		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		rubric = RiteNames.objects.create(name='Calendar UUID rubric')
+		feast_rank = FeastRanks.objects.create(name='Calendar UUID feast rank')
+		time_reference = TimeReference.objects.create(
+			time_description='Calendar UUID time',
+			century_from=12,
+			century_to=12,
+			year_from=1100,
+			year_to=1199,
+		)
+		contributor = Contributors.objects.create(initials='CAL', first_name='Cal', last_name='Contributor')
 
-		for model_name in model_names:
-			model = apps.get_model('indexerapp', model_name)
-			self.assertTrue(model._meta.get_field('uuid').unique, model_name)
+		calendar = Calendar.objects.create(
+			manuscript=manuscript,
+			rubric_name_standarized=rubric,
+			content=content,
+			feast_rank=feast_rank,
+			date_of_the_addition=time_reference,
+			data_contributor=contributor,
+			latin_name='Kal. Ian.',
+			feast_name='Circumcision',
+			littera_dominicalis='A',
+		)
+
+		self.assertEqual(calendar.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(calendar.rubric_name_standarized_uuid_id, rubric.uuid)
+		self.assertEqual(calendar.content_uuid_id, content.uuid)
+		self.assertEqual(calendar.feast_rank_uuid_id, feast_rank.uuid)
+		self.assertEqual(calendar.date_of_the_addition_uuid_id, time_reference.uuid)
+		self.assertEqual(calendar.data_contributor_uuid_id, contributor.uuid)
+		self.assertEqual(calendar.manuscript_uuid, manuscript)
+		self.assertEqual(calendar.content_uuid, content)
+
+	def test_content_shadow_uuids_are_real_uuid_fks(self):
+		manuscript = Manuscripts.objects.create(name='Content UUID FK manuscript')
+		formula = Formulas.objects.create(co_no='CNT-UUID', text='Content UUID formula')
+		rubric = RiteNames.objects.create(name='Content UUID rubric')
+		liturgical_genre = LiturgicalGenres.objects.create(title='Content UUID genre')
+		quire = Quires.objects.create(
+			manuscript=manuscript,
+			sequence_of_the_quire=1,
+			type_of_the_quire='binion',
+			where_in_ms_from='1r',
+		)
+		section = Sections.objects.create(name='Content UUID section')
+		subsection = Sections.objects.create(name='Content UUID subsection')
+		music_notation_name = MusicNotationNames.objects.create(name='Content UUID notation')
+		music_notation = ManuscriptMusicNotations.objects.create(
+			manuscript=manuscript,
+			music_notation_name=music_notation_name,
+			sequence_in_ms=1,
+			where_in_ms_from='1r',
+		)
+		function = ContentFunctions.objects.create(name='Content UUID function')
+		subfunction = ContentFunctions.objects.create(name='Content UUID subfunction')
+		contributor = Contributors.objects.create(initials='CNT', first_name='Con', last_name='Tributor')
+		bibliography = Bibliography.objects.create(title='Content UUID bibliography')
+		edition_index = EditionContent.objects.create(bibliography=bibliography)
+		text_standarization = TextStandarization.objects.create(standard_incipit='Content UUID text')
+		layer = Layer.objects.create(short_name='L1', name='Layer One')
+		mass_hour = MassHour.objects.create(short_name='MH1', name='Mass Hour One')
+		genre = Genre.objects.create(short_name='G1', name='Genre One')
+		season_month = SeasonMonth.objects.create(short_name='SM1', name='Season Month One', kind='S')
+		week = Week.objects.create(short_name='W1', name='Week One')
+		day = Day.objects.create(short_name='D1', name='Day One', part='T')
+
+		content = Content.objects.create(
+			manuscript=manuscript,
+			formula=formula,
+			rubric=rubric,
+			liturgical_genre=liturgical_genre,
+			quire=quire,
+			section=section,
+			subsection=subsection,
+			music_notation=music_notation,
+			function=function,
+			subfunction=subfunction,
+			data_contributor=contributor,
+			edition_index=edition_index,
+			text_standarization=text_standarization,
+			layer=layer,
+			mass_hour=mass_hour,
+			genre=genre,
+			season_month=season_month,
+			week=week,
+			day=day,
+			sequence_in_ms=1,
+		)
+
+		self.assertEqual(content.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(content.formula_uuid_id, formula.uuid)
+		self.assertEqual(content.rubric_uuid_id, rubric.uuid)
+		self.assertEqual(content.liturgical_genre_uuid_id, liturgical_genre.uuid)
+		self.assertEqual(content.quire_uuid_id, quire.uuid)
+		self.assertEqual(content.section_uuid_id, section.uuid)
+		self.assertEqual(content.subsection_uuid_id, subsection.uuid)
+		self.assertEqual(content.music_notation_uuid_id, music_notation.uuid)
+		self.assertEqual(content.function_uuid_id, function.uuid)
+		self.assertEqual(content.subfunction_uuid_id, subfunction.uuid)
+		self.assertEqual(content.data_contributor_uuid_id, contributor.uuid)
+		self.assertEqual(content.edition_index_uuid_id, edition_index.uuid)
+		self.assertEqual(content.text_standarization_uuid_id, text_standarization.uuid)
+		self.assertEqual(content.layer_uuid_id, layer.uuid)
+		self.assertEqual(content.mass_hour_uuid_id, mass_hour.uuid)
+		self.assertEqual(content.genre_uuid_id, genre.uuid)
+		self.assertEqual(content.season_month_uuid_id, season_month.uuid)
+		self.assertEqual(content.week_uuid_id, week.uuid)
+		self.assertEqual(content.day_uuid_id, day.uuid)
+
+	def test_decoration_shadow_uuids_are_real_uuid_fks(self):
+		manuscript = Manuscripts.objects.create(name='Decoration UUID FK manuscript')
+		formula = Formulas.objects.create(co_no='DEC-UUID', text='Decoration UUID formula')
+		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		feast_rank = FeastRanks.objects.create(name='Decoration UUID feast rank')
+		calendar = Calendar.objects.create(
+			manuscript=manuscript,
+			content=content,
+			feast_rank=feast_rank,
+			latin_name='Kal. Feb.',
+			feast_name='Purification',
+			littera_dominicalis='B',
+		)
+		date_of_addition = TimeReference.objects.create(
+			time_description='Decoration UUID time',
+			century_from=13,
+			century_to=13,
+			year_from=1200,
+			year_to=1299,
+		)
+		decoration_type = DecorationTypes.objects.create(name='Decoration UUID type')
+		decoration_subtype = DecorationTypes.objects.create(name='Decoration UUID subtype')
+		technique = DecorationTechniques.objects.create(name='Decoration UUID technique')
+		rubric = RiteNames.objects.create(name='Decoration UUID rubric')
+		contributor = Contributors.objects.create(initials='DEC', first_name='Dec', last_name='Contributor')
+
+		decoration = Decoration.objects.create(
+			manuscript=manuscript,
+			date_of_the_addition=date_of_addition,
+			content=content,
+			calendar=calendar,
+			decoration_type=decoration_type,
+			decoration_subtype=decoration_subtype,
+			technique=technique,
+			rubric_name_standarized=rubric,
+			data_contributor=contributor,
+			where_in_ms_from='1r',
+		)
+
+		self.assertEqual(decoration.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(decoration.date_of_the_addition_uuid_id, date_of_addition.uuid)
+		self.assertEqual(decoration.content_uuid_id, content.uuid)
+		self.assertEqual(decoration.calendar_uuid_id, calendar.uuid)
+		self.assertEqual(decoration.decoration_type_uuid_id, decoration_type.uuid)
+		self.assertEqual(decoration.decoration_subtype_uuid_id, decoration_subtype.uuid)
+		self.assertEqual(decoration.technique_uuid_id, technique.uuid)
+		self.assertEqual(decoration.rubric_name_standarized_uuid_id, rubric.uuid)
+		self.assertEqual(decoration.data_contributor_uuid_id, contributor.uuid)
+
+	def test_decoration_detail_shadow_uuids_are_real_uuid_fks(self):
+		manuscript = Manuscripts.objects.create(name='Decoration detail UUID FK manuscript')
+		formula = Formulas.objects.create(co_no='DET-UUID', text='Decoration detail UUID formula')
+		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		feast_rank = FeastRanks.objects.create(name='Decoration detail feast rank')
+		calendar = Calendar.objects.create(
+			manuscript=manuscript,
+			content=content,
+			feast_rank=feast_rank,
+			latin_name='Kal. Mar.',
+			feast_name='Annunciation',
+			littera_dominicalis='C',
+		)
+		decoration_type = DecorationTypes.objects.create(name='Decoration detail type')
+		decoration = Decoration.objects.create(
+			manuscript=manuscript,
+			content=content,
+			calendar=calendar,
+			decoration_type=decoration_type,
+			where_in_ms_from='2r',
+		)
+		subject = Subjects.objects.create(name='Decoration detail subject')
+		colour = Colours.objects.create(name='Decoration detail colour')
+		characteristics = Characteristics.objects.create(name='Decoration detail characteristics')
+
+		decoration_subject = DecorationSubjects.objects.create(decoration=decoration, subject=subject)
+		decoration_colour = DecorationColours.objects.create(decoration=decoration, colour=colour)
+		decoration_characteristics = DecorationCharacteristics.objects.create(
+			decoration=decoration,
+			characteristics=characteristics,
+		)
+
+		self.assertEqual(decoration_subject.decoration_uuid_id, decoration.uuid)
+		self.assertEqual(decoration_subject.subject_uuid_id, subject.uuid)
+		self.assertEqual(decoration_colour.decoration_uuid_id, decoration.uuid)
+		self.assertEqual(decoration_colour.colour_uuid_id, colour.uuid)
+		self.assertEqual(decoration_characteristics.decoration_uuid_id, decoration.uuid)
+		self.assertEqual(decoration_characteristics.characteristics_uuid_id, characteristics.uuid)
 
 class AdminUUIDLookupTests(TestCase):
 	def test_layout_admin_change_view_accepts_uuid_path(self):
