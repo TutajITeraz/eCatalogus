@@ -1,6 +1,38 @@
 const DATING_YEAR_MIN = 1000;
 const DATING_YEAR_MAX = 1400;
 
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderSourceProjectMarkup(row) {
+    if (!window.isFeatureEnabled('sourceProject')) {
+        return '';
+    }
+
+    const sourceProjectName = row.source_project_name && row.source_project_name !== '-' ? row.source_project_name : '';
+    if (!sourceProjectName) {
+        return '';
+    }
+
+    const sourceProjectUrl = row.source_project_url && row.source_project_url !== '-' ? row.source_project_url : '';
+    const sourceProjectIcon = row.source_project_icon && row.source_project_icon !== '-' ? row.source_project_icon : '';
+    const projectLogo = sourceProjectIcon
+        ? `<img src="${escapeHtml(sourceProjectIcon)}" alt="${escapeHtml(sourceProjectName)}" style="max-height: 35px; max-width: 200px; display: inline-block; vertical-align: middle; border: none;" onerror="this.style.display='none';">`
+        : '';
+    const projectBody = sourceProjectIcon ? projectLogo : `<span>${escapeHtml(sourceProjectName)}</span>`;
+    const projectContent = sourceProjectUrl
+        ? `<a href="${escapeHtml(sourceProjectUrl)}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">${projectBody}</a>`
+        : projectBody;
+
+    return `<div class='ms_source_project'><span class='decorated_left'>source project: </span><span class='decorated_right'>${projectContent}</span></div>`;
+}
+
 manuscripts_init = function()
 {
 
@@ -126,6 +158,22 @@ manuscripts_init = function()
           placeholder: '',
     });
     $('#ms_foreign_id_select').on('select2:select', processFilters);
+
+
+    if (window.isFeatureEnabled('sourceProjectFilter') && $('#ms_source_project_select').length) {
+        $('#ms_source_project_select').select2({
+            ajax: {
+                url: pageRoot + '/projects-autocomplete/',
+                dataType: 'json',
+                xhrFields: {
+                    withCredentials: true
+                }
+            },
+            allowClear: true,
+            placeholder: '',
+        });
+        $('#ms_source_project_select').on('change', processFilters);
+    }
 
 
     $('#ms_liturgical_genre_select').select2({
@@ -979,6 +1027,7 @@ manuscripts_init = function()
         // --- Select2 multi-selects (join to ';'-separated id string) ---
         setIfActive('name',                           getUuidAwareSelect2Values('#ms_name_select'));
         setIfActive('foreign_id',                     getLegacySelect2Values('#ms_foreign_id_select'));
+        setIfActive('source_project',                 window.isFeatureEnabled('sourceProjectFilter') ? getUuidAwareSelect2Values('#ms_source_project_select') : '');
         setIfActive('liturgical_genre',               getUuidAwareSelect2Values('#ms_liturgical_genre_select'));
         setIfActive('contemporary_repository_place',  getUuidAwareSelect2Values('#ms_contemporary_repository_place_select'));
         setIfActive('shelfmark',                      getLegacySelect2Values('#ms_shelfmark_select'));
@@ -1290,6 +1339,7 @@ manuscripts_init = function()
                         + "<div class='ms_decorated'><span class='decorated_left'>Decorated: </span><span class='decorated_right'>" + (oData.decorated || '') + "</span></div>"
                         + "<div class='ms_music_notation'><span class='decorated_left'>Music notation: </span><span class='decorated_right'>" + (oData.music_notation || '') + "</span></div>"
                         + "<div class='ms_binding_date'><span class='decorated_left'>Binding date: </span><span class='decorated_right'>" + (oData.binding_date || '') + "</span></div>"
+                        + renderSourceProjectMarkup(oData)
                         + "</div>";
                     $(nTd).html(html);
                 }
@@ -1317,7 +1367,10 @@ manuscripts_init = function()
             { "data": "binding_place_name", "title": "Binding Place Name", visible: false },
             { "data": "binding_place_latitude", "title": "Binding Place Latitude", visible: false },
             { "data": "binding_place_longitude", "title": "Binding Place Longitude", visible: false },
-            { "data": "thumbnail_url", "title": "Thumbnail URL", visible: false }
+            { "data": "thumbnail_url", "title": "Thumbnail URL", visible: false },
+            { "data": "source_project_name", "title": "Source Project Name", visible: false },
+            { "data": "source_project_url", "title": "Source Project URL", visible: false },
+            { "data": "source_project_icon", "title": "Source Project Icon", visible: false }
         ],
         "initComplete": function() {
             // Inject sort dropdown before the search bar
@@ -1394,6 +1447,7 @@ manuscripts_init = function()
 const filterIdMap = {
   name: 'ms_name_select',
   foreign_id: 'ms_foreign_id_select',
+    source_project: 'ms_source_project_select',
   liturgical_genre: 'ms_liturgical_genre_select',
   contemporary_repository_place: 'ms_contemporary_repository_place_select',
   shelfmark: 'ms_shelfmark_select',

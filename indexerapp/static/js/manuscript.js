@@ -232,6 +232,24 @@ async function getMSInfoFiltered() {
   var info = (await getMSInfo()).manuscript;
 
   var infoCod = (await getCodicologyInfo()).info;
+  const sourceProjectLink =
+    window.isFeatureEnabled("sourceProject") && info.source_project_name
+      ? (() => {
+          const projectName = String(info.source_project_name || "");
+          const projectUrl = String(info.source_project_url || "");
+          const projectIcon = String(info.source_project_icon || "");
+          const logoMarkup = projectIcon
+            ? `<img src="${projectIcon.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" alt="${projectName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" style="max-height: 35px; max-width: 200px; display: inline-block; vertical-align: middle; border: none;" onerror="this.style.display='none';">`
+            : "";
+          const bodyMarkup = projectIcon ? logoMarkup : `<span>${projectName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}</span>`;
+
+          if (projectUrl) {
+            return `<a href="${projectUrl.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" target="_blank" rel="noopener">${bodyMarkup}</a>`;
+          }
+
+          return bodyMarkup;
+        })()
+      : "";
 
   return {
     manuscript: {
@@ -272,6 +290,7 @@ async function getMSInfoFiltered() {
       authors: info.authors,
       data_contributor: info.data_contributor,
       entry_date: info.entry_date,
+      source_project: sourceProjectLink,
     },
   };
 }

@@ -1024,6 +1024,8 @@ class Manuscripts(models.Model):
 class Projects(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=64, default="Project Name")
+    icon = models.URLField(max_length=500, null=True, blank=True)
+    project_url = models.URLField(max_length=500, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:

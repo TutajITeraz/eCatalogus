@@ -1,5 +1,104 @@
-<script src="/static/js/etl_sync.js"></script>
+{% extends 'admin/base_site.html' %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/tailwind_style.css' %}" />
+<link rel="stylesheet" href="{% static 'css/cdn/dataTables.dataTables.min.css' %}" />
 <style>
+    .etl-admin-shell {
+        max-width: 1440px;
+        background: #f5ede6;
+        color: #203040;
+        border: 1px solid #ddcabb;
+        border-radius: 18px;
+        padding: 1.25rem;
+        box-shadow: 0 10px 25px rgba(61, 75, 92, 0.08);
+        color-scheme: light;
+    }
+
+    #content .etl-admin-shell,
+    #content .etl-admin-shell * {
+        color: inherit;
+    }
+
+    #content .etl-admin-shell a {
+        color: #203040;
+    }
+
+    #content .etl-admin-shell section {
+        background: #fffaf6;
+        color: #203040;
+    }
+
+    #content .etl-admin-shell h1,
+    #content .etl-admin-shell h2,
+    #content .etl-admin-shell h3,
+    #content .etl-admin-shell label,
+    #content .etl-admin-shell th,
+    #content .etl-admin-shell td,
+    #content .etl-admin-shell p,
+    #content .etl-admin-shell li,
+    #content .etl-admin-shell div,
+    #content .etl-admin-shell span {
+        color: inherit;
+    }
+
+    #content .etl-admin-shell input,
+    #content .etl-admin-shell select,
+    #content .etl-admin-shell textarea,
+    #content .etl-admin-shell pre {
+        background: #ffffff;
+        color: #203040;
+        border-color: #d9c8bb;
+    }
+
+    #content .etl-admin-shell button,
+    #content .etl-admin-shell .etl-sync-category,
+    #content .etl-admin-shell #etl-load-manuscripts,
+    #content .etl-admin-shell #etl-refresh-overview,
+    #content .etl-admin-shell #etl-conflict-keep-local,
+    #content .etl-admin-shell #etl-conflict-apply-remote,
+    #content .etl-admin-shell #etl-conflict-reset-workflow,
+    #content .etl-admin-shell #etl-conflict-close,
+    #content .etl-admin-shell .etl-import-manuscript {
+        color: #0d1b2a;
+    }
+
+    #content .etl-admin-shell .dataTables_wrapper,
+    #content .etl-admin-shell .dataTables_wrapper .dataTables_length,
+    #content .etl-admin-shell .dataTables_wrapper .dataTables_filter,
+    #content .etl-admin-shell .dataTables_wrapper .dataTables_info,
+    #content .etl-admin-shell .dataTables_wrapper .dataTables_paginate {
+        color: #203040;
+    }
+
+    #content .etl-admin-shell .dataTables_wrapper input,
+    #content .etl-admin-shell .dataTables_wrapper select {
+        background: #ffffff;
+        color: #203040;
+        border: 1px solid #d9c8bb;
+    }
+
+    #content .etl-admin-shell .dataTables_wrapper .paginate_button {
+        color: #203040 !important;
+    }
+
+    #content .etl-admin-shell .dataTables_wrapper .paginate_button.current,
+    #content .etl-admin-shell .dataTables_wrapper .paginate_button:hover {
+        color: #0d1b2a !important;
+        border-color: #d9c8bb !important;
+        background: #f4e8df !important;
+    }
+
+    #content .etl-admin-shell table.dataTable,
+    #content .etl-admin-shell table.dataTable tbody tr,
+    #content .etl-admin-shell table.dataTable tbody td,
+    #content .etl-admin-shell table.dataTable thead th {
+        background-color: transparent;
+        color: #203040;
+    }
+
     @keyframes etl-sync-spin {
         to {
             transform: rotate(360deg);
@@ -27,15 +126,42 @@
         background: linear-gradient(90deg, rgba(199, 150, 106, 0) 0%, rgba(199, 150, 106, 0.85) 45%, rgba(199, 150, 106, 0) 100%);
         animation: etl-sync-progress 1.4s ease-in-out infinite;
     }
-</style>
 
-<div x-init="etl_sync_init()" class="px-2 pb-8">
+    #content-main .etl-admin-shell pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    #content-main .etl-admin-shell ul {
+        color: #203040;
+    }
+
+    #content-main .etl-admin-shell table.dataTable thead th,
+    #content-main .etl-admin-shell table.dataTable tbody td {
+        vertical-align: top;
+    }
+</style>
+<script src="{% static 'js/cdn/jquery-3.7.1.min.js' %}"></script>
+<script src="{% static 'js/cdn/dataTables.min.js' %}"></script>
+<script src="{% static 'js/etl_sync.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof etl_sync_init === 'function') {
+        etl_sync_init();
+    }
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="etl-admin-shell px-2 pb-8">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-4 mb-6">
         <div>
             <h1 class="text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left">ETL sync</h1>
             <p class="text-[#3d4b5c] text-sm sm:text-base mt-2">Synchronize reference dictionaries and manuscript packages from a configured ETL peer into the current instance.</p>
         </div>
         <div class="flex flex-col items-start gap-3 sm:items-end">
+            <a href="/static/page.html?p=etl_sync" target="_blank" rel="noopener" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#f4e8df] rounded hover:bg-[#eadfd6] text-center">Open standalone ETL page</a>
             <button id="etl-refresh-overview" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Refresh overview</button>
         </div>
     </div>
@@ -162,3 +288,4 @@
         <div id="etl-log" class="bg-[#fff] border border-[#eadfd6] rounded p-3 min-h-[120px] text-sm text-[#203040] break-words" style="white-space: pre-wrap;"></div>
     </section>
 </div>
+{% endblock %}

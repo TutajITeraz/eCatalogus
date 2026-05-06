@@ -16,6 +16,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include,path
 from etlapp import urls as etl_urls
+from etlapp.views import ETLAdminSyncView
 from indexerapp import views
 
 #from indexerapp import views #nie wiem czy to zgodne ze sztuką
@@ -128,6 +129,7 @@ router.register(r'hands', views.ManuscriptHandsViewSet, basename='hands')
 router.register(r'manuscripts', views.ManuscriptsViewSet)
 
 urlpatterns = [
+    path('admin/etl-sync/', admin.site.admin_view(ETLAdminSyncView.as_view()), name='admin-etl-sync'),
     path('admin/', admin.site.urls),
     path("data-browser/", include("data_browser.urls")),
     path('', views.Index.as_view(), name='index'),
@@ -155,6 +157,7 @@ urlpatterns = [
     path('genre-autocomplete/',views.GenreAutocomplete.as_view(),name='genre-autocomplete'),
     path('manuscripts-autocomplete/',views.ManuscriptsAutocomplete.as_view(),name='manuscripts-autocomplete'),
     path('manuscripts-autocomplete-main/',views.ManuscriptsAutocompleteMain.as_view(),name='manuscripts-autocomplete-main'),
+    path('projects-autocomplete/',views.ProjectsAutocomplete.as_view(),name='projects-autocomplete'),
     path('contributors-autocomplete/',views.ContributorsAutocomplete.as_view(),name='contributors-autocomplete'),
 
     path('clla-provenance-autocomplete/',views.CllaProvenanceAutocomplete.as_view(),name='clla-provenance-autocomplete'),

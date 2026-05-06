@@ -26,6 +26,7 @@
 
 {% block branding %}
 <h1>Manuscript Indexer - Admin</h1>
+<p><a href="{% url 'admin-etl-sync' %}">ETL sync</a></p>
 
 {{ form.media }}
 <script type="text/javascript" src="/static/js/popupfix.js"></script>

@@ -135,6 +135,13 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
         representation['main_script'] = str(instance.main_script)
         representation['binding_date'] = str(instance.binding_date)
 
+        source_project_link = instance.ms_projects.select_related('project').order_by('id').first()
+        source_project = source_project_link.project if source_project_link else None
+        representation['source_project_name'] = source_project.name if source_project else ''
+        representation['source_project_icon'] = source_project.icon if source_project else ''
+        representation['source_project_url'] = source_project.project_url if source_project else ''
+        representation['source_project_uuid'] = str(source_project.uuid) if source_project and source_project.uuid else ''
+
         representation['dating_year'] = 9999
         if instance.dating:
             representation['dating_year'] = str(instance.dating.year_from)

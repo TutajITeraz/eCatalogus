@@ -76,7 +76,7 @@
 
         
         <div class="right_column pr-1 md:pr-2 overflow-x-auto overflow-y-scroll" id="rightColumn">
-            <div class="open-lvl-0" x-data="{ open: false }">
+            <div data-ui-scope="manuscriptSections" data-ui-key="mainInfo" class="open-lvl-0" x-data="{ open: false }">
                 <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open">
                     <img class="button-icon" src="/static/img/icons/info.svg"></img>
                     <span class="printIt title">Main info</span>
@@ -135,7 +135,7 @@
 
 
             <template x-if="(await getCLLAInfo()).data?.length && projectId==1">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="clla" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/books.svg"></img><span class="printIt title">CLLA</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
@@ -176,7 +176,7 @@
             </span>
 
             <template x-if="(await getCodicologyInfo()).info">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="codicology" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open">
                         <img class="button-icon" src="/static/img/icons/codicology.svg"></img>
                         <span class="printIt title">Codicology and paleography</span>
@@ -260,7 +260,7 @@
 
 
                             <template x-if="(await getWatermarksInfo()).data?.length">
-                                <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                                <div data-ui-scope="manuscriptSections" data-ui-key="watermarks" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Watermarks</span>
                                     </button>
@@ -290,7 +290,7 @@
                             </template>
 
                             <template x-if="(await getQuiresInfo()).data?.length">
-                                <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                                <div data-ui-scope="manuscriptSections" data-ui-key="quires" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Quires</span></button>
                                     
@@ -318,7 +318,7 @@
 
 
 
-                            <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                            <div data-ui-scope="manuscriptSections" data-ui-key="layouts" class="openbox open-lvl-1" x-data="{ open2: false }">
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                     <span class="printIt title">Layouts</span></button>
                                 
@@ -342,13 +342,13 @@
                                 </div>
                             </div>
 
-                            <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                            <div data-ui-scope="manuscriptSections" data-ui-key="scripts" class="openbox open-lvl-1" x-data="{ open2: false }">
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                     <span class="printIt title">Scripts</span></button>
                                 
                                 <div class="open-inside" x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
                                     
-                                    <div class="openbox open-lvl-2" x-data="{ open3: false }">
+                                    <div data-ui-scope="manuscriptSections" data-ui-key="mainHands" class="openbox open-lvl-2" x-data="{ open3: false }">
                                         <button @click="open3 = ! open3" class="w-full py-2 bg-[#b9987f] hover:bg-[#b99f8b] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open3">
                                             <span class="printIt title">Main Hands</span></button>
                                         
@@ -384,7 +384,7 @@
                                         </div>
                                     </div>
                                 
-                                    <div class="openbox open-lvl-2" x-data="{ open3: false }">
+                                    <div data-ui-scope="manuscriptSections" data-ui-key="additionHands" class="openbox open-lvl-2" x-data="{ open3: false }">
                                         <button @click="open3 = ! open3" class="w-full py-2 bg-[#b9987f] hover:bg-[#b99f8b] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open3">
                                             <span class="printIt title">Hands of the additions</span></button>
                                         
@@ -413,7 +413,7 @@
                             </div>
 
                             <template x-if="(await getMusicNotationInfo()).data">
-                                <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                                <div data-ui-scope="manuscriptSections" data-ui-key="musicNotation" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Music Notation</span></button>
                                     
@@ -464,7 +464,7 @@
             </span>
 
             <template x-if="(await getBindingInfo()).info">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="binding" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/binding.svg"></img>
                         <span class="printIt title">Binding</span></button>
                     
@@ -581,7 +581,7 @@
 
             
             <template x-if="(await getDecorationInfo()).data?.length">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="decoration" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/decoration.svg"></img><span class="printIt title">Decoration</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
@@ -595,7 +595,7 @@
                             <table x-init="init_decoration_table" id="decoration" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             -->
 
-                            <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                            <div data-ui-scope="manuscriptSections" data-ui-key="initials" class="openbox open-lvl-1" x-data="{ open2: false }">
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Initials</span></button>
                                 
                                 <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
@@ -619,7 +619,7 @@
                             </div>
 
 
-                        <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                        <div data-ui-scope="manuscriptSections" data-ui-key="miniatures" class="openbox open-lvl-1" x-data="{ open2: false }">
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Miniatures</span></button>
                             
                             <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
@@ -642,7 +642,7 @@
                         </div>
 
 
-                        <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                        <div data-ui-scope="manuscriptSections" data-ui-key="bordersOthers" class="openbox open-lvl-1" x-data="{ open2: false }">
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Borders / Others</span></button>
                             
                             <div class="open-inside"  x-show="open2" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
@@ -688,7 +688,7 @@
             </span>
 
             <template x-if="(await getConditionInfo()).data?.length">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="condition" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/condition.svg"></img><span class="printIt title">Condition</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
@@ -727,7 +727,7 @@
             </template>
 
 
-            <div class="open-lvl-0" x-data="{ open: false }">
+            <div data-ui-scope="manuscriptSections" data-ui-key="content" class="open-lvl-0" x-data="{ open: false }">
                 <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/content.svg"></img>
                     <span class="printIt title">Content</span></button>
                 
@@ -780,14 +780,14 @@
 
 
             <template x-if="(await getOriginsInfo()).data?.length">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="history" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/history.svg"></img>
                         <span class="printIt title">History of the manuscript</span></button>
                     
                     <div class="open-inside" x-show="open" x-transition x-transition:enter.scale.80 x-transition:enter.duration.1500ms x-transition.scale.origin.top>
 
 
-                        <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                        <div data-ui-scope="manuscriptSections" data-ui-key="originsDating" class="openbox open-lvl-1" x-data="{ open2: false }">
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                 <span class="printIt title">Origins and dating</span></button>
                             
@@ -815,7 +815,7 @@
                         </div>
 
                         <template x-if="(await getProvenanceInfo()).data?.length">
-                            <div class="openbox open-lvl-1" x-data="{ open2: false }">
+                            <div data-ui-scope="manuscriptSections" data-ui-key="provenanceHistory" class="openbox open-lvl-1" x-data="{ open2: false }">
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                     <span class="printIt title">Provenance History</span></button>
                                 
@@ -901,7 +901,7 @@
             </span>
 
             <template x-if="(await getBibliographyInfo()).data?.length">
-                <div class="open-lvl-0" x-data="{ open: false }">
+                <div data-ui-scope="manuscriptSections" data-ui-key="bibliography" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/bibliography.svg"></img>
                         <span class="printIt title">Bibliography</span></button>
                     

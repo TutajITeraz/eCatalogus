@@ -412,6 +412,11 @@ class MSInfoAjaxView(View):
 
         # Main info
         info = get_obj_dictionary(instance, [])
+        source_project_link = instance.ms_projects.select_related('project').order_by('id').first()
+        source_project = source_project_link.project if source_project_link else None
+        info['source_project_name'] = source_project.name if source_project else ''
+        info['source_project_icon'] = source_project.icon if source_project else ''
+        info['source_project_url'] = source_project.project_url if source_project else ''
 
         #authors_names = [str(author) for author in instance.authors.all()]
         #info['authors']=authors_names
@@ -717,6 +722,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
 
         name = self.request.query_params.get('name')
         foreign_id = self.request.query_params.get('foreign_id')
+        source_project = self.request.query_params.get('source_project')
         liturgical_genre = self.request.query_params.get('liturgical_genre')
         contemporary_repository_place = self.request.query_params.get('contemporary_repository_place')
         shelfmark = self.request.query_params.get('shelfmark')
@@ -842,6 +848,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, None, name)
         if foreign_id:
             queryset = queryset.filter(foreign_id=foreign_id)
+        if source_project:
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_projects__project', source_project)
         if liturgical_genre:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_genres__genre', liturgical_genre)
         if contemporary_repository_place:
@@ -2032,6 +2040,19 @@ class ContentAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2Query
 
         if self.q:
             qs = qs.filter(formula_text__icontains=self.q)
+
+        return qs
+
+
+class ProjectsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return Projects.objects.none()
+
+        qs = Projects.objects.filter(msprojects__manuscript__display_as_main=True).distinct().order_by('name')
+
+        if self.q:
+            qs = qs.filter(name__icontains=self.q)
 
         return qs
 

@@ -34,7 +34,7 @@
                             See All
                         </button>
                     </li>
-                    <li x-data="{ maininfo: false }"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="mainInfo" x-data="{ maininfo: false }"
                         @click.away="maininfo = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="maininfo = !maininfo" id="mega-menu-icons-dropdown-button" 
@@ -62,6 +62,12 @@
                                 <h2 class="w-1/2 flex items-center" x-text="foreign_id_name"></h2>
                                 <select class="manuscript_filter"
                                     id="ms_foreign_id_select" 
+                                    style="width: 50% !important;"></select>
+                            </div>
+                            <div data-ui-feature="sourceProjectFilter" class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Source project</h2>
+                                <select class="manuscript_filter"
+                                    id="ms_source_project_select"
                                     style="width: 50% !important;"></select>
                             </div>
                             <div class="flex mx-3 my-1">
@@ -440,7 +446,7 @@
                         </div>
                         
                     </li>
-                    <li x-data="{ layout: false }" @click.away="layout = false"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="layout" x-data="{ layout: false }" @click.away="layout = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="layout = !layout"
                             id="mega-menu-icons-dropdown-button"
@@ -560,7 +566,7 @@
                             </div>
                         </div>
                     </li>
-                    <li x-data="{ binding: false }"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="binding" x-data="{ binding: false }"
                         @click.away="binding = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="binding = !binding"
@@ -686,7 +692,7 @@
                             </div>
                         </div>
                     </li>
-                    <li x-data="{ condition: false }"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="condition" x-data="{ condition: false }"
                         @click.away="condition = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="condition = !condition"
@@ -816,7 +822,7 @@
                             </div>
                         </div>
                     </li>
-                    <li x-data="{ content: false }"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="content" x-data="{ content: false }"
                         @click.away="content = false"
                         class="md:relative items-center justify-center xl:mb-0 flex border-0">
                         <button @click="content = !content"
@@ -855,7 +861,7 @@
                         </div>
                     </li>
 
-                    <li x-data="{ musicology: false }"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="musicology" x-data="{ musicology: false }"
                         @click.away="musicology = false"
                         class="md:relative items-center justify-center xl:mb-0 flex border-0">
                         <button @click="musicology = !musicology"
@@ -918,7 +924,7 @@
                         </div>
                     </li>
                     
-                    <li x-data="{ decoration: false }"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="decoration" x-data="{ decoration: false }"
                         @click.away="decoration = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="decoration = !decoration"
@@ -1067,7 +1073,7 @@
                             </div>
                         </div>
                     </li>
-                    <li x-data="{ bib: false }" @click.away="bib = false"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="bibliography" x-data="{ bib: false }" @click.away="bib = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="bib = !bib"
                             id="mega-menu-icons-dropdown-button"

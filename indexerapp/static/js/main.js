@@ -2,6 +2,68 @@ var user="";
 
 let pageRoot, projectId, foreign_id_name;
 
+const defaultUiVisibility = {
+    menu: {
+        about: true,
+        manuscripts: true,
+        contentAnalysis: true,
+        aiTools: true,
+    },
+    manuscriptFilters: {
+        mainInfo: true,
+        layout: true,
+        binding: true,
+        condition: true,
+        content: true,
+        musicology: true,
+        decoration: true,
+        bibliography: true,
+    },
+    manuscriptSections: {
+        mainInfo: true,
+        clla: true,
+        codicology: true,
+        watermarks: true,
+        quires: true,
+        layouts: true,
+        scripts: true,
+        mainHands: true,
+        additionHands: true,
+        musicNotation: true,
+        binding: true,
+        decoration: true,
+        initials: true,
+        miniatures: true,
+        bordersOthers: true,
+        condition: true,
+        content: true,
+        history: true,
+        originsDating: true,
+        provenanceHistory: true,
+        bibliography: true,
+    },
+};
+
+const defaultSiteFeatures = {
+    sourceProject: false,
+    sourceProjectFilter: false,
+};
+
+function mergeNestedBooleans(defaults, overrides) {
+    const merged = {};
+    const source = overrides || {};
+
+    Object.keys(defaults).forEach(function (groupKey) {
+        merged[groupKey] = { ...defaults[groupKey] };
+        const overrideGroup = source[groupKey] || {};
+        Object.keys(overrideGroup).forEach(function (key) {
+            merged[groupKey][key] = overrideGroup[key] !== false;
+        });
+    });
+
+    return merged;
+}
+
 if (window.SITE_CONFIG) {
     // Config provided by instance overlay (static_mpl/js/config.js or static_ecatalogus/js/config.js)
     pageRoot        = window.SITE_CONFIG.pageRoot;
@@ -38,6 +100,69 @@ if (window.SITE_CONFIG) {
 window.pageRoot = pageRoot;
 window.projectId= projectId;
 window.foreign_id_name = foreign_id_name;
+window.siteUiVisibility = mergeNestedBooleans(defaultUiVisibility, window.SITE_CONFIG && window.SITE_CONFIG.uiVisibility);
+window.siteFeatures = {
+    ...defaultSiteFeatures,
+    ...((window.SITE_CONFIG && window.SITE_CONFIG.features) || {}),
+};
+
+window.isUiVisible = function (scope, key) {
+    const group = window.siteUiVisibility[scope] || {};
+    return group[key] !== false;
+};
+
+window.isFeatureEnabled = function (key) {
+    return window.siteFeatures[key] === true;
+};
+
+window.applyConfiguredVisibility = function (root = document) {
+    const elements = [];
+
+    if (root.matches && (root.matches('[data-ui-scope][data-ui-key]') || root.matches('[data-ui-feature]'))) {
+        elements.push(root);
+    }
+
+    if (root.querySelectorAll) {
+        root.querySelectorAll('[data-ui-scope][data-ui-key], [data-ui-feature]').forEach(function (element) {
+            elements.push(element);
+        });
+    }
+
+    elements.forEach(function (element) {
+        let isVisible = true;
+        const featureKey = element.dataset.uiFeature;
+
+        if (featureKey) {
+            isVisible = window.isFeatureEnabled(featureKey);
+        } else {
+            isVisible = window.isUiVisible(element.dataset.uiScope, element.dataset.uiKey);
+        }
+
+        element.hidden = !isVisible;
+        element.style.display = isVisible ? '' : 'none';
+    });
+};
+
+function startConfiguredVisibilityObserver() {
+    const observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            mutation.addedNodes.forEach(function (node) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    window.applyConfiguredVisibility(node);
+                }
+            });
+        });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.applyConfiguredVisibility(document);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startConfiguredVisibilityObserver, { once: true });
+} else {
+    startConfiguredVisibilityObserver();
+}
 
 window.getManuscriptPageUrl = function (manuscript) {
     if (manuscript && manuscript.uuid) {

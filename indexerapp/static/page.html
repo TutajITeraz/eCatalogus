@@ -158,17 +158,17 @@
           <div class="flex w-full mt-6">
             <div
               class="grid grid-cols-4 w-full justify-between items-center divide-x divide-[#d20000] h-5 leading-5">
-              <div
+              <div data-ui-scope="menu" data-ui-key="about"
                 class="flex text-[#0d1b2a] text-center hover:text-[#070e16] hover:underline">
                 <a href="/static/page.html?p=about"
                   class="w-full text-[10pt] sm:text-[14pt] caudex-bold">About</a>
               </div>
-              <div
+              <div data-ui-scope="menu" data-ui-key="manuscripts"
                 class="flex text-[#0d1b2a] text-center hover:text-[#070e16] hover:underline">
                 <a href="/static/page.html?p=manuscripts"
                   class="w-full text-[10pt] sm:text-[14pt] caudex-bold">Manuscripts</a>
               </div>
-              <div
+              <div data-ui-scope="menu" data-ui-key="contentAnalysis"
                 class="flex text-[#0d1b2a] text-center hover:text-[#070e16] hover:underline"
                 x-data="{ open: false }" @mouseenter="open = true" @mouseleave="open = false">
                 <div class="dropdown w-full flex">
@@ -210,7 +210,7 @@
                 </div>
               </div>
 
-              <div
+              <div data-ui-scope="menu" data-ui-key="aiTools"
                 class="flex text-[#0d1b2a] text-center hover:text-[#070e16] hover:underline"
                 x-data="{ open: false }" @mouseenter="open = true" @mouseleave="open = false">
                 <div class="dropdown w-full flex">

@@ -1,6 +1,9 @@
 import json
 
+from django.contrib import admin
+from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
+from django.template.response import TemplateResponse
 from django.utils.decorators import method_decorator
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -150,6 +153,20 @@ class ETLUIAccessMixin:
         if not user_can_manage_etl(request.user):
             return JsonResponse({'detail': 'Insufficient permissions for ETL sync.'}, status=403)
         return super().dispatch(request, *args, **kwargs)
+
+
+class ETLAdminSyncView(View):
+    template_name = 'admin/etl_sync.html'
+
+    def get(self, request, *args, **kwargs):
+        if not user_can_manage_etl(request.user):
+            raise PermissionDenied('Insufficient permissions for ETL sync.')
+
+        context = {
+            **admin.site.each_context(request),
+            'title': 'ETL sync',
+        }
+        return TemplateResponse(request, self.template_name, context)
 
 
 @method_decorator(csrf_exempt, name='dispatch')

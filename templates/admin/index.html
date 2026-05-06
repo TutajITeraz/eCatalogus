@@ -1,0 +1,24 @@
+{% extends 'admin/index.html' %}
+
+{% block content %}
+<div class="app-etl-tools module">
+    <table>
+        <caption>
+            <a href="{% url 'admin-etl-sync' %}" class="section" title="Operational ETL tools">ETL tools</a>
+        </caption>
+        <thead class="visually-hidden">
+            <tr>
+                <th scope="col">Tool</th>
+                <th scope="col">Open</th>
+                <th scope="col">Description</th>
+            </tr>
+        </thead>
+        <tr class="model-etl-sync">
+            <th scope="row" id="etl-sync-tool">ETL sync</th>
+            <td><a href="{% url 'admin-etl-sync' %}" class="viewlink" aria-describedby="etl-sync-tool">Open</a></td>
+            <td>Pull dictionaries and manuscript packages, then resolve shared conflicts in one place.</td>
+        </tr>
+    </table>
+</div>
+{{ block.super }}
+{% endblock %}

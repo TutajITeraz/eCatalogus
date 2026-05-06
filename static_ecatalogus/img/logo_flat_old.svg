@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- eCatalogus logo — overlay for static_ecatalogus instance.
+     This file takes precedence over indexerapp/static/img/logo_flat.svg
+     when running with settings_main.py.
+     Edit this file to customise branding for the eCatalogus instance. -->
+
+<svg
+   width="1918"
+   height="240"
+   viewBox="0 0 1918 240"
+   version="1.1"
+   id="svg1"
+   xml:space="preserve"
+   xmlns="http://www.w3.org/2000/svg">
+  <text
+     x="959"
+     y="180"
+     text-anchor="middle"
+     font-family="serif"
+     font-size="160"
+     font-weight="bold"
+     fill="#1a3a5c"
+     letter-spacing="8">eCatalogus</text>
+</svg>

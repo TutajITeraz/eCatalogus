@@ -10,11 +10,15 @@ from uuid import uuid4
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.contrib.auth.models import Permission, User
+from django.core.exceptions import PermissionDenied
+from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.test.client import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from etlapp.views import ETLAdminSyncView
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
@@ -40,6 +44,91 @@ class ETLUIEditorMixin:
         )
         user.user_permissions.add(*permissions)
         return user
+
+
+class DummyAdminUser:
+    pk = 1
+    is_authenticated = True
+    is_active = True
+    is_staff = True
+    is_superuser = False
+
+    def get_username(self):
+        return 'etl-editor'
+
+
+class DummyLogEntries(list):
+    def filter(self, **kwargs):
+        return self
+
+
+class ETLAdminSyncViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=False)
+    def test_admin_sync_view_requires_etl_permissions(self, user_can_manage_etl_mock):
+        request = self.factory.get('/admin/etl-sync/')
+        request.user = DummyAdminUser()
+
+        with self.assertRaises(PermissionDenied):
+            ETLAdminSyncView.as_view()(request)
+
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
+
+    @patch('etlapp.views.admin.site.each_context')
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    def test_admin_sync_view_renders_for_etl_editor(self, user_can_manage_etl_mock, each_context_mock):
+        each_context_mock.return_value = {
+            'site_header': 'Manuscript Indexer - Admin',
+            'site_title': 'Manuscript Indexer - Admin',
+            'site_url': '/',
+            'has_permission': True,
+            'available_apps': [],
+            'is_popup': False,
+            'is_nav_sidebar_enabled': True,
+            'log_entries': [],
+        }
+        request = self.factory.get('/admin/etl-sync/')
+        request.user = DummyAdminUser()
+
+        response = ETLAdminSyncView.as_view()(request)
+        response.render()
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        self.assertIn('ETL sync', content)
+        self.assertIn('id="etl-peer-select"', content)
+        self.assertIn('Open standalone ETL page', content)
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
+        each_context_mock.assert_called_once_with(request)
+
+
+class ETLAdminIndexTemplateTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_admin_index_renders_etl_tool_tile(self):
+        request = self.factory.get('/admin/')
+        request.user = DummyAdminUser()
+
+        rendered = render_to_string(
+            'admin/index.html',
+            {
+                'title': 'Site administration',
+                'app_list': [],
+                'available_apps': [],
+                'is_popup': False,
+                'is_nav_sidebar_enabled': True,
+                'has_permission': True,
+                'log_entries': DummyLogEntries(),
+            },
+            request=request,
+        )
+
+        self.assertIn('/admin/etl-sync/', rendered)
+        self.assertIn('ETL tools', rendered)
+        self.assertIn('Pull dictionaries and manuscript packages', rendered)
 
 
 @override_settings(

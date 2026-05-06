@@ -64,6 +64,14 @@ function bindETLSyncEvents() {
             clearActiveConflict({ resetWorkflow: true });
         });
     }
+
+    const resetWorkflowButton = document.getElementById('etl-conflict-reset-workflow');
+    if (resetWorkflowButton) {
+        resetWorkflowButton.addEventListener('click', () => {
+            appendETLLog('Discarded queued ETL conflict decisions for the current workflow.');
+            clearActiveConflict({ resetWorkflow: true });
+        });
+    }
 }
 
 async function loadETLOverview() {
@@ -174,8 +182,8 @@ async function triggerCategoryPull(category) {
         peerUrl: peer.url,
         category,
         since: sinceValue,
-        forceRemoteUuids: [],
-        keepLocalUuids: [],
+        forceRemoteDecisions: [],
+        keepLocalDecisions: [],
     };
     clearActiveConflict();
     appendETLLog(`Pulling ${category} from ${peer.url}${sinceValue ? ` since ${sinceValue}` : ''}...`);
@@ -188,8 +196,8 @@ async function triggerCategoryPull(category) {
                 peer: peer.id,
                 category: category,
                 since: sinceValue,
-                force_remote_uuids: etlConflictWorkflow.forceRemoteUuids,
-                keep_local_uuids: etlConflictWorkflow.keepLocalUuids,
+                force_remote_uuids: buildDecisionUuidList(etlConflictWorkflow.forceRemoteDecisions),
+                keep_local_uuids: buildDecisionUuidList(etlConflictWorkflow.keepLocalDecisions),
             }),
         });
 
@@ -385,12 +393,13 @@ async function resolveActiveConflict(resolution) {
                 peer: etlConflictWorkflow.peerId,
                 category: etlConflictWorkflow.category,
                 since: etlConflictWorkflow.since,
-                force_remote_uuids: etlConflictWorkflow.forceRemoteUuids,
-                keep_local_uuids: etlConflictWorkflow.keepLocalUuids,
+                force_remote_uuids: buildDecisionUuidList(etlConflictWorkflow.forceRemoteDecisions),
+                keep_local_uuids: buildDecisionUuidList(etlConflictWorkflow.keepLocalDecisions),
             }),
         });
 
         const result = payload.result || {};
+        registerConflictDecision(resolution, etlActiveConflict);
         updateConflictWorkflowFromPayload(result);
         const pullResult = result.pull_result || {};
         const importSummary = pullResult.import_summary || {};
@@ -420,8 +429,14 @@ function updateConflictWorkflowFromPayload(payload) {
         return;
     }
 
-    etlConflictWorkflow.forceRemoteUuids = [...new Set(payload.force_remote_uuids || etlConflictWorkflow.forceRemoteUuids || [])];
-    etlConflictWorkflow.keepLocalUuids = [...new Set(payload.keep_local_uuids || etlConflictWorkflow.keepLocalUuids || [])];
+    etlConflictWorkflow.forceRemoteDecisions = mergeDecisionEntries(
+        payload.force_remote_uuids,
+        etlConflictWorkflow.forceRemoteDecisions
+    );
+    etlConflictWorkflow.keepLocalDecisions = mergeDecisionEntries(
+        payload.keep_local_uuids,
+        etlConflictWorkflow.keepLocalDecisions
+    );
 }
 
 function clearActiveConflict(options = {}) {
@@ -435,20 +450,26 @@ function clearActiveConflict(options = {}) {
 
 function renderActiveConflict() {
     const panel = document.getElementById('etl-conflict-panel');
+    const context = document.getElementById('etl-conflict-context');
     const meta = document.getElementById('etl-conflict-meta');
     const progress = document.getElementById('etl-conflict-progress');
+    const keepLocalList = document.getElementById('etl-conflict-keep-local-list');
+    const applyRemoteList = document.getElementById('etl-conflict-apply-remote-list');
     const differencesBody = document.getElementById('etl-conflict-differences');
     const localRecord = document.getElementById('etl-conflict-local');
     const incomingRecord = document.getElementById('etl-conflict-incoming');
 
-    if (!panel || !meta || !progress || !differencesBody || !localRecord || !incomingRecord) {
+    if (!panel || !context || !meta || !progress || !keepLocalList || !applyRemoteList || !differencesBody || !localRecord || !incomingRecord) {
         return;
     }
 
     if (!etlActiveConflict) {
         panel.classList.add('hidden');
+        context.textContent = '';
         meta.textContent = '';
         progress.textContent = '';
+        keepLocalList.innerHTML = '';
+        applyRemoteList.innerHTML = '';
         differencesBody.innerHTML = '';
         localRecord.textContent = '';
         incomingRecord.textContent = '';
@@ -456,8 +477,17 @@ function renderActiveConflict() {
     }
 
     panel.classList.remove('hidden');
+    context.textContent = buildConflictWorkflowContext();
     meta.textContent = `${etlActiveConflict.model || 'Unknown model'} | uuid=${etlActiveConflict.object_uuid || 'n/a'} | reason=${etlActiveConflict.reason || 'unknown'} | local version=${etlActiveConflict.current_version ?? 'n/a'} | incoming version=${etlActiveConflict.incoming_version ?? 'n/a'}`;
-    progress.textContent = `Queued decisions: keep-local=${(etlConflictWorkflow && etlConflictWorkflow.keepLocalUuids.length) || 0}, apply-remote=${(etlConflictWorkflow && etlConflictWorkflow.forceRemoteUuids.length) || 0}.`;
+    progress.textContent = `Queued decisions: keep-local=${(etlConflictWorkflow && etlConflictWorkflow.keepLocalDecisions.length) || 0}, apply-remote=${(etlConflictWorkflow && etlConflictWorkflow.forceRemoteDecisions.length) || 0}.`;
+    keepLocalList.innerHTML = renderDecisionEntries(
+        etlConflictWorkflow ? etlConflictWorkflow.keepLocalDecisions : [],
+        'No keep-local decisions queued yet.'
+    );
+    applyRemoteList.innerHTML = renderDecisionEntries(
+        etlConflictWorkflow ? etlConflictWorkflow.forceRemoteDecisions : [],
+        'No apply-remote decisions queued yet.'
+    );
 
     const differences = etlActiveConflict.differences || [];
     differencesBody.innerHTML = differences.map((difference) => `
@@ -489,6 +519,68 @@ function getSelectedPeer() {
     return peers.find((peer) => peer.id === etlSelectedPeerId) || null;
 }
 
+function buildConflictWorkflowContext() {
+    if (!etlConflictWorkflow) {
+        return '';
+    }
+
+    const sinceLabel = etlConflictWorkflow.since || 'full pull';
+    return `Workflow: peer=${etlConflictWorkflow.peerId || 'n/a'} | category=${etlConflictWorkflow.category || 'n/a'} | since=${sinceLabel}`;
+}
+
+function mergeDecisionEntries(payloadUuids, existingEntries) {
+    const uuids = Array.isArray(payloadUuids) ? payloadUuids : buildDecisionUuidList(existingEntries || []);
+    const existingMap = new Map((existingEntries || []).map((entry) => [entry.uuid, entry]));
+    return uuids.map((uuid) => existingMap.get(uuid) || { uuid });
+}
+
+function buildDecisionUuidList(entries) {
+    return (entries || []).map((entry) => entry.uuid);
+}
+
+function registerConflictDecision(resolution, conflict) {
+    if (!etlConflictWorkflow || !conflict || !conflict.object_uuid) {
+        return;
+    }
+
+    const decisionEntry = {
+        uuid: conflict.object_uuid,
+        model: conflict.model || 'Unknown model',
+    };
+
+    if (resolution === 'keep_local') {
+        etlConflictWorkflow.keepLocalDecisions = upsertDecisionEntry(etlConflictWorkflow.keepLocalDecisions, decisionEntry);
+        etlConflictWorkflow.forceRemoteDecisions = removeDecisionEntry(etlConflictWorkflow.forceRemoteDecisions, decisionEntry.uuid);
+        return;
+    }
+
+    if (resolution === 'apply_remote') {
+        etlConflictWorkflow.forceRemoteDecisions = upsertDecisionEntry(etlConflictWorkflow.forceRemoteDecisions, decisionEntry);
+        etlConflictWorkflow.keepLocalDecisions = removeDecisionEntry(etlConflictWorkflow.keepLocalDecisions, decisionEntry.uuid);
+    }
+}
+
+function upsertDecisionEntry(entries, nextEntry) {
+    const filteredEntries = (entries || []).filter((entry) => entry.uuid !== nextEntry.uuid);
+    filteredEntries.push(nextEntry);
+    return filteredEntries;
+}
+
+function removeDecisionEntry(entries, uuid) {
+    return (entries || []).filter((entry) => entry.uuid !== uuid);
+}
+
+function renderDecisionEntries(entries, emptyMessage) {
+    if (!entries || !entries.length) {
+        return `<li class="text-[#8a6d55]">${escapeHtml(emptyMessage)}</li>`;
+    }
+
+    return entries.map((entry) => {
+        const label = entry.model ? `${entry.model} | uuid=${entry.uuid}` : `uuid=${entry.uuid}`;
+        return `<li class="break-all text-[#203040]">${escapeHtml(label)}</li>`;
+    }).join('');
+}
+
 function appendETLLog(message) {
     const container = document.getElementById('etl-log');
     if (!container) {
@@ -513,7 +605,7 @@ function endETLBusyState() {
 function renderETLBusyState(message) {
     const panel = document.getElementById('etl-busy-panel');
     const text = document.getElementById('etl-busy-text');
-    const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-peer-select, #etl-since, .etl-import-manuscript');
+    const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-peer-select, #etl-since, .etl-import-manuscript, #etl-conflict-keep-local, #etl-conflict-apply-remote, #etl-conflict-close, #etl-conflict-reset-workflow');
     const isBusy = etlPendingOperations > 0;
 
     if (panel) {

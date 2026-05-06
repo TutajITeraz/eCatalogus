@@ -103,6 +103,43 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertGreaterEqual(payload['recordsTotal'], 1)
 		self.assertTrue(any(row['uuid'] == str(manuscript.uuid) for row in payload['data']))
 
+	def test_manuscripts_datatable_exposes_source_project_metadata(self):
+		manuscript = Manuscripts.objects.create(name='Project metadata manuscript', display_as_main=True)
+		project = Projects.objects.create(
+			name='eCatalogus source',
+			icon='https://example.com/logo.png',
+			project_url='https://example.com/project',
+		)
+		MSProjects.objects.create(manuscript=manuscript, project=project)
+
+		response = self.client.get(reverse('manuscripts-list'), {'format': 'datatables', 'length': 10})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		row = next(item for item in payload['data'] if item['uuid'] == str(manuscript.uuid))
+		self.assertEqual(row['source_project_name'], 'eCatalogus source')
+		self.assertEqual(row['source_project_icon'], 'https://example.com/logo.png')
+		self.assertEqual(row['source_project_url'], 'https://example.com/project')
+		self.assertEqual(row['source_project_uuid'], str(project.uuid))
+
+	def test_manuscripts_datatable_filters_by_source_project_uuid(self):
+		selected = Manuscripts.objects.create(name='Selected source project manuscript', display_as_main=True)
+		other = Manuscripts.objects.create(name='Other source project manuscript', display_as_main=True)
+		selected_project = Projects.objects.create(name='Selected project')
+		other_project = Projects.objects.create(name='Other project')
+		MSProjects.objects.create(manuscript=selected, project=selected_project)
+		MSProjects.objects.create(manuscript=other, project=other_project)
+
+		response = self.client.get(
+			reverse('manuscripts-list'),
+			{'format': 'datatables', 'source_project': str(selected_project.uuid), 'length': 10},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(payload['recordsFiltered'], 1)
+		self.assertEqual([row['name'] for row in payload['data']], ['Selected source project manuscript'])
+
 	def test_manuscripts_datatable_filters_by_liturgical_genre_uuid(self):
 		selected = Manuscripts.objects.create(name='Genre-selected manuscript')
 		other = Manuscripts.objects.create(name='Genre-other manuscript')
@@ -178,6 +215,22 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(result['id'], str(genre.uuid))
 		self.assertEqual(result['pk'], str(genre.pk))
 
+	def test_projects_autocomplete_returns_uuid(self):
+		user = get_user_model().objects.create_user('project-autocomplete-user', 'project-auto@example.com', 'secret')
+		project = Projects.objects.create(name='Project autocomplete')
+		manuscript = Manuscripts.objects.create(name='Autocomplete manuscript', display_as_main=True)
+		MSProjects.objects.create(manuscript=manuscript, project=project)
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('projects-autocomplete'), {'q': 'Project'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		result = next(item for item in payload['results'] if item['text'] == project.name)
+		self.assertEqual(result['uuid'], str(project.uuid))
+		self.assertEqual(str(result['id']), str(project.uuid))
+		self.assertEqual(str(result['pk']), str(project.pk))
+
 	def test_formula_autocomplete_returns_uuid(self):
 		user = get_user_model().objects.create_user('formula-autocomplete-user', 'formula-auto@example.com', 'secret')
 		formula = Formulas.objects.create(co_no='F-autocomplete', text='Formula autocomplete')
@@ -215,6 +268,23 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = response.json()
 		self.assertEqual(payload['manuscript']['uuid'], str(manuscript.uuid))
 		self.assertEqual(payload['manuscript']['name'], 'UUID manuscript')
+
+	def test_ms_info_exposes_source_project_metadata(self):
+		manuscript = Manuscripts.objects.create(name='UUID manuscript with source project')
+		project = Projects.objects.create(
+			name='Main info project',
+			icon='https://example.com/main-info-project.svg',
+			project_url='https://example.com/main-info-project',
+		)
+		MSProjects.objects.create(manuscript=manuscript, project=project)
+
+		response = self.client.get(reverse('ms_info'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(payload['manuscript']['source_project_name'], 'Main info project')
+		self.assertEqual(payload['manuscript']['source_project_icon'], 'https://example.com/main-info-project.svg')
+		self.assertEqual(payload['manuscript']['source_project_url'], 'https://example.com/main-info-project')
 
 	def test_ms_info_rejects_legacy_manuscript_id_selector(self):
 		manuscript = Manuscripts.objects.create(name='Legacy selector manuscript')
