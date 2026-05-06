@@ -131,6 +131,7 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
+        representation.pop('id', None)
         representation['dating'] = str(instance.dating)
         representation['main_script'] = str(instance.main_script)
         representation['binding_date'] = str(instance.binding_date)
@@ -192,6 +193,7 @@ class ManuscriptHandsSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
+        representation.pop('id', None)
         representation['manuscript'] = str(instance.manuscript)
         representation['hand'] = str(instance.hand)
         representation['script_name'] = str(instance.script_name)
@@ -202,7 +204,6 @@ class ManuscriptHandsSerializer(serializers.ModelSerializer):
         return representation
 
 class ContentSerializer(serializers.ModelSerializer):
-    id = serializers.IntegerField(read_only=True)
     manuscript_name = serializers.SerializerMethodField()
     rubric = RiteNamesSerializer
     formula_standarized = serializers.SerializerMethodField()
@@ -225,7 +226,7 @@ class ContentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Content
         fields = (
-            'id', 'uuid', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'comments'
+            'uuid', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'comments'
         )
 
     def to_representation(self, instance):
@@ -290,10 +291,12 @@ class FormulasIndexSerializer(serializers.ModelSerializer):
         ms_list = {}
         for c in contents:
             if c.manuscript:
-                ms_list[c.manuscript.id] = str(c.manuscript)
+                manuscript_uuid = str(c.manuscript.uuid) if c.manuscript.uuid else None
+                if manuscript_uuid:
+                    ms_list[manuscript_uuid] = str(c.manuscript)
         
         # return list of dicts for easy JS parsing
-        return [{"id": k, "name": v} for k, v in ms_list.items()]
+        return [{"uuid": k, "name": v} for k, v in ms_list.items()]
 
     def get_used_in_count(self, obj):
         return obj.content_set.values('manuscript').distinct().count()
@@ -314,8 +317,10 @@ class RiteNamesIndexSerializer(serializers.ModelSerializer):
         ms_list = {}
         for c in contents:
             if c.manuscript:
-                ms_list[c.manuscript.id] = str(c.manuscript)
-        return [{"id": k, "name": v} for k, v in ms_list.items()]
+                manuscript_uuid = str(c.manuscript.uuid) if c.manuscript.uuid else None
+                if manuscript_uuid:
+                    ms_list[manuscript_uuid] = str(c.manuscript)
+        return [{"uuid": k, "name": v} for k, v in ms_list.items()]
 
     def get_used_in_count(self, obj):
         return obj.content_set.values('manuscript').distinct().count()
@@ -335,8 +340,10 @@ class SubjectsIndexSerializer(serializers.ModelSerializer):
         for ds in obj.decoration_subject.select_related('decoration__manuscript').all():
             ms = ds.decoration.manuscript if ds.decoration else None
             if ms:
-                ms_list[ms.id] = str(ms)
-        return [{"id": k, "name": v} for k, v in ms_list.items()]
+                manuscript_uuid = str(ms.uuid) if ms.uuid else None
+                if manuscript_uuid:
+                    ms_list[manuscript_uuid] = str(ms)
+        return [{"uuid": k, "name": v} for k, v in ms_list.items()]
 
     def get_used_in_count(self, obj):
         return (

@@ -187,7 +187,7 @@ function loadGalleryForMs(msId) {
         lightGalleryInstance = null;
     }
 
-    fetch(`/ms-gallery/?${window.getManuscriptSelectorQuery(msId, 'manuscript_id')}`)
+    fetch(`/ms-gallery/?${window.getManuscriptSelectorQuery(msId)}`)
     .then(r => r.json())
     .then(data => {
         container.innerHTML = '';
@@ -199,12 +199,11 @@ function loadGalleryForMs(msId) {
         currentGalleryImages = data.images;
 
         const dynamicEl = data.images.map(item => ({
-            id: item.id, // Store ID directly
+            id: item.uuid,
             src: item.image_url,
             thumb: item.thumbnail_url || item.image_url,
             subHtml: `<h4>${escapeHtml(item.name || 'Image')}</h4>`,
-            // Custom attribute for identification if needed
-            imageId: item.id
+            imageUuid: item.uuid
         }));
 
         // Inline gallery configuration
@@ -243,7 +242,7 @@ function deleteSelectedImage() {
         return;
     }
     
-    const image_id = currentGalleryImages[index].id;
+    const image_uuid = currentGalleryImages[index].uuid;
 
     if (!confirm('Delete currently viewed image?')) return;
 
@@ -254,11 +253,11 @@ function deleteSelectedImage() {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken
         }, 
-        body: JSON.stringify(window.addManuscriptSelectorParam({ image_id: image_id }, gallerySelectedMs)) 
+        body: JSON.stringify(window.addManuscriptSelectorParam({ image_uuid: image_uuid }, gallerySelectedMs)) 
     })
     .then(r => r.json())
     .then(data => { 
-        document.getElementById('gallery-status').innerText = 'Deleted image ' + image_id; 
+        document.getElementById('gallery-status').innerText = 'Deleted image ' + image_uuid; 
         loadGalleryForMs(gallerySelectedMs); 
     })
     .catch(e => console.error(e));

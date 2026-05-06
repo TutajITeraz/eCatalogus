@@ -267,6 +267,7 @@ class DecorationCharacteristicsInline(admin.StackedInline):
 
 class ManuscriptBibliographyInline(admin.TabularInline):
     model = ManuscriptBibliography
+    fk_name = 'manuscript'
     extra = 0
 
     show_change_link=True
@@ -278,6 +279,7 @@ class ManuscriptBibliographyInline(admin.TabularInline):
 
 class OriginsInline(admin.TabularInline):
     model = Origins
+    fk_name = 'manuscript'
     extra = 0
 
     show_change_link=True
@@ -289,6 +291,7 @@ class OriginsInline(admin.TabularInline):
 
 class ProvenanceInline(admin.TabularInline):
     model = Provenance
+    fk_name = 'manuscript'
     extra = 0
 
     show_change_link=True
@@ -300,6 +303,7 @@ class ProvenanceInline(admin.TabularInline):
 
 class ManuscriptBindingMaterialsInline(admin.TabularInline):
     model = ManuscriptBindingMaterials
+    fk_name = 'manuscript'
     extra = 0
 
     show_change_link=True
@@ -311,6 +315,7 @@ class ManuscriptBindingMaterialsInline(admin.TabularInline):
 
 class ManuscriptBindingComponentsInline(admin.TabularInline):
     model = ManuscriptBindingComponents
+    fk_name = 'manuscript'
     extra = 0
 
     show_change_link=True
@@ -382,15 +387,14 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
 
     def get_debate(self, obj, db_field_name):
         content_type = ContentType.objects.get_for_model(obj)
-        debates = AttributeDebate.objects.filter(
+        debates = AttributeDebate.for_instance(obj).filter(
             content_type=content_type,
-            object_id=obj.pk,
-            field_name=db_field_name
+            field_name=db_field_name,
         )
 
         debates_links = [
-            f'<a href="#" style="cursor: pointer;" onclick="window.open(\'{reverse("admin:indexerapp_attributedebate_change", args=(debate.id,))}?_popup=1\', \'DebatePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">{debate.text}</a> '
-            f'<a href="#" style="color: red; cursor: pointer;" onclick="window.open(\'{reverse("admin:indexerapp_attributedebate_delete", args=(debate.id,))}?_popup=1\', \'DebateDeletePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">⌫</a>'
+            f'<a href="#" style="cursor: pointer;" onclick="window.open(\'{reverse("admin:indexerapp_attributedebate_change", args=(debate.pk,))}?_popup=1\', \'DebatePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">{debate.text}</a> '
+            f'<a href="#" style="color: red; cursor: pointer;" onclick="window.open(\'{reverse("admin:indexerapp_attributedebate_delete", args=(debate.pk,))}?_popup=1\', \'DebateDeletePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">⌫</a>'
             for debate in debates
         ]
         return debates_links
@@ -400,8 +404,11 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
         debate_add_url = reverse("admin:indexerapp_attributedebate_add")
         content_type = ContentType.objects.get_for_model(obj)
         object_id = obj.pk if obj else 'add'
+        object_uuid = getattr(obj, 'uuid', None) if obj else None
         content_object = f"{content_type.app_label}_{content_type.model}_{object_id}"
         debate_add_url_with_parameters = f"{debate_add_url}?_popup=1&content_type={content_type.id}&object_id={object_id}&content_object={content_object}&field_name={db_field.name}"
+        if object_uuid:
+            debate_add_url_with_parameters += f"&object_uuid={object_uuid}"
 
         return f'<a href="{debate_add_url_with_parameters}" class="add-debate" onclick="return showAddAnotherPopup(this);">💬 Debate</a>'
 

@@ -1017,7 +1017,7 @@ manuscripts_init = function()
         }
 
         function getUuidAwareSelect2Values(selector) {
-            return getSelect2Values(selector, item => item.uuid || item.id || item.pk || null);
+            return getSelect2Values(selector, item => item.uuid || null);
         }
 
         function getLegacySelect2Values(selector) {
@@ -1224,24 +1224,21 @@ manuscripts_init = function()
 
         // Group manuscripts by coordinates
         data.forEach((item, index) => {
-            let lat, lon, name, id, uuid;
+            let lat, lon, name, uuid;
             if (currentPlaceType === 'contemporary_repository_place') {
                 lat = item.contemporary_repository_place_latitude;
                 lon = item.contemporary_repository_place_longitude;
                 name = item.contemporary_repository_place_name;
-                id = item.id;
                 uuid = item.uuid;
             } else if (currentPlaceType === 'place_of_origin') {
                 lat = item.place_of_origin_latitude;
                 lon = item.place_of_origin_longitude;
                 name = item.place_of_origin_name;
-                id = item.id;
                 uuid = item.uuid;
             } else {
                 lat = item.binding_place_latitude;
                 lon = item.binding_place_longitude;
                 name = item.binding_place_name;
-                id = item.id;
                 uuid = item.uuid;
             }
 
@@ -1250,7 +1247,7 @@ manuscripts_init = function()
                 if (!manuscriptsByLocation[key]) {
                     manuscriptsByLocation[key] = { lat, lon, name, manuscripts: [] };
                 }
-                manuscriptsByLocation[key].manuscripts.push({ id, uuid, name: item.name, shelf_mark: item.shelf_mark });
+                manuscriptsByLocation[key].manuscripts.push({ uuid, name: item.name, shelf_mark: item.shelf_mark });
             }
         });
 
@@ -1259,7 +1256,7 @@ manuscripts_init = function()
             let popupContent = `<b>${location.name || 'Unknown'}</b><ul class="list-disc pl-4">`;
             location.manuscripts.forEach(ms => {
                 const shelfMark = ms.shelf_mark || ''; // Fallback to empty string if shelf_mark is undefined
-                const displayName = shelfMark ? `${shelfMark}, ${ms.name || 'Manuscript ' + ms.id}` : ms.name || 'Manuscript ' + ms.id;
+                const displayName = shelfMark ? `${shelfMark}, ${ms.name || 'Manuscript'}` : ms.name || 'Manuscript';
                 popupContent += `<li><a href="${window.getManuscriptPageUrl(ms)}" class="text-blue-600 hover:underline">${displayName}</a></li>`;
             });
             popupContent += '</ul>';
@@ -1345,7 +1342,6 @@ manuscripts_init = function()
                 }
             },
             { "data": "uuid", "title": "UUID", visible: false },
-            { "data": "id", "title": "ID", visible: false },
             { "data": "rism_id", "title": "RISM ID", visible: false },
             { "data": "ms_provenance", "title": "Medieval Provenance", visible: false },
             { "data": "folios_no", "title": "Folios No", visible: false },

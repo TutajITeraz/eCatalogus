@@ -1,4 +1,3 @@
-let manuscriptId = null;
 let manuscriptUuid = null;
 var map = null;
 var map_bounds = null;
@@ -29,9 +28,8 @@ let IDENTIFY_TRADITIONS = false;
 let colorIndex = 0;
 
 manuscriptUuid = urlParams.get("manuscript_uuid") || urlParams.get("uuid");
-manuscriptId = manuscriptUuid;
 
-function getCurrentManuscriptQuery(legacyKey = "ms") {
+function getCurrentManuscriptQuery() {
   if (!manuscriptUuid) {
     return "";
   }
@@ -39,12 +37,12 @@ function getCurrentManuscriptQuery(legacyKey = "ms") {
   return `manuscript_uuid=${encodeURIComponent(manuscriptUuid)}`;
 }
 
-function getManuscriptEndpoint(path, legacyKey = "ms") {
+function getManuscriptEndpoint(path) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${pageRoot}${normalizedPath}?${getCurrentManuscriptQuery(legacyKey)}`;
+  return `${pageRoot}${normalizedPath}?${getCurrentManuscriptQuery()}`;
 }
 
-function addCurrentManuscriptParam(payload, legacyKey = "ms") {
+function addCurrentManuscriptParam(payload) {
   if (manuscriptUuid) {
     payload.manuscript_uuid = manuscriptUuid;
   }
@@ -221,7 +219,7 @@ window.openDataTablePopup = (url, tableToRefresh = null) => {
 };
 
 async function getMSInfo() {
-  return fetchOnce(getManuscriptEndpoint("ms_info/", "pk"));
+  return fetchOnce(getManuscriptEndpoint("ms_info/"));
 }
 
 async function getTEIUrl() {
@@ -302,7 +300,7 @@ async function getMSInfoFiltered() {
 }
 
 async function getCodicologyInfo() {
-  return fetchOnce(getManuscriptEndpoint("codicology_info/", "pk"));
+  return fetchOnce(getManuscriptEndpoint("codicology_info/"));
 }
 
 async function getCodicologyFiltered() {
@@ -398,11 +396,6 @@ async function getMusicNotationInfo() {
   return fetchOnce(getManuscriptEndpoint("music_notation_info/"));
 }
 
-/*
-async function getHandsInfo() {
-    return fetchOnce(`/hands_info/?pk=${manuscriptId}`);
-}
-*/
 async function getWatermarksInfo() {
   return fetchOnce(getManuscriptEndpoint("watermarks_info/"));
 }
@@ -517,7 +510,7 @@ function init_layouts_table() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -611,7 +604,7 @@ function init_music_table() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -817,7 +810,7 @@ function init_content_table(reinit = false) {
       { data: "data_contributor", title: "data contributor", visible: false },
       { data: "comments", title: "comments", width: "30%" },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -944,7 +937,7 @@ function init_quires_table() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -971,7 +964,7 @@ function init_decoration_table() {
     var decoration_groupColumn = 2;
     decoration_table = $('#decoration').DataTable({
         "ajax": {
-            "url": pageRoot + '/decoration_info/?ms=' + manuscriptId,
+          "url": getManuscriptEndpoint('decoration_info/'),
             "dataSrc": function (data) {
                 return data.data;
             }
@@ -1219,7 +1212,7 @@ function init_decoration_table(table_info) {
     },
     bAutoWidth: false,
     columns: [
-      { data: "id", title: "id", visible: false },
+      { data: "uuid", title: "uuid", visible: false },
       { data: "decoration_type", title: "decoration type", visible: false },
       {
         data: "decoration_subtype",
@@ -1420,7 +1413,7 @@ function init_decoration_table(table_info) {
       { data: "date_of_the_addition", title: "addition date" },
 
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -1528,7 +1521,7 @@ var origins_table;
 function init_origins_table() {
     origins_table = $('#origins').DataTable({
         "ajax": {
-            "url": pageRoot + '/origins_info/?ms=' + manuscriptId,
+          "url": getManuscriptEndpoint('origins_info/'),
             "dataSrc": function (data) {
                 return data.data;
             }
@@ -1556,7 +1549,7 @@ function init_origins_table() {
 /*
 var condition_table = $('#condition').DataTable({
     "ajax": {
-        "url": '/condition_info/?ms=' + manuscriptId,
+      "url": getManuscriptEndpoint('condition_info/'),
         "dataSrc": function (data) {
             return data.data;
         }
@@ -1593,7 +1586,7 @@ function init_origins_table() {
     },
     bAutoWidth: false,
     columns: [
-      { data: "id", title: "id", visible: false },
+      { data: "uuid", title: "uuid", visible: false },
       { data: "origins_date", title: "origins date", width: "10%" },
       { data: "origins_place", title: "origins place", width: "30%" },
       { data: "origins_comment", title: "origins comment", width: "50%" },
@@ -1605,7 +1598,7 @@ function init_origins_table() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -1625,7 +1618,7 @@ function init_origins_table() {
 /*
 var music_table = $('#binding').DataTable({
     "ajax": {
-        "url": '/binding_info/?ms=' + manuscriptId,
+      "url": getManuscriptEndpoint('binding_info/'),
         "dataSrc": function (data) {
             return data.data;
         }
@@ -1733,7 +1726,7 @@ function init_main_hands() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -1841,7 +1834,7 @@ function init_additions_hands() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -1903,7 +1896,7 @@ function init_watermarks_table() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -1938,7 +1931,7 @@ function init_provenance_table() {
     },
     bAutoWidth: false,
     columns: [
-      { data: "id", title: "id", visible: false },
+      { data: "uuid", title: "uuid", visible: false },
       { data: "date_from", title: "date_from", visible: false },
       { data: "date_to", title: "date_to", visible: false },
       {
@@ -1957,7 +1950,7 @@ function init_provenance_table() {
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -2009,7 +2002,7 @@ function init_bibliography_table() {
       { data: "author", title: "author", width: "20%" },
       { data: "year", title: "year", width: "10%" },
       {
-        data: "id",
+        data: "uuid",
         title: "Actions",
         visible: DISPLAY_EDIT_OPTIONS,
         orderable: false,
@@ -2049,7 +2042,7 @@ function displayDebate(dataTable, divToAppend) {
   for (d in debates) {
     var debate = debates[d];
 
-    var id_to_find = debate.instance_id;
+    var id_to_find = debate.instance_uuid;
     var column_to_find = debate.field_name;
 
     if (column_to_find == "date_from" || column_to_find == "date_to")
@@ -2073,7 +2066,7 @@ function displayDebate(dataTable, divToAppend) {
       .rows()
       .indexes()
       .filter(function (value, index) {
-        return table.row(value).data().id == id_to_find;
+        return table.row(value).data().uuid == id_to_find;
       });
 
     if (row.length > 0) {
@@ -2177,7 +2170,7 @@ function displayComments(dataTable, divToAppend) {
       var list_item = $(
         '<li class="decoration_comment">' +
           '<div id="decoration_comment_' +
-          rowData.id +
+          rowData.uuid +
           '">' +
           '  <span style="display: block;">' +
           "      <b>" +
@@ -3023,7 +3016,7 @@ async function map_refresh() {
 }
 
 async function getGallery() {
-  return fetchOnce(getManuscriptEndpoint("ms-gallery/", "manuscript_id"));
+  return fetchOnce(getManuscriptEndpoint("ms-gallery/"));
 }
 
 async function init_gallery() {
@@ -3044,11 +3037,11 @@ async function init_gallery() {
             clearInterval(checkContainer);
             
             const dynamicEl = data.images.map(item => ({
-                id: item.id, 
+              id: item.uuid,
                 src: item.image_url,
                 thumb: item.thumbnail_url || item.image_url,
                 subHtml: `<h4>${escapeHtml(item.name || 'Image')}</h4>`,
-                imageId: item.id,
+              imageUuid: item.uuid,
                 name: item.name  // preserve name for goToGalleryByLabel lookup
             }));
 

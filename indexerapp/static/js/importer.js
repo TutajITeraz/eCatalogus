@@ -1,5 +1,4 @@
 let data;
-let manuscriptId;
 let manuscriptUuid;
 let traditionId;
 let contributorId;
@@ -170,7 +169,7 @@ function processData(csvData) {
 
 expectedColumnNamesByTable = {
     'Content': [
-        'id', 'manuscript_id', 'sequence_in_ms', 'formula_id', 'formula_text_from_ms',
+        'id', 'manuscript_uuid', 'sequence_in_ms', 'formula_id', 'formula_text_from_ms',
         'similarity_by_user', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'rubric_name_from_ms', 'subrubric_name_from_ms',
         'rubric_id', 'rubric_sequence_in_the_MS', 'original_or_added', 'biblical_reference',
         'reference_to_other_items', 'edition_index', 'edition_subindex', 'comments', 'function_id', 'subfunction_id',
@@ -199,7 +198,7 @@ expectedColumnNamesByTable = {
         'longitude','latitude','place_type','country_today_eng','region_today_eng','city_today_eng','repository_today_eng','country_today_local_language','region_today_local_language','city_today_local_language','repository_today_local_language','country_historic_eng','region_historic_eng','city_historic_eng','repository_historic_eng','country_historic_local_language','region_historic_local_language','city_historic_local_language','repository_historic_local_language','country_historic_latin','region_historic_latin','city_historic_latin','repository_historic_latin',
     ],
     'Clla': [
-        'manuscript_id','clla_no','liturgical_genre','dating','dating_comment','provenance','provenance_comment','comment'
+        'manuscript_uuid','clla_no','liturgical_genre','dating','dating_comment','provenance','provenance_comment','comment'
     ]
 
 }
@@ -209,12 +208,12 @@ function validateClla(data) {
 
     // Check data types
     data.forEach((row, rowIndex) => {
-        if ( row.manuscript_id.length < 1 ) {
-            errors.push(`obligatory field "manuscript_id" is too short at row ${rowIndex + 1}.`);
+        if ( !row.manuscript_uuid || row.manuscript_uuid.length < 1 ) {
+            errors.push(`obligatory field "manuscript_uuid" is too short at row ${rowIndex + 1}.`);
         }
 
-        if ( !isInteger(row.manuscript_id) && row.manuscript_id != "" ) {
-            errors.push(`Invalid integer value in manuscript_id at row ${rowIndex + 1}. Value: "${row.manuscript_id}"`);
+        if ( row.manuscript_uuid && !isUuidLike(row.manuscript_uuid) ) {
+            errors.push(`Invalid UUID value in manuscript_uuid at row ${rowIndex + 1}. Value: "${row.manuscript_uuid}"`);
         }
     });
 
@@ -477,6 +476,10 @@ function isFloat(value) {
     return /^-?\d+(\.\d+)?$/.test(value);
 }
 
+function isUuidLike(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
 function displayTable() {
     // Assuming your data is an array of objects with keys corresponding to column names
     const columns = Object.keys(data[0]);
@@ -683,11 +686,8 @@ importer_init = function()
 
     $('.manuscript_filter').on('select2:select', function (e) {
         var data = e.params.data;
-        var id = data.id;
-        console.log(id);
-
-        manuscriptId = null;
-        manuscriptUuid = data.uuid || id || null;
+        manuscriptUuid = data.uuid || null;
+        console.log(manuscriptUuid);
         document.getElementById('download-csv-from-server').style.display = 'block';
         document.getElementById("delete-ms-content").style.display = 'block';
 
@@ -717,7 +717,7 @@ importer_init = function()
         traditionId = id;
         document.getElementById("delete-tradition-content").style.display = 'block';
 
-        if(manuscriptId >=0 && manuscriptId < 9999999999)
+        if(hasSelectedManuscript())
             document.getElementById("content-to-tradition").style.display = 'block';
 
         //content_table.columns(0).search(id).draw();

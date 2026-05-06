@@ -320,7 +320,7 @@ class ManuscriptBibliography(models.Model):
     bibliography = models.ForeignKey('Bibliography', models.DO_NOTHING)
     bibliography_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_bibliography')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey('Manuscripts', models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -365,12 +365,31 @@ class AttributeDebate(models.Model):
     #(typ modelu):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     #(object_id):
-    object_id = models.PositiveIntegerField()
+    object_id = models.PositiveIntegerField(null=True, blank=True)
+    object_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     #To pole ułatwia pracę z obiektami poprzez bezpośrednie odwołanie:
     content_object = GenericForeignKey('content_type', 'object_id')
 
     # Pole do przechowywania nazwy pola komentowanego:
     field_name = models.CharField(max_length=255) 
+
+    @classmethod
+    def for_instance(cls, instance):
+        content_type = ContentType.objects.get_for_model(instance)
+        object_uuid = getattr(instance, 'uuid', None)
+        queryset = cls.objects.filter(content_type=content_type)
+        if object_uuid:
+            return queryset.filter(models.Q(object_uuid=object_uuid) | models.Q(object_id=instance.pk))
+        return queryset.filter(object_id=instance.pk)
+
+    def save(self, *args, **kwargs):
+        model_class = self.content_type.model_class() if self.content_type_id else None
+        if model_class is not None and hasattr(model_class, 'uuid'):
+            if self.object_uuid is None and self.object_id is not None:
+                self.object_uuid = model_class.objects.filter(pk=self.object_id).values_list('uuid', flat=True).first()
+            elif self.object_id is None and self.object_uuid is not None:
+                self.object_id = model_class.objects.filter(uuid=self.object_uuid).values_list('pk', flat=True).first()
+        super().save(*args, **kwargs)
 
     class Meta:
         #managed = False
@@ -383,7 +402,7 @@ class AttributeDebate(models.Model):
 class Condition(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_condition')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey('Manuscripts', models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     damage = models.CharField(max_length=10,choices=[("very", "very damaged"),("average", "average damaged"),("slightly","slightly damaged")], blank=True, null=True)
 
     parchment_shrinkage = models.BooleanField(null=True)
@@ -1142,7 +1161,7 @@ class Image(models.Model):
 class Clla(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_clla')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     clla_no = models.CharField(max_length=255, blank=True, null=True)
     liturgical_genre = models.CharField(max_length=512, blank=True, null=True)
@@ -1172,7 +1191,7 @@ class Clla(models.Model):
 class Layouts(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_layouts')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     name = models.CharField(max_length=32, blank=True, null=True)
     where_in_ms_from = models.CharField(max_length=32, default="")
     where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
@@ -1219,7 +1238,7 @@ class Layouts(models.Model):
 class Codicology(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, on_delete=models.CASCADE, related_name='ms_codicology')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     
     #should be visible in main manuscript description too:
     number_of_parchment_folios = models.IntegerField(blank=True, null=True)
@@ -1266,7 +1285,7 @@ class Codicology(models.Model):
 class Quires(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_quires')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     sequence_of_the_quire = models.PositiveIntegerField()
     #http://leksykon.oprawoznawczy.ukw.edu.pl/index.php/Sk%C5%82adka
@@ -1349,7 +1368,7 @@ class MusicNotationNames(models.Model):
 class ManuscriptMusicNotations(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_music_notation')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     music_notation_name = models.ForeignKey(MusicNotationNames, models.DO_NOTHING)
     music_notation_name_uuid = models.UUIDField(db_index=True, null=True, blank=True)
@@ -1389,7 +1408,7 @@ class ManuscriptMusicNotations(models.Model):
 class Origins(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_origins')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     origins_date = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True)
     origins_date_uuid = models.UUIDField(db_index=True, null=True, blank=True)
@@ -1417,7 +1436,7 @@ class Provenance(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     #MANUSCRIPT ID	DATE FROM	DATE TO	PLACE	TIMELINE SEQUENCE	COMMENTS
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_provenance')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     date_from = models.ForeignKey(TimeReference, models.DO_NOTHING, blank=True, null=True, related_name='provenance_from')
     date_from_uuid = models.UUIDField(db_index=True, null=True, blank=True)
@@ -1485,7 +1504,7 @@ class BindingMaterials(models.Model):
 class ManuscriptBindingMaterials(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding_materials')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     material = models.ForeignKey(BindingMaterials, models.CASCADE)
     material_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
@@ -1513,7 +1532,7 @@ class BindingDecorationTypes(models.Model):
 class ManuscriptBindingDecorations(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding_decorations')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     decoration = models.ForeignKey(BindingDecorationTypes, models.CASCADE)
     decoration_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
@@ -1540,7 +1559,7 @@ class BindingComponents(models.Model):
 class ManuscriptBindingComponents(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding_components')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     component = models.ForeignKey(BindingComponents, models.CASCADE)
     component_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
@@ -1555,7 +1574,7 @@ class ManuscriptBindingComponents(models.Model):
 class Binding(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_binding')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     max_height = models.PositiveIntegerField(blank=True, null=True)
     max_width = models.PositiveIntegerField(blank=True, null=True)
@@ -1621,7 +1640,7 @@ class Hands(models.Model):
 class ManuscriptHands(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_hands')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     hand = models.ForeignKey(Hands, models.DO_NOTHING)
     hand_uuid = models.UUIDField(db_index=True, null=True, blank=True)
@@ -1662,7 +1681,7 @@ class ManuscriptHands(models.Model):
 class ManuscriptWatermarks(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_watermarks')
-    manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
     watermark = models.ForeignKey(Watermarks, models.DO_NOTHING)
     watermark_uuid = models.UUIDField(db_index=True, null=True, blank=True)

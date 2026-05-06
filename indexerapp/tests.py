@@ -4,12 +4,13 @@ from unittest.mock import patch
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
 
-from indexerapp.models import Codicology, Content, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, RiteNames, ScriptNames, Traditions
+from indexerapp.models import AttributeDebate, Bibliography, Binding, Clla, Codicology, Condition, Content, Decoration, DecorationSubjects, DecorationTypes, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, Provenance, RiteNames, ScriptNames, Subjects, Traditions
 from indexerapp.signals import ensure_env_superuser
 
 
@@ -153,7 +154,8 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		payload = response.json()
 		self.assertGreaterEqual(payload['recordsTotal'], 1)
-		self.assertTrue(any(row['uuid'] == str(manuscript.uuid) for row in payload['data']))
+		row = next(item for item in payload['data'] if item['uuid'] == str(manuscript.uuid))
+		self.assertNotIn('id', row)
 
 	def test_manuscripts_datatable_exposes_source_project_metadata(self):
 		manuscript = Manuscripts.objects.create(name='Project metadata manuscript', display_as_main=True)
@@ -297,6 +299,19 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(str(result['id']), str(formula.uuid))
 		self.assertEqual(str(result['pk']), str(formula.pk))
 
+	def test_formulas_index_used_in_links_are_uuid_first(self):
+		manuscript = Manuscripts.objects.create(name='Formula index manuscript')
+		formula = Formulas.objects.create(co_no='F-index', text='Formula index text')
+		Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+
+		response = self.client.get(reverse('formulas_index-list'))
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		row = next(item for item in payload['results'] if item['id'] == formula.id)
+		self.assertEqual(row['used_in'][0]['uuid'], str(manuscript.uuid))
+		self.assertNotIn('id', row['used_in'][0])
+
 	def test_ritenames_autocomplete_returns_uuid(self):
 		user = get_user_model().objects.create_user('ritename-autocomplete-user', 'rite-auto@example.com', 'secret')
 		ritename = RiteNames.objects.create(name='Rite autocomplete')
@@ -311,6 +326,38 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(str(result['id']), str(ritename.uuid))
 		self.assertEqual(str(result['pk']), str(ritename.pk))
 
+	def test_rites_index_used_in_links_are_uuid_first(self):
+		manuscript = Manuscripts.objects.create(name='Rites index manuscript')
+		ritename = RiteNames.objects.create(name='Rite index name')
+		Content.objects.create(manuscript=manuscript, rubric=ritename, sequence_in_ms=1)
+
+		response = self.client.get(reverse('rites_index-list'))
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		row = next(item for item in payload['results'] if item['id'] == ritename.id)
+		self.assertEqual(row['used_in'][0]['uuid'], str(manuscript.uuid))
+		self.assertNotIn('id', row['used_in'][0])
+
+	def test_subjects_index_used_in_links_are_uuid_first(self):
+		manuscript = Manuscripts.objects.create(name='Subjects index manuscript')
+		subject = Subjects.objects.create(name='Subject index name')
+		decoration_type = DecorationTypes.objects.create(name='Initial')
+		decoration = Decoration.objects.create(
+			manuscript=manuscript,
+			decoration_type=decoration_type,
+			where_in_ms_from='1r',
+		)
+		DecorationSubjects.objects.create(decoration=decoration, subject=subject)
+
+		response = self.client.get(reverse('subjects_index-list'))
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		row = next(item for item in payload['results'] if item['id'] == subject.id)
+		self.assertEqual(row['used_in'][0]['uuid'], str(manuscript.uuid))
+		self.assertNotIn('id', row['used_in'][0])
+
 	def test_ms_info_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='UUID manuscript')
 
@@ -320,6 +367,26 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = response.json()
 		self.assertEqual(payload['manuscript']['uuid'], str(manuscript.uuid))
 		self.assertEqual(payload['manuscript']['name'], 'UUID manuscript')
+
+	def test_ms_info_reads_debate_bound_by_object_uuid(self):
+		manuscript = Manuscripts.objects.create(name='UUID debate manuscript')
+		bibliography = Bibliography.objects.create(title='UUID debate bibliography')
+		content_type = ContentType.objects.get_for_model(Manuscripts)
+		debate = AttributeDebate.objects.create(
+			content_type=content_type,
+			object_uuid=manuscript.uuid,
+			bibliography=bibliography,
+			field_name='name',
+			text='UUID debate text',
+		)
+		AttributeDebate.objects.filter(pk=debate.pk).update(object_id=None)
+
+		response = self.client.get(reverse('ms_info'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(payload['debate'][0]['text'], 'UUID debate text')
+		self.assertEqual(payload['debate'][0]['field_name'], 'name')
 
 	def test_ms_info_exposes_source_project_metadata(self):
 		manuscript = Manuscripts.objects.create(name='UUID manuscript with source project')
@@ -354,7 +421,10 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		payload = response.json()
 		self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
+		self.assertNotIn('manuscript_id', payload)
 		self.assertEqual(len(payload['images']), 1)
+		self.assertEqual(payload['images'][0]['uuid'], str(manuscript.images.first().uuid))
+		self.assertNotIn('id', payload['images'][0])
 
 	def test_ms_gallery_upload_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Upload manuscript')
@@ -367,6 +437,43 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(Image.objects.filter(manuscript=manuscript).count(), 1)
+		self.assertIn('uuid', response.json()['created'][0])
+
+	def test_ms_gallery_delete_accepts_image_uuid(self):
+		manuscript = Manuscripts.objects.create(name='Delete gallery manuscript')
+		image = Image.objects.create(manuscript=manuscript, name='Delete image')
+
+		response = self.client.delete(
+			reverse('ms_gallery'),
+			data=json.dumps({'manuscript_uuid': str(manuscript.uuid), 'image_uuid': str(image.uuid)}),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['image_uuid'], str(image.uuid))
+		self.assertFalse(Image.objects.filter(pk=image.pk).exists())
+
+	def test_layouts_info_uses_uuid_without_legacy_id(self):
+		manuscript = Manuscripts.objects.create(name='Layouts manuscript')
+		layout = Layouts.objects.create(manuscript=manuscript, name='Layout A')
+
+		response = self.client.get(reverse('layouts_info'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(payload['data'][0]['uuid'], str(layout.uuid))
+		self.assertNotIn('id', payload['data'][0])
+
+	def test_condition_info_uses_uuid_without_legacy_id(self):
+		manuscript = Manuscripts.objects.create(name='Condition manuscript')
+		condition = Condition.objects.create(manuscript=manuscript)
+
+		response = self.client.get(reverse('condition_info'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(payload['data'][0]['uuid'], str(condition.uuid))
+		self.assertNotIn('id', payload['data'][0])
 
 	def test_content_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected manuscript', display_as_main=True)
@@ -382,6 +489,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(len(payload['results']), 1)
 		self.assertEqual(payload['results'][0]['manuscript_name'], 'Selected manuscript')
 		self.assertEqual(payload['results'][0]['uuid'], str(selected_content.uuid))
+		self.assertNotIn('id', payload['results'][0])
 
 	def test_hands_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected hands manuscript')
@@ -410,6 +518,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(payload['count'], 1)
 		self.assertEqual(len(payload['results']), 1)
 		self.assertEqual(payload['results'][0]['manuscript'], 'Selected hands manuscript')
+		self.assertNotIn('id', payload['results'][0])
 
 	def test_compare_formulas_json_accepts_manuscript_uuid(self):
 		left = Manuscripts.objects.create(name='Left compare manuscript')
@@ -459,7 +568,8 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertIn('content_export.csv', response['Content-Disposition'])
-		self.assertIn(str(manuscript.id), response.content.decode())
+		self.assertIn('manuscript_uuid', response.content.decode())
+		self.assertIn(str(manuscript.uuid), response.content.decode())
 
 	def test_content_csv_export_legacy_int_route_is_unavailable(self):
 		with self.assertRaises(NoReverseMatch):
@@ -506,6 +616,71 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertJSONEqual(response.content, {'info': 'success'})
 		self.assertTrue(Content.objects.filter(manuscript=manuscript, formula_text='Imported text').exists())
+
+	def test_content_import_rejects_legacy_manuscript_id_payload(self):
+		manuscript = Manuscripts.objects.create(name='Legacy imported manuscript')
+
+		response = self.client.post(
+			reverse('content_import'),
+			data=json.dumps([
+				{
+					'manuscript_id': manuscript.id,
+					'formula_id': '',
+					'formula_text_from_ms': 'Imported text',
+					'sequence_in_ms': 1,
+					'where_in_ms_from': '1r',
+					'where_in_ms_to': '1v',
+					'digital_page_number': '',
+					'rubric_name_from_ms': '',
+					'subrubric_name_from_ms': '',
+					'rubric_id': '',
+					'rubric_sequence_in_the_MS': '',
+					'original_or_added': '',
+					'biblical_reference': '',
+					'reference_to_other_items': '',
+					'edition_index': '',
+					'edition_subindex': '',
+					'comments': '',
+					'function_id': '',
+					'subfunction_id': '',
+					'liturgical_genre_id': '',
+					'music_notation_id': '',
+					'quire_id': '',
+					'section_id': '',
+					'subsection_id': '',
+					'contributor_id': '',
+					'entry_date': '',
+				}
+			]),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertIn('could not resolve manuscript selector', response.json()['info'])
+
+	def test_clla_import_accepts_manuscript_uuid_payload(self):
+		manuscript = Manuscripts.objects.create(name='CLLA manuscript')
+
+		response = self.client.post(
+			reverse('clla_import'),
+			data=json.dumps([
+				{
+					'manuscript_uuid': str(manuscript.uuid),
+					'clla_no': 'CLLA 1',
+					'liturgical_genre': 'genre',
+					'dating': '',
+					'dating_comment': '',
+					'provenance': '',
+					'provenance_comment': '',
+					'comment': 'note',
+				}
+			]),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertJSONEqual(response.content, {'info': 'success'})
+		self.assertTrue(Clla.objects.filter(manuscript=manuscript, clla_no='CLLA 1').exists())
 
 	def test_delete_content_uuid_route_accepts_manuscript_uuid(self):
 		admin_user = get_user_model().objects.create_superuser('uuid-admin', 'uuid-admin@example.com', 'secret')
@@ -564,6 +739,71 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(relation.project_uuid_id, project.uuid)
 		self.assertEqual(relation.manuscript_uuid, manuscript)
 		self.assertEqual(relation.project_uuid, project)
+
+	def test_layout_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Layouts UUID FK manuscript')
+
+		layout = Layouts.objects.create(manuscript=manuscript, where_in_ms_from='3r')
+
+		self.assertEqual(layout.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(layout.manuscript_uuid, manuscript)
+
+	def test_codicology_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Codicology UUID FK manuscript')
+
+		codicology = Codicology.objects.create(manuscript=manuscript)
+
+		self.assertEqual(codicology.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(codicology.manuscript_uuid, manuscript)
+
+	def test_condition_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Condition UUID FK manuscript')
+
+		condition = Condition.objects.create(manuscript=manuscript)
+
+		self.assertEqual(condition.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(condition.manuscript_uuid, manuscript)
+
+	def test_manuscripthands_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Hands UUID FK manuscript')
+		hand = Hands.objects.create(name='UUID FK hand')
+		script = ScriptNames.objects.create(name='UUID FK script')
+
+		relation = ManuscriptHands.objects.create(
+			manuscript=manuscript,
+			hand=hand,
+			script_name=script,
+			sequence_in_ms=1,
+			where_in_ms_from='1r',
+		)
+
+		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(relation.manuscript_uuid, manuscript)
+
+	def test_provenance_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Provenance UUID FK manuscript')
+
+		provenance = Provenance.objects.create(manuscript=manuscript, timeline_sequence=1)
+
+		self.assertEqual(provenance.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(provenance.manuscript_uuid, manuscript)
+
+	def test_binding_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Binding UUID FK manuscript')
+
+		binding = Binding.objects.create(manuscript=manuscript)
+
+		self.assertEqual(binding.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(binding.manuscript_uuid, manuscript)
+
+	def test_manuscriptbibliography_shadow_uuid_is_real_uuid_fk(self):
+		manuscript = Manuscripts.objects.create(name='Bibliography UUID FK manuscript')
+		bibliography = Bibliography.objects.create(title='UUID FK bibliography')
+
+		relation = ManuscriptBibliography.objects.create(manuscript=manuscript, bibliography=bibliography)
+
+		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(relation.manuscript_uuid, manuscript)
 
 class AdminUUIDLookupTests(TestCase):
 	def test_layout_admin_change_view_accepts_uuid_path(self):

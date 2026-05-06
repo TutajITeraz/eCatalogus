@@ -202,7 +202,7 @@ window.getSelectedManuscriptSelector = function (selector) {
     return window.getManuscriptSelectorValue(element.val());
 };
 
-window.getManuscriptSelectorQuery = function (manuscript, legacyKey = 'ms') {
+window.getManuscriptSelectorQuery = function (manuscript) {
     const selector = window.getManuscriptSelectorValue(manuscript);
     if (!selector) {
         return '';
@@ -211,7 +211,7 @@ window.getManuscriptSelectorQuery = function (manuscript, legacyKey = 'ms') {
     return 'manuscript_uuid=' + encodeURIComponent(selector);
 };
 
-window.addManuscriptSelectorParam = function (payload, manuscript, legacyKey = 'manuscript_id') {
+window.addManuscriptSelectorParam = function (payload, manuscript) {
     const selector = window.getManuscriptSelectorValue(manuscript);
     if (!selector) {
         return payload;
@@ -221,7 +221,7 @@ window.addManuscriptSelectorParam = function (payload, manuscript, legacyKey = '
     return payload;
 };
 
-window.appendManuscriptSelectorToFormData = function (formData, manuscript, legacyKey = 'manuscript_id') {
+window.appendManuscriptSelectorToFormData = function (formData, manuscript) {
     const selector = window.getManuscriptSelectorValue(manuscript);
     if (!selector) {
         return formData;

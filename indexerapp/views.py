@@ -430,7 +430,7 @@ class MSInfoAjaxView(View):
 
 
         # Manuscript comments (debate)
-        debate = AttributeDebate.objects.filter(content_type__model='manuscripts', object_id=instance.pk)
+        debate = AttributeDebate.for_instance(instance)
         debate_data = []
 
         # Iterate over each debate object
@@ -487,13 +487,13 @@ class MSGalleryView(View):
             image_url = host + img.image.url if img.image else None
             thumb_url = host + img.thumbnail.url if img.thumbnail else None
             result.append({
-                'id': img.pk,
+                'uuid': str(img.uuid) if img.uuid else None,
                 'name': img.name,
                 'image_url': image_url,
                 'thumbnail_url': thumb_url,
             })
 
-        return JsonResponse({'manuscript_id': ms.pk, 'manuscript_uuid': str(ms.uuid) if ms.uuid else None, 'images': result})
+        return JsonResponse({'manuscript_uuid': str(ms.uuid) if ms.uuid else None, 'images': result})
 
     def post(self, request, *args, **kwargs):
         # uploading images — expects multipart form
@@ -515,7 +515,7 @@ class MSGalleryView(View):
         for f in files:
             name_without_ext = os.path.splitext(f.name)[0]
             img = Image.objects.create(manuscript=ms, name=name_without_ext, image=f)
-            created.append({'id': img.pk, 'name': img.name, 'image_url': request.build_absolute_uri(img.image.url) if img.image else None, 'thumbnail_url': request.build_absolute_uri(img.thumbnail.url) if img.thumbnail else None})
+            created.append({'uuid': str(img.uuid) if img.uuid else None, 'name': img.name, 'image_url': request.build_absolute_uri(img.image.url) if img.image else None, 'thumbnail_url': request.build_absolute_uri(img.thumbnail.url) if img.thumbnail else None})
 
         return JsonResponse({'status': 'ok', 'created': created})
 
@@ -524,7 +524,7 @@ class MSGalleryView(View):
 
         Expects JSON body with:
         - manuscript_uuid (required)
-        - image_id (optional) -> deletes single image; if omitted deletes all images for manuscript
+        - image_uuid (optional) -> deletes single image; if omitted deletes all images for manuscript
         """
         try:
             payload = json.loads(request.body.decode('utf-8') or '{}')
@@ -532,7 +532,7 @@ class MSGalleryView(View):
             return JsonResponse({'error': 'Invalid JSON body'}, status=400)
 
         manuscript_selector = _get_first_present(payload, 'manuscript_uuid', 'ms_uuid')
-        image_id = payload.get('image_id')
+        image_uuid = payload.get('image_uuid')
 
         if not manuscript_selector:
             return JsonResponse({'error': 'manuscript_uuid is required'}, status=400)
@@ -542,10 +542,10 @@ class MSGalleryView(View):
         except Http404:
             return JsonResponse({'error': 'Invalid manuscript selector'}, status=404)
 
-        if image_id:
+        if image_uuid:
             try:
-                img = Image.objects.get(pk=int(image_id), manuscript=ms)
-            except (Image.DoesNotExist, ValueError):
+                img = Image.objects.get(uuid=image_uuid, manuscript=ms)
+            except Image.DoesNotExist:
                 return JsonResponse({'error': 'Image not found for this manuscript'}, status=404)
 
             # delete files from storage first
@@ -558,7 +558,7 @@ class MSGalleryView(View):
                 pass
 
             img.delete()
-            return JsonResponse({'status': 'deleted', 'image_id': image_id})
+            return JsonResponse({'status': 'deleted', 'image_uuid': image_uuid})
 
         # delete all images for manuscript
         imgs = list(ms.images.all())
@@ -672,15 +672,6 @@ class ContentViewSet(viewsets.ModelViewSet):
     def count(self, request, queryset):
         return queryset.count()
 
-    """
-    def get_queryset(self):
-        manuscript_id = self.request.GET.get('manuscript_id', None)
-        if manuscript_id:
-            return Content.objects.filter(manuscript_id=manuscript_id).order_by('manuscript')
-        else:
-            return Content.objects.all().order_by('manuscript')
-    """
-
 class ManuscriptHandsViewSet(viewsets.ModelViewSet):
     serializer_class = ManuscriptHandsSerializer
     filter_backends = [DatatablesFilterBackend]
@@ -698,7 +689,7 @@ class ManuscriptHandsViewSet(viewsets.ModelViewSet):
         if is_main_text is not None:
             queryset = queryset.filter(is_main_text=is_main_text)
         
-        # Apply the filter for manuscript_id if provided
+        # Apply the manuscript filter when the active UUID selector is present.
         if manuscript_selector is not None:
             queryset = _filter_queryset_by_uuid_or_pk(queryset, 'manuscript', manuscript_selector)
         
@@ -1528,7 +1519,7 @@ class CodicologyAjaxView(View):
 
         debate = []
         if instance:
-            debate_query = AttributeDebate.objects.filter(content_type__model='codicology', object_id=instance.id)
+            debate_query = AttributeDebate.for_instance(instance)
             for d in debate_query:
                 bibliography = Bibliography.objects.get(id=d.bibliography_id)
                 # Create a dictionary with debate details
@@ -1555,7 +1546,7 @@ class CodicologyAjaxView(View):
 class LayoutsAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = ['manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_layouts.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1570,7 +1561,7 @@ class DecorationAjaxView(View):
     def get(self, request, *args, **kwargs):
         decoration_type = self.request.GET.get('decoration_type')
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = ['manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_decorations.all()
 
         if decoration_type and len(decoration_type)>3 :
@@ -1598,13 +1589,13 @@ class DecorationAjaxView(View):
 
         debate = []
         for instance in info_queryset:
-            debate_query = AttributeDebate.objects.filter(content_type__model='decoration', object_id=instance.id)
+            debate_query = AttributeDebate.for_instance(instance)
             for d in debate_query:
                 bibliography = Bibliography.objects.get(id=d.bibliography_id)
                 # Create a dictionary with debate details
                 debate_dict = {
                     'id': d.id,
-                    'instance_id': instance.id,
+                    'instance_uuid': str(instance.uuid) if instance.uuid else None,
                     'field_name': d.field_name,
                     'text': d.text,
                     'bibliography': str(bibliography),  # String representation of the Bibliography name
@@ -1625,7 +1616,7 @@ class DecorationAjaxView(View):
 class QuiresAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = ['manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_quires.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1640,8 +1631,8 @@ class ConditionAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [
+            'id',
             'manuscript',
-            'uuid',
             'manuscript_uuid',
             'conservation_date_uuid',
             'data_contributor_uuid',
@@ -1673,19 +1664,19 @@ class CllaAjaxView(View):
 class OriginsAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = ['manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_origins.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
         debate = []
         for instance in info_queryset:
-            debate_query = AttributeDebate.objects.filter(content_type__model='origins', object_id=instance.id)
+            debate_query = AttributeDebate.for_instance(instance)
             for d in debate_query:
                 bibliography = Bibliography.objects.get(id=d.bibliography_id)
                 # Create a dictionary with debate details
                 debate_dict = {
                     'id': d.id,
-                    'instance_id': instance.id,
+                    'instance_uuid': str(instance.uuid) if instance.uuid else None,
                     'field_name': d.field_name,
                     'text': d.text,
                     'bibliography': str(bibliography),  # String representation of the Bibliography name
@@ -1706,7 +1697,7 @@ class OriginsAjaxView(View):
 class BindingAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = [ 'manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_binding.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1769,7 +1760,7 @@ class BindingAjaxView(View):
 class MusicNotationAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = [ 'manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_music_notation.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
@@ -1784,7 +1775,7 @@ class HandsAjaxView(View):
     def get(self, request, *args, **kwargs):
         is_main_text = self.request.GET.get('is_main_text')
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = [ 'manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         info_queryset = ms_instance.ms_hands.all()
 
         if is_main_text=='true' :
@@ -1797,13 +1788,13 @@ class HandsAjaxView(View):
 
         debate = []
         for instance in info_queryset:
-            debate_query = AttributeDebate.objects.filter(content_type__model='manuscripthands', object_id=instance.id)
+            debate_query = AttributeDebate.for_instance(instance)
             for d in debate_query:
                 bibliography = Bibliography.objects.get(id=d.bibliography_id)
                 # Create a dictionary with debate details
                 debate_dict = {
                     'id': d.id,
-                    'instance_id': instance.id,
+                    'instance_uuid': str(instance.uuid) if instance.uuid else None,
                     'field_name': d.field_name,
                     'text': d.text,
                     'bibliography': str(bibliography),  # String representation of the Bibliography name
@@ -1827,12 +1818,12 @@ class WatermarksAjaxView(View):
         info_queryset = ms_instance.ms_watermarks.all()  # ManuscriptWatermarks objects
         
         # Create a list of dictionaries for ManuscriptWatermarks, keeping id
-        skip_fields = ['manuscript', 'watermark']  # Skip ForeignKey fields
+        skip_fields = ['id', 'manuscript', 'watermark']
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
         # Merge all Watermark fields into the ManuscriptWatermarks dictionary, excluding Watermark id
         for idx, entry in enumerate(info_queryset):
-            watermark_dict = get_obj_dictionary(entry.watermark, skip_fields=['id'])  # Skip Watermark id
+            watermark_dict = get_obj_dictionary(entry.watermark, skip_fields=['id'])
             info_dict[idx].update(watermark_dict)
 
         # Create the response dictionary
@@ -1850,10 +1841,10 @@ class BibliographyAjaxView(View):
 
         # Serialize ManuscriptBibliography with Bibliography fields
         info_dict = []
-        skip_fields = ['manuscript', 'bibliography']  # Exclude foreign key objects
+        skip_fields = ['manuscript', 'bibliography']
         for entry in bibliography:
             bib_dict = get_obj_dictionary(entry.bibliography, skip_fields=['zotero_id'])  # Get Bibliography fields
-            bib_dict['id'] = entry.id  # Use ManuscriptBibliography id
+            bib_dict['uuid'] = str(entry.uuid) if entry.uuid else None
             info_dict.append(bib_dict)
 
         # Create the response dictionary
@@ -1907,7 +1898,7 @@ class BibliographyPrintView(View):
 class ProvenanceAjaxView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
-        skip_fields = ['manuscript']  # Add any other fields to skip
+        skip_fields = ['id', 'manuscript']
         
         # Sort the queryset by timeline_sequence
         info_queryset = ms_instance.ms_provenance.all().order_by('timeline_sequence')
@@ -1933,14 +1924,12 @@ class ProvenanceAjaxView(View):
         # Handle debates
         debate = []
         for instance in info_queryset:
-            debate_query = AttributeDebate.objects.filter(
-                content_type__model='provenance', object_id=instance.id
-            )
+            debate_query = AttributeDebate.for_instance(instance)
             for d in debate_query:
                 bibliography = Bibliography.objects.get(id=d.bibliography_id)
                 debate_dict = {
                     'id': d.id,
-                    'instance_id': instance.id,
+                    'instance_uuid': str(instance.uuid) if instance.uuid else None,
                     'field_name': d.field_name,
                     'text': d.text,
                     'bibliography': str(bibliography),
@@ -2765,8 +2754,7 @@ class ContentImportView(View):
         manuscript_uuid = row.get('manuscript_uuid')
         if manuscript_uuid:
             return _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid).pk
-
-        return row.get('manuscript_id')
+        raise Http404('manuscript_uuid is required')
 
     def import_content(self, data):
 
@@ -3351,6 +3339,17 @@ class CllaImportView(View):
                         return JsonResponse({'info': 'error: could not find value "'+row['dating']+'" in table TimeReference'}, status=200)
                     row['dating'] = new_dating 
 
+                manuscript_uuid = row.get('manuscript_uuid')
+                if not manuscript_uuid:
+                    selector = row.get('manuscript_id')
+                    return JsonResponse({'info': f'error: could not resolve manuscript selector "{selector}"'}, status=200)
+
+                try:
+                    manuscript_id = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid).pk
+                except Http404:
+                    selector = row.get('manuscript_uuid') or row.get('manuscript_id')
+                    return JsonResponse({'info': f'error: could not resolve manuscript selector "{selector}"'}, status=200)
+
                 """
                 new_provenance = 
                 
@@ -3366,7 +3365,7 @@ class CllaImportView(View):
 
 
                 content = Clla(
-                    manuscript_id = row.get('manuscript_id'),
+                    manuscript_id = manuscript_id,
                     clla_no = row.get('clla_no'),
                     liturgical_genre = row.get('liturgical_genre'),
                     dating_id = row.get('dating'),
@@ -4420,7 +4419,7 @@ class ContentCSVExportView(View):
         writer = csv.writer(response)
         # Write header
         writer.writerow([
-            "id", "manuscript_id", "sequence_in_ms", "formula_id", "formula_text_from_ms",
+            "id", "manuscript_uuid", "sequence_in_ms", "formula_id", "formula_text_from_ms",
             "similarity_by_user", "where_in_ms_from", "where_in_ms_to", "rubric_name_from_ms", "digital_page_number", "rubric_id",
             "rubric_sequence_in_the_MS", "original_or_added", "biblical_reference", "reference_to_other_items",
             "edition_index", "comments", "function_id", "subfunction_id", "liturgical_genre_id", "music_notation_id",
@@ -4431,7 +4430,7 @@ class ContentCSVExportView(View):
         for content in contents:
             writer.writerow([
                 content.id,
-                content.manuscript_id,
+                str(content.manuscript.uuid) if content.manuscript and content.manuscript.uuid else "",
                 content.sequence_in_ms,
                 content.formula.id if content.formula else "",
                 content.formula_text,
