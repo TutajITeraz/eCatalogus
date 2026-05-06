@@ -199,6 +199,7 @@ class RitesInline(admin.TabularInline):
 """
 class ContentInline(admin.TabularInline):
     model = Content
+    fk_name = 'manuscript'
 
     form = autocomplete.FutureModelForm
     show_change_link=True
@@ -225,6 +226,7 @@ class FormulasInline(admin.TabularInline):
 # New inlines
 class DecorationSubjectsInline(admin.StackedInline):
     model = DecorationSubjects
+    fk_name = 'decoration'
     extra = 0
 
     form = DecorationSubjectsForm
@@ -239,6 +241,7 @@ class DecorationSubjectsInline(admin.StackedInline):
 # New inlines
 class DecorationColoursInline(admin.StackedInline):
     model = DecorationColours
+    fk_name = 'decoration'
     extra = 0
 
     form = DecorationColoursForm
@@ -253,6 +256,7 @@ class DecorationColoursInline(admin.StackedInline):
 # New inlines
 class DecorationCharacteristicsInline(admin.StackedInline):
     model = DecorationCharacteristics
+    fk_name = 'decoration'
     extra = 0
 
     form = DecorationCharacteristicsForm

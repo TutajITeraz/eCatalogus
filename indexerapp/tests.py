@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -10,7 +11,7 @@ from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
 
-from indexerapp.models import AttributeDebate, Bibliography, Binding, Clla, Codicology, Condition, Content, Decoration, DecorationSubjects, DecorationTypes, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, Provenance, RiteNames, ScriptNames, Subjects, Traditions
+from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Clla, Codicology, Condition, Content, Decoration, DecorationSubjects, DecorationTypes, FeastRanks, Formulas, Hands, Image, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, Manuscripts, Projects, Provenance, RiteNames, ScriptNames, Subjects, Traditions
 from indexerapp.signals import ensure_env_superuser
 
 
@@ -475,6 +476,39 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(payload['data'][0]['uuid'], str(condition.uuid))
 		self.assertNotIn('id', payload['data'][0])
 
+	def test_decoration_info_keeps_uuid_payloads_after_shadow_fk_conversion(self):
+		manuscript = Manuscripts.objects.create(name='Decoration manuscript')
+		formula = Formulas.objects.create(co_no='Decor-formula', text='Decoration content formula')
+		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		feast_rank = FeastRanks.objects.create(name='Major feast')
+		calendar = Calendar.objects.create(
+			manuscript=manuscript,
+			content=content,
+			feast_rank=feast_rank,
+			latin_name='Kal. Ian.',
+			feast_name='Circumcision',
+			littera_dominicalis='A',
+		)
+		decoration_type = DecorationTypes.objects.create(name='Initial')
+		decoration = Decoration.objects.create(
+			manuscript=manuscript,
+			content=content,
+			calendar=calendar,
+			decoration_type=decoration_type,
+			where_in_ms_from='1r',
+		)
+
+		response = self.client.get(reverse('decoration_info'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()['data'][0]
+		self.assertEqual(payload['uuid'], str(decoration.uuid))
+		self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
+		self.assertEqual(payload['content_uuid'], str(content.uuid))
+		self.assertEqual(payload['calendar_uuid'], str(calendar.uuid))
+		self.assertEqual(payload['decoration_type_uuid'], str(decoration_type.uuid))
+		self.assertNotIn('id', payload)
+
 	def test_content_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected manuscript', display_as_main=True)
 		other = Manuscripts.objects.create(name='Other manuscript', display_as_main=True)
@@ -804,6 +838,43 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(relation.manuscript_uuid, manuscript)
+
+	def test_next_content_decoration_calendar_slice_has_unique_uuid_prerequisites(self):
+		model_names = [
+			'Calendar',
+			'Characteristics',
+			'Colours',
+			'Content',
+			'ContentFunctions',
+			'Contributors',
+			'Day',
+			'Decoration',
+			'DecorationCharacteristics',
+			'DecorationColours',
+			'DecorationSubjects',
+			'DecorationTechniques',
+			'DecorationTypes',
+			'EditionContent',
+			'FeastRanks',
+			'Formulas',
+			'Genre',
+			'Layer',
+			'LiturgicalGenres',
+			'ManuscriptMusicNotations',
+			'MassHour',
+			'Quires',
+			'RiteNames',
+			'SeasonMonth',
+			'Sections',
+			'Subjects',
+			'TextStandarization',
+			'TimeReference',
+			'Week',
+		]
+
+		for model_name in model_names:
+			model = apps.get_model('indexerapp', model_name)
+			self.assertTrue(model._meta.get_field('uuid').unique, model_name)
 
 class AdminUUIDLookupTests(TestCase):
 	def test_layout_admin_change_view_accepts_uuid_path(self):

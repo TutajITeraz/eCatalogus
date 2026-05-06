@@ -3732,6 +3732,11 @@ def get_obj_dictionary(obj, skip_fields):
     #Translation model to string values:
     for field_name, value in obj_dict.items():
         if hasattr(obj, field_name):
+            model_field = obj._meta.get_field(field_name)
+            if isinstance(model_field, models.ForeignKey) and field_name.endswith('_uuid'):
+                raw_uuid_value = getattr(obj, model_field.attname)
+                info_strings[field_name] = str(raw_uuid_value) if raw_uuid_value is not None else '-'
+                continue
             field = getattr(obj, field_name)
             if isinstance(field, bool):
                 info_strings[field_name] = "Yes" if field else "No"

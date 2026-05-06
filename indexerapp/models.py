@@ -58,7 +58,7 @@ class DecorationTypes(models.Model):
     name = models.CharField(max_length=128)
     parent_type = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
     parent_type_uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -71,7 +71,7 @@ class DecorationTypes(models.Model):
 
 class DecorationTechniques(models.Model):
     name = models.CharField(max_length=128)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -84,7 +84,7 @@ class DecorationTechniques(models.Model):
 
 class Characteristics(models.Model):
     name = models.CharField(max_length=128)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -97,7 +97,7 @@ class Characteristics(models.Model):
 
 class Subjects(models.Model):
     name = models.CharField(max_length=128)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -111,7 +111,7 @@ class Subjects(models.Model):
 class Colours(models.Model):
     name = models.CharField(max_length=128)
     rgb = models.CharField(max_length=8, blank=True, null=True)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
     
     parent_colour = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
@@ -128,7 +128,7 @@ class Colours(models.Model):
 
 class FeastRanks(models.Model):
     name = models.CharField(max_length=128)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -141,7 +141,7 @@ class FeastRanks(models.Model):
 
 #[ ] TODO Uwzględnić  verbose name przy wyświetlaniu w view
 class Calendar(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_calendar')
     manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     where_in_ms_from = models.CharField(max_length=32, default="")
@@ -202,7 +202,7 @@ class Calendar(models.Model):
         return self.latin_name
 
 class DecorationSubjects(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     decoration = models.ForeignKey('Decoration', models.DO_NOTHING, related_name='decoration_subjects')
     decoration_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     subject = models.ForeignKey('Subjects', models.DO_NOTHING, related_name='decoration_subject')
@@ -219,7 +219,7 @@ class DecorationSubjects(models.Model):
 
 
 class DecorationColours(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     decoration = models.ForeignKey('Decoration', models.DO_NOTHING, related_name='decoration_colours')
     decoration_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     colour = models.ForeignKey('Colours', models.DO_NOTHING, related_name='decoration_colour')
@@ -235,7 +235,7 @@ class DecorationColours(models.Model):
         return str(self.decoration) +" / "+ str(self.colour)
 
 class DecorationCharacteristics(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     decoration = models.ForeignKey('Decoration', models.DO_NOTHING, related_name='decoration_characteristics')
     decoration_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     characteristics = models.ForeignKey('Characteristics', models.DO_NOTHING, related_name='decoration_characteristics')
@@ -251,7 +251,7 @@ class DecorationCharacteristics(models.Model):
         return str(self.decoration) +" / "+ str(self.characteristics)
 
 class Decoration(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     manuscript = models.ForeignKey('Manuscripts', models.DO_NOTHING, related_name='ms_decorations')
     manuscript_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     original_or_added = models.CharField(max_length=10,choices=[("ORIGINAL", "original"),("ADDED", "added")], blank=True, null=True)
@@ -433,7 +433,7 @@ class Condition(models.Model):
         return str(self.manuscript) + ' (condition)'
 
 class EditionContent(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     bibliography = models.ForeignKey('Bibliography', models.DO_NOTHING)
     bibliography_uuid = models.UUIDField(db_index=True, null=True, blank=True)
     formula = models.ForeignKey('Formulas', models.DO_NOTHING, blank=True, null=True)
@@ -479,7 +479,7 @@ class Sections(models.Model):
     name = models.CharField(max_length=128)
     parent_section = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
     parent_section_uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -494,7 +494,7 @@ class ContentFunctions(models.Model):
     name = models.CharField(max_length=128)
     parent_function = models.ForeignKey("self",models.CASCADE, blank=True, null=True)
     parent_function_uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -506,7 +506,7 @@ class ContentFunctions(models.Model):
         return self.name
 
 class Contributors(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     initials = models.CharField(max_length=4)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
@@ -553,7 +553,7 @@ class Profile(models.Model):
     edit_mode = models.BooleanField(default=False)
 
 class Content(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
 
     def calc_last_sequence():
         # Znajdź maksymalną wartość 'pole_liczbowe' wśród wszystkich obiektów tego samego typu
@@ -693,7 +693,7 @@ class Content(models.Model):
         return txt
 
 class TimeReference(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     time_description = models.CharField(max_length=64)
     century_from = models.IntegerField()
     century_to = models.IntegerField()
@@ -716,7 +716,7 @@ class TimeReference(models.Model):
         return txt
 
 class LiturgicalGenres(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     title = models.CharField(max_length=128)
     entry_date = models.DateTimeField(auto_now=True)
 
@@ -1283,7 +1283,7 @@ class Codicology(models.Model):
 
 
 class Quires(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_quires')
     manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
@@ -1366,7 +1366,7 @@ class MusicNotationNames(models.Model):
         return txt 
 
 class ManuscriptMusicNotations(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_music_notation')
     manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
 
@@ -1719,7 +1719,7 @@ class Traditions(models.Model):
         return self.name
 
 class Formulas(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     co_no = models.CharField(max_length=50)
     text = models.TextField(blank=True, null=True)
     tradition = models.ManyToManyField('Traditions', related_name='%(class)s_traditions', blank=True)
@@ -1767,7 +1767,7 @@ class ManuscriptGenres(models.Model):
         return txt
 
 class RiteNames(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
 
     name = models.CharField(max_length=128, unique=True)
     english_translation = models.CharField(max_length=128,  blank=True, null=True)
@@ -1848,7 +1848,7 @@ class Type(models.Model):
 
 # Column C
 class SeasonMonth(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=30, unique=True)#max 65
     kind = models.CharField(max_length=12,choices=[("S", "season"),("M", "month")], blank=True, null=True)
@@ -1867,7 +1867,7 @@ class SeasonMonth(models.Model):
 
 # Column D
 class Week(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=75, unique=True)#max 65
     types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
@@ -1883,7 +1883,7 @@ class Week(models.Model):
 
 # Column E
 class Day(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     part = models.CharField(max_length=2,choices=[("T", "temporal"),("S", "sanctoral")], blank=True, null=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=65, unique=True)#max 65
@@ -1901,7 +1901,7 @@ class Day(models.Model):
 
 # Column H
 class MassHour(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=80, unique=True)#max 65
     type = models.ForeignKey('Type', models.DO_NOTHING, blank=True, null=True)
@@ -1918,7 +1918,7 @@ class MassHour(models.Model):
 
 # Column L
 class Layer(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=30, unique=True)#max 65
     entry_date = models.DateTimeField(auto_now=True)
@@ -1933,7 +1933,7 @@ class Layer(models.Model):
 
 # Column I
 class Genre(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=28, unique=True)#max 28
     name = models.CharField(max_length=100, unique=True)#max 65
     types = models.ManyToManyField('Type', related_name='%(class)s_types', blank=True)
@@ -2002,7 +2002,7 @@ class ContentTopic(models.Model):
 
 
 class TextStandarization(models.Model):
-    uuid = models.UUIDField(db_index=True, null=True, blank=True)
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     usu_id = models.CharField(max_length=10, blank=True, null=True)
     cantus_id = models.CharField(max_length=10, blank=True, null=True)
     co_no = models.CharField(max_length=10, blank=True, null=True)
