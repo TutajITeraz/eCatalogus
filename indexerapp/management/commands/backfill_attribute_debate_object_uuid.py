@@ -1,6 +1,10 @@
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
+from django.db import models
+
+
+UUID_DB_FIELD = models.UUIDField()
 
 
 class Command(BaseCommand):
@@ -35,7 +39,7 @@ class Command(BaseCommand):
                     skipped += 1
                     continue
 
-                db_uuid_value = connection.ops.adapt_uuidfield_value(object_uuid)
+                db_uuid_value = UUID_DB_FIELD.get_db_prep_value(object_uuid, connection, prepared=False)
                 cursor.execute(
                     'UPDATE attribute_debate SET object_uuid = %s WHERE id = %s',
                     [db_uuid_value, row['id']],
