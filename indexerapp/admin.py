@@ -333,6 +333,7 @@ class ManuscriptBindingComponentsInline(admin.TabularInline):
 
 class ManuscriptGenresInline(admin.TabularInline):
     model = ManuscriptGenres
+    fk_name = 'manuscript'
     extra = 0
 
     show_change_link=True

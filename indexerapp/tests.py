@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 
 from django.apps import apps
+from django.db import models
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -11,6 +12,7 @@ from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
 
+from etlapp.model_categories import get_sync_model_names
 from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
 from indexerapp.signals import ensure_env_superuser
 
@@ -1038,6 +1040,22 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(decoration_colour.colour_uuid_id, colour.uuid)
 		self.assertEqual(decoration_characteristics.decoration_uuid_id, decoration.uuid)
 		self.assertEqual(decoration_characteristics.characteristics_uuid_id, characteristics.uuid)
+
+	def test_all_sync_shadow_uuid_fields_are_real_uuid_foreign_keys(self):
+		for model_name in get_sync_model_names():
+			model = apps.get_model('indexerapp', model_name)
+			for field in model._meta.concrete_fields:
+				if not isinstance(field, models.ForeignKey):
+					continue
+
+				shadow_name = f'{field.name}_uuid'
+				try:
+					shadow_field = model._meta.get_field(shadow_name)
+				except Exception:
+					continue
+
+				self.assertIsInstance(shadow_field, models.ForeignKey, f'{model_name}.{shadow_name}')
+				self.assertEqual(shadow_field.target_field.name, 'uuid', f'{model_name}.{shadow_name}')
 
 class AdminUUIDLookupTests(TestCase):
 	def test_layout_admin_change_view_accepts_uuid_path(self):
