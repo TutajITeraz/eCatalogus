@@ -16,6 +16,7 @@ from PIL import Image as PILImage
 from io import BytesIO
 from django.core.files import File
 import os
+import uuid
 
 from Levenshtein import distance
 
@@ -355,6 +356,7 @@ class Bibliography(models.Model):
         return self.title
 
 class AttributeDebate(models.Model):
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     text = models.CharField(max_length=256)
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -401,6 +403,9 @@ class AttributeDebate(models.Model):
         return queryset.none()
 
     def save(self, *args, **kwargs):
+        if self.uuid is None:
+            self.uuid = uuid.uuid4()
+
         model_class = self.content_type.model_class() if getattr(self, 'content_type_id', None) else None
         if model_class is not None and hasattr(model_class, 'uuid') and self.object_uuid is not None:
             self.object_uuid = model_class.objects.filter(uuid=self.object_uuid).values_list('uuid', flat=True).first()

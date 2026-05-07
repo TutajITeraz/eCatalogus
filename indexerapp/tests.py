@@ -142,7 +142,7 @@ class AdminUUIDVisibilityTests(TestCase):
 			text='Debate with links',
 		)
 
-		response = self.client.get(reverse('admin:indexerapp_attributedebate_change', args=(debate.pk,)))
+		response = self.client.get(reverse('admin:indexerapp_attributedebate_change', args=(str(debate.uuid),)))
 
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(
@@ -150,6 +150,10 @@ class AdminUUIDVisibilityTests(TestCase):
 			reverse('admin:indexerapp_manuscripts_change', args=(str(manuscript.uuid),)),
 		)
 		self.assertContains(response, 'Linked object actions')
+		self.assertContains(
+			response,
+			reverse('admin:indexerapp_attributedebate_delete', args=(str(debate.uuid),)),
+		)
 
 	def test_attribute_debate_admin_change_view_tolerates_non_uuid_content_type(self):
 		bibliography = Bibliography.objects.create(title='Legacy debate bibliography')
@@ -161,10 +165,28 @@ class AdminUUIDVisibilityTests(TestCase):
 			text='Legacy debate target',
 		)
 
-		response = self.client.get(reverse('admin:indexerapp_attributedebate_change', args=(debate.pk,)))
+		response = self.client.get(reverse('admin:indexerapp_attributedebate_change', args=(str(debate.uuid),)))
 
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Legacy debate target')
+
+	def test_custom_debate_links_prefer_debate_uuid(self):
+		manuscript = Manuscripts.objects.create(name='Debate link manuscript', display_as_main=True)
+		bibliography = Bibliography.objects.create(title='Debate link bibliography')
+		debate = AttributeDebate.objects.create(
+			content_type=ContentType.objects.get_for_model(Manuscripts),
+			object_uuid=manuscript.uuid,
+			bibliography=bibliography,
+			field_name='name',
+			text='Debate link text',
+		)
+
+		manuscript_admin = admin.site._registry[Manuscripts]
+		links = manuscript_admin.get_debate(manuscript, 'name')
+
+		self.assertTrue(links)
+		self.assertIn(str(debate.uuid), links[0])
+		self.assertNotIn(f'/{debate.pk}/change/', links[0])
 
 	def test_codicology_admin_change_view_accepts_uuid_to_field(self):
 		manuscript = Manuscripts.objects.create(name='UUID codicology manuscript', display_as_main=True)

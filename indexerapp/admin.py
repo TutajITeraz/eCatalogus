@@ -399,11 +399,18 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
         )
 
         debates_links = [
-            f'<a href="#" style="cursor: pointer;" onclick="window.open(\'{reverse("admin:indexerapp_attributedebate_change", args=(debate.pk,))}?_popup=1\', \'DebatePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">{debate.text}</a> '
-            f'<a href="#" style="color: red; cursor: pointer;" onclick="window.open(\'{reverse("admin:indexerapp_attributedebate_delete", args=(debate.pk,))}?_popup=1\', \'DebateDeletePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">⌫</a>'
+            f'<a href="#" style="cursor: pointer;" onclick="window.open(\'{self._get_debate_admin_url(debate, "change")}?_popup=1\', \'DebatePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">{debate.text}</a> '
+            f'<a href="#" style="color: red; cursor: pointer;" onclick="window.open(\'{self._get_debate_admin_url(debate, "delete")}?_popup=1\', \'DebateDeletePopup\', \'height=500,width=800,resizable=yes,scrollbars=yes\'); return false;">⌫</a>'
             for debate in debates
         ]
         return debates_links
+
+    def _get_debate_admin_url(self, debate, action):
+        lookup_value = getattr(debate, 'uuid', None) if _model_prefers_uuid_lookup(AttributeDebate) else None
+        if not lookup_value:
+            lookup_value = debate.pk
+
+        return reverse(f'admin:indexerapp_attributedebate_{action}', args=(quote(lookup_value),))
 
 
     def add_debate_link(self, obj, db_field, field):
@@ -942,10 +949,11 @@ class AttributeDebateForm(forms.ModelForm):
 
 class AttributeDebateAdmin(admin.ModelAdmin):
     form = AttributeDebateForm
+    change_form_template = 'admin/indexerapp/attributedebate/change_form.html'
     list_display=  [field.name for field in AttributeDebate._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
-    readonly_fields = ('timestamp',)
+    readonly_fields = ('uuid', 'timestamp',)
 
 class LayoutsForm(forms.ModelForm):
     #where_in_ms_from = FolioPaginationField()
