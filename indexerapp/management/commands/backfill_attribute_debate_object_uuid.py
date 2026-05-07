@@ -35,9 +35,10 @@ class Command(BaseCommand):
                     skipped += 1
                     continue
 
+                db_uuid_value = connection.ops.adapt_uuidfield_value(object_uuid)
                 cursor.execute(
                     'UPDATE attribute_debate SET object_uuid = %s WHERE id = %s',
-                    [str(object_uuid), row['id']],
+                    [db_uuid_value, row['id']],
                 )
                 updated += 1
 

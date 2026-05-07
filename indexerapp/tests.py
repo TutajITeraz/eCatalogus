@@ -123,6 +123,34 @@ class AdminUUIDVisibilityTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'UUID change view project')
 
+	def test_attribute_debate_admin_uses_multiline_text_widget(self):
+		request = RequestFactory().get('/admin/')
+		request.user = AnonymousUser()
+		debate_admin = admin.site._registry[AttributeDebate]
+		form_class = debate_admin.get_form(request)
+
+		self.assertEqual(form_class.base_fields['text'].widget.__class__.__name__, 'Textarea')
+
+	def test_attribute_debate_admin_exposes_linked_object_actions(self):
+		manuscript = Manuscripts.objects.create(name='Debate actions manuscript', display_as_main=True)
+		bibliography = Bibliography.objects.create(title='Debate actions bibliography')
+		debate = AttributeDebate.objects.create(
+			content_type=ContentType.objects.get_for_model(Manuscripts),
+			object_uuid=manuscript.uuid,
+			bibliography=bibliography,
+			field_name='name',
+			text='Debate with links',
+		)
+
+		response = self.client.get(reverse('admin:indexerapp_attributedebate_change', args=(debate.pk,)))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(
+			response,
+			reverse('admin:indexerapp_manuscripts_change', args=(str(manuscript.uuid),)),
+		)
+		self.assertContains(response, 'Linked object actions')
+
 	def test_codicology_admin_change_view_accepts_uuid_to_field(self):
 		manuscript = Manuscripts.objects.create(name='UUID codicology manuscript', display_as_main=True)
 		codicology = Codicology.objects.create(manuscript=manuscript)

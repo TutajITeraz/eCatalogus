@@ -19,6 +19,7 @@ from django.contrib.admin.utils import quote
 from django.contrib.admin.views.main import ChangeList
 from django.urls import reverse
 from django.utils.html import format_html
+from django.templatetags.static import static
 
 from decimal import Decimal
 import math
@@ -857,10 +858,88 @@ class BibliographyAdmin(admin.ModelAdmin):
                              ]
 
 
+class AttributeDebateForm(forms.ModelForm):
+    class Meta:
+        model = AttributeDebate
+        fields = '__all__'
+        widgets = {
+            'text': Textarea(attrs={'rows': 6, 'cols': 100}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        object_uuid_field = self.fields.get('object_uuid')
+        if object_uuid_field is not None:
+            actions = self._build_object_uuid_actions()
+            if actions is not None:
+                object_uuid_field.help_text = actions
+
+    def _build_object_uuid_actions(self):
+        instance = self.instance
+        if not instance or not getattr(instance, 'pk', None) or instance.content_type_id is None:
+            return None
+
+        model_class = instance.content_type.model_class()
+        if model_class is None:
+            return None
+
+        links = []
+        add_url = self._get_model_admin_url(model_class, 'add')
+        if add_url is not None:
+            links.append(self._render_admin_icon_link(add_url, 'icon-addlink.svg', 'Add linked object'))
+
+        target = instance.content_object
+        if target is not None:
+            for action, icon_name, title in (
+                ('change', 'icon-changelink.svg', 'Change linked object'),
+                ('delete', 'icon-deletelink.svg', 'Delete linked object'),
+                ('history', 'icon-history.svg', 'History linked object'),
+            ):
+                target_url = self._get_object_admin_url(target, action)
+                if target_url is not None:
+                    links.append(self._render_admin_icon_link(target_url, icon_name, title))
+
+        if not links:
+            return None
+
+        return format_html('Linked object actions: {}', mark_safe(' '.join(str(link) for link in links)))
+
+    def _get_model_admin_url(self, model, action):
+        opts = model._meta
+        try:
+            return reverse(f'admin:{opts.app_label}_{opts.model_name}_{action}')
+        except Exception:
+            return None
+
+    def _get_object_admin_url(self, obj, action):
+        model = obj.__class__
+        lookup_value = getattr(obj, 'uuid', None) if _model_prefers_uuid_lookup(model) else obj.pk
+        if lookup_value in (None, ''):
+            return None
+
+        opts = model._meta
+        try:
+            return reverse(f'admin:{opts.app_label}_{opts.model_name}_{action}', args=(quote(lookup_value),))
+        except Exception:
+            return None
+
+    def _render_admin_icon_link(self, url, icon_name, title):
+        return format_html(
+            '<a href="{}" target="_blank" title="{}"><img src="{}" alt="{}"></a>',
+            url,
+            title,
+            static(f'admin/img/{icon_name}'),
+            title,
+        )
+
+
 class AttributeDebateAdmin(admin.ModelAdmin):
+    form = AttributeDebateForm
     list_display=  [field.name for field in AttributeDebate._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+    readonly_fields = ('timestamp',)
 
 class LayoutsForm(forms.ModelForm):
     #where_in_ms_from = FolioPaginationField()
