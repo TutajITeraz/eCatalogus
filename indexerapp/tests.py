@@ -15,6 +15,7 @@ from django.urls import NoReverseMatch, reverse
 from etlapp.model_categories import get_sync_model_names
 from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
 from indexerapp.signals import ensure_env_superuser
+from indexerapp.views import get_obj_dictionary
 
 
 class EnvSuperuserBootstrapTests(TestCase):
@@ -375,14 +376,13 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		manuscript = Manuscripts.objects.create(name='UUID debate manuscript')
 		bibliography = Bibliography.objects.create(title='UUID debate bibliography')
 		content_type = ContentType.objects.get_for_model(Manuscripts)
-		debate = AttributeDebate.objects.create(
+		AttributeDebate.objects.create(
 			content_type=content_type,
 			object_uuid=manuscript.uuid,
 			bibliography=bibliography,
 			field_name='name',
 			text='UUID debate text',
 		)
-		AttributeDebate.objects.filter(pk=debate.pk).update(object_id=None)
 
 		response = self.client.get(reverse('ms_info'), {'manuscript_uuid': str(manuscript.uuid)})
 
@@ -390,6 +390,29 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = response.json()
 		self.assertEqual(payload['debate'][0]['text'], 'UUID debate text')
 		self.assertEqual(payload['debate'][0]['field_name'], 'name')
+
+	def test_attribute_debate_content_object_resolves_by_object_uuid(self):
+		manuscript = Manuscripts.objects.create(name='UUID-bound debate manuscript')
+		bibliography = Bibliography.objects.create(title='UUID-bound debate bibliography')
+		content_type = ContentType.objects.get_for_model(Manuscripts)
+
+		debate = AttributeDebate.objects.create(
+			content_type=content_type,
+			object_uuid=manuscript.uuid,
+			bibliography=bibliography,
+			field_name='name',
+			text='UUID debate text',
+		)
+
+		self.assertEqual(debate.content_object, manuscript)
+
+	def test_get_obj_dictionary_keeps_uuid_fk_values_raw(self):
+		manuscript = Manuscripts.objects.create(name='Dictionary manuscript')
+		condition = Condition.objects.create(manuscript=manuscript)
+
+		payload = get_obj_dictionary(condition, skip_fields=[])
+
+		self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
 
 	def test_ms_info_exposes_source_project_metadata(self):
 		manuscript = Manuscripts.objects.create(name='UUID manuscript with source project')

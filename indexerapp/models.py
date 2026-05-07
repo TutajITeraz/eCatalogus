@@ -7,7 +7,6 @@
 # Feel free to rename the models, but don't rename db_table values or field names.
 from django.db import models
 from django.contrib.contenttypes.models import ContentType #dla komentarzy
-from django.contrib.contenttypes.fields import GenericForeignKey #dla komentarzy
 from django.utils.functional import cached_property
 from django.contrib.auth.models import User
 from django.conf import settings
@@ -364,14 +363,30 @@ class AttributeDebate(models.Model):
     #Odwołanie do konkretnego wpisu dowolnego modelu:
     #(typ modelu):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    #(object_id):
-    object_id = models.PositiveIntegerField(null=True, blank=True)
     object_uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    #To pole ułatwia pracę z obiektami poprzez bezpośrednie odwołanie:
-    content_object = GenericForeignKey('content_type', 'object_id')
 
     # Pole do przechowywania nazwy pola komentowanego:
     field_name = models.CharField(max_length=255) 
+
+    @property
+    def content_object(self):
+        if not getattr(self, 'content_type_id', None) or not self.object_uuid:
+            return None
+
+        model_class = self.content_type.model_class()
+        if model_class is None or not hasattr(model_class, 'uuid'):
+            return None
+
+        return model_class.objects.filter(uuid=self.object_uuid).first()
+
+    @content_object.setter
+    def content_object(self, instance):
+        if instance is None:
+            self.object_uuid = None
+            return
+
+        self.content_type = ContentType.objects.get_for_model(instance)
+        self.object_uuid = getattr(instance, 'uuid', None)
 
     @classmethod
     def for_instance(cls, instance):
@@ -379,16 +394,13 @@ class AttributeDebate(models.Model):
         object_uuid = getattr(instance, 'uuid', None)
         queryset = cls.objects.filter(content_type=content_type)
         if object_uuid:
-            return queryset.filter(models.Q(object_uuid=object_uuid) | models.Q(object_id=instance.pk))
-        return queryset.filter(object_id=instance.pk)
+            return queryset.filter(object_uuid=object_uuid)
+        return queryset.none()
 
     def save(self, *args, **kwargs):
-        model_class = self.content_type.model_class() if self.content_type_id else None
-        if model_class is not None and hasattr(model_class, 'uuid'):
-            if self.object_uuid is None and self.object_id is not None:
-                self.object_uuid = model_class.objects.filter(pk=self.object_id).values_list('uuid', flat=True).first()
-            elif self.object_id is None and self.object_uuid is not None:
-                self.object_id = model_class.objects.filter(uuid=self.object_uuid).values_list('pk', flat=True).first()
+        model_class = self.content_type.model_class() if getattr(self, 'content_type_id', None) else None
+        if model_class is not None and hasattr(model_class, 'uuid') and self.object_uuid is not None:
+            self.object_uuid = model_class.objects.filter(uuid=self.object_uuid).values_list('uuid', flat=True).first()
         super().save(*args, **kwargs)
 
     class Meta:

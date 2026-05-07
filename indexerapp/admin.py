@@ -408,10 +408,8 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
     def add_debate_link(self, obj, db_field, field):
         debate_add_url = reverse("admin:indexerapp_attributedebate_add")
         content_type = ContentType.objects.get_for_model(obj)
-        object_id = obj.pk if obj else 'add'
         object_uuid = getattr(obj, 'uuid', None) if obj else None
-        content_object = f"{content_type.app_label}_{content_type.model}_{object_id}"
-        debate_add_url_with_parameters = f"{debate_add_url}?_popup=1&content_type={content_type.id}&object_id={object_id}&content_object={content_object}&field_name={db_field.name}"
+        debate_add_url_with_parameters = f"{debate_add_url}?_popup=1&content_type={content_type.id}&field_name={db_field.name}"
         if object_uuid:
             debate_add_url_with_parameters += f"&object_uuid={object_uuid}"
 

@@ -3733,7 +3733,7 @@ def get_obj_dictionary(obj, skip_fields):
     for field_name, value in obj_dict.items():
         if hasattr(obj, field_name):
             model_field = obj._meta.get_field(field_name)
-            if isinstance(model_field, models.ForeignKey) and field_name.endswith('_uuid'):
+            if isinstance(model_field, models.ForeignKey) and getattr(model_field.target_field, 'name', None) == 'uuid':
                 raw_uuid_value = getattr(obj, model_field.attname)
                 info_strings[field_name] = str(raw_uuid_value) if raw_uuid_value is not None else '-'
                 continue
@@ -3851,7 +3851,6 @@ class ManuscriptDetail(LoginRequiredMixin, View):
         #info = get_obj_dictionary(instance,[])
 
         #MS Comments:
-        #debate = AttributeDebate.objects.filter(content_type=ContentType.objects.get_for_model(Manuscripts), object_id=pk)
 
         #MS Codicology:
         #codicology = get_obj_dictionary(instance.ms_codicology.first(),skip_fields)
