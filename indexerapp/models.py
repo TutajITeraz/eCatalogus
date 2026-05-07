@@ -373,11 +373,14 @@ class AttributeDebate(models.Model):
         if not getattr(self, 'content_type_id', None) or not self.object_uuid:
             return None
 
-        model_class = self.content_type.model_class()
-        if model_class is None or not hasattr(model_class, 'uuid'):
-            return None
+        try:
+            model_class = self.content_type.model_class()
+            if model_class is None or not hasattr(model_class, 'uuid'):
+                return None
 
-        return model_class.objects.filter(uuid=self.object_uuid).first()
+            return model_class.objects.filter(uuid=self.object_uuid).first()
+        except Exception:
+            return None
 
     @content_object.setter
     def content_object(self, instance):

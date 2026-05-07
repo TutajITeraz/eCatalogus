@@ -151,6 +151,21 @@ class AdminUUIDVisibilityTests(TestCase):
 		)
 		self.assertContains(response, 'Linked object actions')
 
+	def test_attribute_debate_admin_change_view_tolerates_non_uuid_content_type(self):
+		bibliography = Bibliography.objects.create(title='Legacy debate bibliography')
+		debate = AttributeDebate.objects.create(
+			content_type=ContentType.objects.get_for_model(get_user_model()),
+			object_uuid='12345678-1234-5678-1234-567812345678',
+			bibliography=bibliography,
+			field_name='username',
+			text='Legacy debate target',
+		)
+
+		response = self.client.get(reverse('admin:indexerapp_attributedebate_change', args=(debate.pk,)))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Legacy debate target')
+
 	def test_codicology_admin_change_view_accepts_uuid_to_field(self):
 		manuscript = Manuscripts.objects.create(name='UUID codicology manuscript', display_as_main=True)
 		codicology = Codicology.objects.create(manuscript=manuscript)

@@ -871,9 +871,15 @@ class AttributeDebateForm(forms.ModelForm):
 
         object_uuid_field = self.fields.get('object_uuid')
         if object_uuid_field is not None:
-            actions = self._build_object_uuid_actions()
+            actions = self._safe_build_object_uuid_actions()
             if actions is not None:
                 object_uuid_field.help_text = actions
+
+    def _safe_build_object_uuid_actions(self):
+        try:
+            return self._build_object_uuid_actions()
+        except Exception:
+            return None
 
     def _build_object_uuid_actions(self):
         instance = self.instance
