@@ -1765,10 +1765,8 @@ class Formulas(models.Model):
 
 class ManuscriptGenres(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    manuscript = models.ForeignKey(Manuscripts, models.DO_NOTHING, related_name='ms_genres')
-    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='+', null=True, blank=True, db_constraint=False)
+    manuscript_uuid = models.ForeignKey(Manuscripts, models.DO_NOTHING, to_field='uuid', db_column='manuscript_uuid', related_name='ms_genres', null=True, blank=True, db_constraint=False)
 
-    genre = models.ForeignKey(LiturgicalGenres, models.DO_NOTHING)
     genre_uuid = models.ForeignKey(LiturgicalGenres, models.DO_NOTHING, to_field='uuid', db_column='genre_uuid', related_name='+', null=True, blank=True, db_constraint=False)
     entry_date = models.DateTimeField(auto_now=True)
 
@@ -1778,7 +1776,7 @@ class ManuscriptGenres(models.Model):
         verbose_name_plural = 'Manuscript Genres'
 
     def __str__(self):
-        txt = str(self.manuscript) + ' to '+ str(self.genre)
+        txt = str(self.manuscript_uuid) + ' to '+ str(self.genre_uuid)
         if txt is None:
             return "noname"
         if len(txt)>30:

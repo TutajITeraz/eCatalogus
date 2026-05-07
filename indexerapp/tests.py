@@ -268,8 +268,8 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		other = Manuscripts.objects.create(name='Genre-other manuscript')
 		genre = LiturgicalGenres.objects.create(title='Sacramentary')
 		other_genre = LiturgicalGenres.objects.create(title='Psalter')
-		ManuscriptGenres.objects.create(manuscript=selected, genre=genre)
-		ManuscriptGenres.objects.create(manuscript=other, genre=other_genre)
+		ManuscriptGenres.objects.create(manuscript_uuid=selected, genre_uuid=genre)
+		ManuscriptGenres.objects.create(manuscript_uuid=other, genre_uuid=other_genre)
 
 		response = self.client.get(
 			reverse('manuscripts-list'),
@@ -928,6 +928,17 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(relation.manuscript_uuid, manuscript)
+
+	def test_manuscriptgenres_relations_remain_uuid_backed_after_old_fk_drop(self):
+		manuscript = Manuscripts.objects.create(name='Genres UUID FK manuscript')
+		genre = LiturgicalGenres.objects.create(title='UUID FK liturgical genre')
+
+		relation = ManuscriptGenres.objects.create(manuscript_uuid=manuscript, genre_uuid=genre)
+
+		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
+		self.assertEqual(relation.genre_uuid_id, genre.uuid)
+		self.assertEqual(relation.manuscript_uuid, manuscript)
+		self.assertEqual(relation.genre_uuid, genre)
 
 	def test_calendar_shadow_uuids_are_real_uuid_fks(self):
 		manuscript = Manuscripts.objects.create(name='Calendar UUID FK manuscript')

@@ -306,7 +306,7 @@ def build_manuscript_export_payload(manuscript_uuid):
         raise ValueError(f'Unknown manuscript uuid: {manuscript_uuid}')
 
     ordered_models = _get_category_models_in_dependency_order('ms')
-    included_pks = {'Manuscripts': {manuscript.pk}}
+    included_records = {'Manuscripts': [manuscript]}
     exported_models = []
     total_records = 0
     media_files = []
@@ -316,7 +316,7 @@ def build_manuscript_export_payload(manuscript_uuid):
         if model is Manuscripts:
             records = [manuscript]
         else:
-            queryset = _build_manuscript_model_queryset(model, included_pks)
+            queryset = _build_manuscript_model_queryset(model, included_records)
             if queryset is None:
                 continue
             records = list(queryset.order_by('entry_date', 'pk'))
@@ -324,7 +324,7 @@ def build_manuscript_export_payload(manuscript_uuid):
         if not records:
             continue
 
-        included_pks[model.__name__] = {record.pk for record in records}
+        included_records[model.__name__] = records
         _collect_media_files_for_records(model, records, media_files, seen_media_paths)
         serialized = [_serialize_instance(record) for record in records]
         total_records += len(serialized)
@@ -661,7 +661,7 @@ def _prepare_import_values(model, record):
                     raise ValueError(
                         f'Missing related object for {model._meta.label}.{field.name} with uuid={record[uuid_key]}'
                     )
-                attrs[field.attname] = related_object.pk
+                attrs[field.attname] = getattr(related_object, field.target_field.attname)
                 continue
 
             if field.name in record:
@@ -910,16 +910,21 @@ def _get_same_category_dependencies(model, category):
     return dependencies
 
 
-def _build_manuscript_model_queryset(model, included_pks):
+def _build_manuscript_model_queryset(model, included_records):
     manuscript_fk_names = [
-        field.name
+        field
         for field in model._meta.concrete_fields
         if field.is_relation and field.many_to_one and getattr(field.related_model, '__name__', None) == 'Manuscripts'
     ]
-    if manuscript_fk_names:
+    manuscript_records = included_records.get('Manuscripts', [])
+    if manuscript_fk_names and manuscript_records:
         query = Q()
-        for field_name in manuscript_fk_names:
-            query |= Q(**{f'{field_name}__in': included_pks['Manuscripts']})
+        for field in manuscript_fk_names:
+            lookup_values = {
+                getattr(record, field.target_field.attname)
+                for record in manuscript_records
+            }
+            query |= Q(**{f'{field.name}__in': lookup_values})
         return model.objects.filter(query).distinct()
 
     dependency_queries = Q()
@@ -932,11 +937,15 @@ def _build_manuscript_model_queryset(model, included_pks):
         if related_model is None or related_model._meta.app_label != 'indexerapp':
             continue
 
-        related_pks = included_pks.get(related_model.__name__)
-        if not related_pks:
+        related_records = included_records.get(related_model.__name__)
+        if not related_records:
             continue
 
-        dependency_queries |= Q(**{f'{field.name}__in': related_pks})
+        lookup_values = {
+            getattr(record, field.target_field.attname)
+            for record in related_records
+        }
+        dependency_queries |= Q(**{f'{field.name}__in': lookup_values})
         found_dependency = True
 
     if not found_dependency:
@@ -962,7 +971,11 @@ def _serialize_instance(instance):
         if field.is_relation and field.many_to_one:
             payload[field.name] = _serialize_value(value)
             related_object = getattr(instance, field.name)
-            if related_object is not None and hasattr(related_object, 'uuid'):
+            if (
+                related_object is not None
+                and hasattr(related_object, 'uuid')
+                and not field.name.endswith('_uuid')
+            ):
                 payload[f'{field.name}_uuid'] = _serialize_value(getattr(related_object, 'uuid', None))
             continue
 

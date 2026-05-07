@@ -21,7 +21,7 @@ from rest_framework.test import APIClient
 from etlapp.views import ETLAdminSyncView
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -570,23 +570,33 @@ class ETLManuscriptPackageViewTests(TestCase):
 
     def test_manuscript_export_includes_uuid_foreign_keys_for_main_and_shared_relations(self):
         bibliography = Bibliography.objects.create(title='MS Bibliography')
+        genre = LiturgicalGenres.objects.create(title='MS Genre')
         formula = Formulas.objects.create(co_no='CO-MS', text='Formula')
         manuscript = Manuscripts.objects.create(name='MS Export With FK')
         Content.objects.create(manuscript=manuscript, formula=formula, formula_text='Lorem ipsum')
         ManuscriptBibliography.objects.create(manuscript=manuscript, bibliography=bibliography)
+        ManuscriptGenres.objects.create(manuscript_uuid=manuscript, genre_uuid=genre)
 
         payload = build_manuscript_export_payload(manuscript.uuid)
         models_by_label = {model_payload['model']: model_payload for model_payload in payload['models']}
 
         exported_content = models_by_label['indexerapp.Content']['results'][0]
         exported_manuscript_bibliography = models_by_label['indexerapp.ManuscriptBibliography']['results'][0]
+        exported_manuscript_genres = models_by_label['indexerapp.ManuscriptGenres']['results'][0]
 
         self.assertEqual(exported_content['formula_uuid'], str(formula.uuid))
         self.assertEqual(exported_manuscript_bibliography['bibliography_uuid'], str(bibliography.uuid))
+        self.assertEqual(exported_manuscript_genres['manuscript_uuid'], str(manuscript.uuid))
+        self.assertEqual(exported_manuscript_genres['genre_uuid'], str(genre.uuid))
+        self.assertNotIn('manuscript_uuid_uuid', exported_manuscript_genres)
+        self.assertNotIn('genre_uuid_uuid', exported_manuscript_genres)
 
     def test_manuscript_import_creates_ms_package(self):
         manuscript_uuid = str(uuid4())
         content_uuid = str(uuid4())
+        genre_uuid = str(uuid4())
+        manuscript_genres_uuid = str(uuid4())
+        LiturgicalGenres.objects.create(uuid=genre_uuid, title='Imported liturgical genre')
 
         client = APIClient()
         response = client.post(
@@ -616,6 +626,17 @@ class ETLManuscriptPackageViewTests(TestCase):
                             }
                         ],
                     },
+                    {
+                        'model': 'indexerapp.ManuscriptGenres',
+                        'results': [
+                            {
+                                'uuid': manuscript_genres_uuid,
+                                'manuscript_uuid': manuscript_uuid,
+                                'genre_uuid': genre_uuid,
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
                 ],
             },
             format='json',
@@ -625,10 +646,13 @@ class ETLManuscriptPackageViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         manuscript = Manuscripts.objects.get(uuid=manuscript_uuid)
         content = Content.objects.get(uuid=content_uuid)
+        manuscript_genres = ManuscriptGenres.objects.get(uuid=manuscript_genres_uuid)
         self.assertEqual(manuscript.name, 'Imported manuscript')
         self.assertEqual(content.manuscript_id, manuscript.pk)
+        self.assertEqual(manuscript_genres.manuscript_uuid_id, manuscript.uuid)
+        self.assertEqual(str(manuscript_genres.genre_uuid_id), genre_uuid)
         self.assertEqual(response.json()['category'], 'ms')
-        self.assertEqual(response.json()['created'], 2)
+        self.assertEqual(response.json()['created'], 3)
 
 
 class ExportModelCategoriesCommandTests(TestCase):

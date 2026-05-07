@@ -334,7 +334,7 @@ class ManuscriptBindingComponentsInline(admin.TabularInline):
 
 class ManuscriptGenresInline(admin.TabularInline):
     model = ManuscriptGenres
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
     extra = 0
 
     show_change_link=True
@@ -660,7 +660,7 @@ class LiturgicalGenresNamesAdmin(admin.ModelAdmin):
 
 
 class ManuscriptGenresAdmin(CustomDebateableAdmin):
-    list_display=  ['id','manuscript','genre']
+    list_display=  ['id','manuscript_uuid','genre_uuid']
 
     list_filter = [ManuscriptsFilter]
 

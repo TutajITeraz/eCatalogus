@@ -425,7 +425,7 @@ class MSInfoAjaxView(View):
         #print("This is info ms_genres:", info.ms_genres)
         print("This is instance ms_genres:", instance.ms_genres.all())
 
-        info['ms_genres'] = [str(genre.genre) for genre in instance.ms_genres.all()]
+        info['ms_genres'] = [str(genre.genre_uuid) for genre in instance.ms_genres.all()]
 
 
 
@@ -842,7 +842,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         if source_project:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_projects__project', source_project)
         if liturgical_genre:
-            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_genres__genre', liturgical_genre)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_genres__genre_uuid', liturgical_genre)
         if contemporary_repository_place:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'contemporary_repository_place', contemporary_repository_place)
         if shelfmark:
