@@ -14,7 +14,7 @@ from django.urls import NoReverseMatch, reverse
 
 from etlapp.model_categories import get_sync_model_names
 from indexerapp.ai_tools import get_all_manuscript_names
-from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
+from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.views import get_obj_dictionary
 
@@ -686,6 +686,35 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(payload['decoration_type_uuid'], str(decoration_type.uuid))
 		self.assertNotIn('id', payload)
 
+	def test_binding_info_keeps_uuid_payloads_after_shadow_fk_conversion(self):
+		manuscript = Manuscripts.objects.create(name='Binding manuscript')
+		binding_type = BindingTypes.objects.create(name='Codex')
+		binding_style = BindingStyles.objects.create(name='Romanesque')
+		binding = Binding.objects.create(
+			manuscript_uuid=manuscript,
+			type_of_binding_uuid=binding_type,
+			style_of_binding_uuid=binding_style,
+		)
+		material = BindingMaterials.objects.create(name='Leather')
+		decoration_type = BindingDecorationTypes.objects.create(name='Bosses')
+		component = BindingComponents.objects.create(name='Strap')
+		ManuscriptBindingMaterials.objects.create(manuscript_uuid=manuscript, material_uuid=material)
+		ManuscriptBindingDecorations.objects.create(manuscript_uuid=manuscript, decoration_uuid=decoration_type)
+		ManuscriptBindingComponents.objects.create(manuscript_uuid=manuscript, component_uuid=component)
+
+		response = self.client.get(reverse('binding_info'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()['info']
+		self.assertEqual(payload['uuid'], str(binding.uuid))
+		self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
+		self.assertEqual(payload['type_of_binding_uuid'], str(binding_type.uuid))
+		self.assertEqual(payload['style_of_binding_uuid'], str(binding_style.uuid))
+		self.assertEqual(payload['materials'], 'Leather')
+		self.assertEqual(payload['decorations'], 'Bosses')
+		self.assertEqual(payload['components'], 'Strap')
+		self.assertNotIn('id', payload)
+
 	def test_content_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected manuscript', display_as_main=True)
 		other = Manuscripts.objects.create(name='Other manuscript', display_as_main=True)
@@ -698,6 +727,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = response.json()
 		self.assertEqual(payload['count'], 1)
 		self.assertEqual(len(payload['results']), 1)
+		self.assertEqual(payload['results'][0]['manuscript'], str(selected.uuid))
 		self.assertEqual(payload['results'][0]['manuscript_name'], 'Selected manuscript')
 		self.assertEqual(payload['results'][0]['uuid'], str(selected_content.uuid))
 		self.assertNotIn('id', payload['results'][0])

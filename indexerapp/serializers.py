@@ -213,6 +213,7 @@ class ManuscriptHandsSerializer(serializers.ModelSerializer):
         return representation
 
 class ContentSerializer(serializers.ModelSerializer):
+    manuscript = serializers.SerializerMethodField()
     manuscript_name = serializers.SerializerMethodField()
     rubric = RiteNamesSerializer
     formula_standarized = serializers.SerializerMethodField()
@@ -256,13 +257,16 @@ class ContentSerializer(serializers.ModelSerializer):
     def get_liturgical_genre(self, content):
         return ', '.join([str(genre) for content in content.content_genres.all()])
 
+    def get_manuscript(self, content):
+        return str(content.manuscript_uuid.uuid) if content.manuscript_uuid and content.manuscript_uuid.uuid else ''
+
     def get_traditions(self, content):
         if content.formula:
             return ', '.join([str(tradition) for tradition in content.formula.tradition.all()])
         return ''
 
     def get_manuscript_name(self, content):
-        return content.manuscript.name
+        return content.manuscript_uuid.name if content.manuscript_uuid else ''
 
     def get_formula_standarized(self, content):
         if content.formula:

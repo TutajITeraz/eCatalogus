@@ -1715,42 +1715,27 @@ class BindingAjaxView(View):
         info_queryset = ms_instance.ms_binding.all()
         info_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
 
-        #Binding materials:
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
-        info_queryset = ms_instance.ms_binding_materials.all()
-        materials_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
+        materials_str = ", ".join(
+            str(entry.material_uuid)
+            for entry in ms_instance.ms_binding_materials.select_related('material_uuid').all()
+            if entry.material_uuid
+        )
 
-        materials_str = ""
-
-        for m in materials_dict:
-            materials_str += m['material'] +", "
-        materials_str = materials_str[:-2]
-
-
-        #Binding decorations:
-        skip_fields = ['id', 'manuscript']  # Add any other fields to skip
-        info_queryset = ms_instance.ms_binding_decorations.all()
-        decorations_dict = [get_obj_dictionary(entry, skip_fields) for entry in info_queryset]
-
-        decorations_str = ""
-
-        for m in decorations_dict:
-            decorations_str += m['decoration'] +", "
-        decorations_str = decorations_str[:-2]
+        decorations_str = ", ".join(
+            str(entry.decoration_uuid)
+            for entry in ms_instance.ms_binding_decorations.select_related('decoration_uuid').all()
+            if entry.decoration_uuid
+        )
 
         if len(decorations_str) < 2:
             decorations_str = "No" 
 
 
-        #Binding components:
-        components_queryset = ms_instance.ms_binding_components.all()
-        components_dict = [get_obj_dictionary(entry, skip_fields) for entry in components_queryset]
-
-        components_str = ""
-
-        for m in components_dict:
-            components_str += m['component'] +", "
-        components_str = components_str[:-2]
+        components_str = ", ".join(
+            str(entry.component_uuid)
+            for entry in ms_instance.ms_binding_components.select_related('component_uuid').all()
+            if entry.component_uuid
+        )
 
         if len(components_str) < 2:
             components_str = "No" 
