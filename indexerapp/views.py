@@ -805,7 +805,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
 
         #print("projectId = "+str(projectId))
         if projectId != 0:
-            queryset = queryset.filter(ms_projects__project__id=projectId)
+            queryset = queryset.filter(ms_projects__project_uuid__id=projectId)
 
         # During the rollout-safe transition, legacy rows may still have display_as_main unset.
         queryset = queryset.exclude(display_as_main=False)
@@ -2070,7 +2070,7 @@ class ManuscriptsAutocompleteMain(UUIDAutocompleteResultMixin, autocomplete.Sele
 
         projectId = self.request.GET.get('project_id', None)
         if projectId:
-            qs = qs.filter(ms_projects__project__id=projectId)
+            qs = qs.filter(ms_projects__project_uuid__id=projectId)
         qs = qs.filter(display_as_main=True)
 
 
@@ -2143,7 +2143,7 @@ class MSForeignIdAutocomplete(autocomplete.Select2QuerySetView):
 
         projectId = self.request.GET.get('project_id', None)
         if projectId:
-            qs = qs.filter(ms_projects__project__id=projectId)
+            qs = qs.filter(ms_projects__project_uuid__id=projectId)
         qs = qs.filter(display_as_main=True)
 
 
@@ -2166,7 +2166,7 @@ class MSShelfMarkAutocomplete(autocomplete.Select2QuerySetView):
 
         projectId = self.request.GET.get('project_id', None)
         if projectId:
-            qs = qs.filter(ms_projects__project__id=projectId)
+            qs = qs.filter(ms_projects__project_uuid__id=projectId)
         qs = qs.filter(display_as_main=True)
 
         # Filtruj wyniki na podstawie wartości wprowadzonej przez użytkownika

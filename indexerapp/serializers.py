@@ -107,13 +107,13 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
     dating = TimeReferenceSerializer()
     main_script = ScriptNamesSerializer()
     binding_date = TimeReferenceSerializer()
-    contemporary_repository_place_name = serializers.CharField(source='contemporary_repository_place.__str__', allow_null=True, read_only=True)
+    contemporary_repository_place_name = serializers.SerializerMethodField()
     contemporary_repository_place_latitude = serializers.FloatField(source='contemporary_repository_place.latitude', allow_null=True, read_only=True)
     contemporary_repository_place_longitude = serializers.FloatField(source='contemporary_repository_place.longitude', allow_null=True, read_only=True)
-    place_of_origin_name = serializers.CharField(source='place_of_origin.__str__', allow_null=True, read_only=True)
+    place_of_origin_name = serializers.SerializerMethodField()
     place_of_origin_latitude = serializers.FloatField(source='place_of_origin.latitude', allow_null=True, read_only=True)
     place_of_origin_longitude = serializers.FloatField(source='place_of_origin.longitude', allow_null=True, read_only=True)
-    binding_place_name = serializers.CharField(source='binding_place.__str__', allow_null=True, read_only=True)
+    binding_place_name = serializers.SerializerMethodField()
     binding_place_latitude = serializers.FloatField(source='binding_place.latitude', allow_null=True, read_only=True)
     binding_place_longitude = serializers.FloatField(source='binding_place.longitude', allow_null=True, read_only=True)
     thumbnail_url = serializers.SerializerMethodField()
@@ -129,6 +129,15 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
             return obj.image.url
         return None
 
+    def get_contemporary_repository_place_name(self, obj):
+        return str(obj.contemporary_repository_place) if obj.contemporary_repository_place else ''
+
+    def get_place_of_origin_name(self, obj):
+        return str(obj.place_of_origin) if obj.place_of_origin else ''
+
+    def get_binding_place_name(self, obj):
+        return str(obj.binding_place) if obj.binding_place else ''
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation.pop('id', None)
@@ -137,7 +146,7 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
         representation['binding_date'] = str(instance.binding_date)
 
         source_project_link = instance.ms_projects.select_related('project_uuid').order_by('id').first()
-        source_project = source_project_link.project if source_project_link else None
+        source_project = source_project_link.project_uuid if source_project_link else None
         representation['source_project_name'] = source_project.name if source_project else ''
         representation['source_project_icon'] = source_project.icon if source_project else ''
         representation['source_project_url'] = source_project.project_url if source_project else ''

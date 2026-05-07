@@ -11,7 +11,7 @@ def get_all_manuscript_names(projectId):
     queryset = Manuscripts.objects.all()
 
     if projectId != 0:
-        queryset = queryset.filter(ms_projects__project__id=projectId)
+        queryset = queryset.filter(ms_projects__project_uuid__id=projectId)
 
     # Start with headers
     csv_data = '"id","name","rism_id","foreign_id","shelf_mark"\n'

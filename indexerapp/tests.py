@@ -13,6 +13,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
 
 from etlapp.model_categories import get_sync_model_names
+from indexerapp.ai_tools import get_all_manuscript_names
 from indexerapp.models import AttributeDebate, Bibliography, Binding, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.views import get_obj_dictionary
@@ -263,6 +264,35 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(payload['recordsFiltered'], 1)
 		self.assertEqual([row['name'] for row in payload['data']], ['Selected source project manuscript'])
 
+	def test_manuscripts_datatable_filters_by_legacy_project_id_after_uuid_fk_drop(self):
+		selected = Manuscripts.objects.create(name='Legacy projectId selected manuscript', display_as_main=True)
+		other = Manuscripts.objects.create(name='Legacy projectId other manuscript', display_as_main=True)
+		selected_project = Projects.objects.create(name='Legacy selected project')
+		other_project = Projects.objects.create(name='Legacy other project')
+		MSProjects.objects.create(manuscript_uuid=selected, project_uuid=selected_project)
+		MSProjects.objects.create(manuscript_uuid=other, project_uuid=other_project)
+
+		response = self.client.get(
+			reverse('manuscripts-list'),
+			{'format': 'datatables', 'projectId': str(selected_project.id), 'length': 10},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual(payload['recordsFiltered'], 1)
+		self.assertEqual([row['name'] for row in payload['data']], ['Legacy projectId selected manuscript'])
+
+	def test_manuscripts_datatable_renders_blank_nullable_place_names(self):
+		manuscript = Manuscripts.objects.create(name='Nullable place manuscript', display_as_main=True)
+
+		response = self.client.get(reverse('manuscripts-list'), {'format': 'datatables', 'length': 100})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		row = next(item for item in payload['data'] if item['uuid'] == str(manuscript.uuid))
+		self.assertEqual(row['place_of_origin_name'], '')
+		self.assertEqual(row['binding_place_name'], '')
+
 	def test_manuscripts_datatable_filters_by_liturgical_genre_uuid(self):
 		selected = Manuscripts.objects.create(name='Genre-selected manuscript')
 		other = Manuscripts.objects.create(name='Genre-other manuscript')
@@ -353,6 +383,63 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(result['uuid'], str(project.uuid))
 		self.assertEqual(str(result['id']), str(project.uuid))
 		self.assertEqual(str(result['pk']), str(project.pk))
+
+	def test_manuscripts_autocomplete_main_filters_by_legacy_project_id_after_uuid_fk_drop(self):
+		user = get_user_model().objects.create_user('ms-main-auto-user', 'ms-main-auto@example.com', 'secret')
+		selected_project = Projects.objects.create(name='Autocomplete selected project')
+		other_project = Projects.objects.create(name='Autocomplete other project')
+		selected = Manuscripts.objects.create(name='Autocomplete selected manuscript', display_as_main=True)
+		other = Manuscripts.objects.create(name='Autocomplete other manuscript', display_as_main=True)
+		MSProjects.objects.create(manuscript_uuid=selected, project_uuid=selected_project)
+		MSProjects.objects.create(manuscript_uuid=other, project_uuid=other_project)
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('manuscripts-autocomplete-main'), {'project_id': selected_project.id, 'q': 'Autocomplete'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual([item['text'] for item in payload['results']], ['Autocomplete selected manuscript'])
+
+	def test_ms_foreign_id_autocomplete_filters_by_legacy_project_id_after_uuid_fk_drop(self):
+		selected_project = Projects.objects.create(name='ForeignId selected project')
+		other_project = Projects.objects.create(name='ForeignId other project')
+		selected = Manuscripts.objects.create(name='ForeignId selected manuscript', foreign_id='F-SELECTED', display_as_main=True)
+		other = Manuscripts.objects.create(name='ForeignId other manuscript', foreign_id='F-OTHER', display_as_main=True)
+		MSProjects.objects.create(manuscript_uuid=selected, project_uuid=selected_project)
+		MSProjects.objects.create(manuscript_uuid=other, project_uuid=other_project)
+
+		response = self.client.get(reverse('ms-foreign-id-autocomplete'), {'project_id': selected_project.id, 'q': 'F-'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual([item['text'] for item in payload['results']], ['F-SELECTED'])
+
+	def test_ms_shelf_mark_autocomplete_filters_by_legacy_project_id_after_uuid_fk_drop(self):
+		selected_project = Projects.objects.create(name='ShelfMark selected project')
+		other_project = Projects.objects.create(name='ShelfMark other project')
+		selected = Manuscripts.objects.create(name='ShelfMark selected manuscript', shelf_mark='SM-SELECTED', display_as_main=True)
+		other = Manuscripts.objects.create(name='ShelfMark other manuscript', shelf_mark='SM-OTHER', display_as_main=True)
+		MSProjects.objects.create(manuscript_uuid=selected, project_uuid=selected_project)
+		MSProjects.objects.create(manuscript_uuid=other, project_uuid=other_project)
+
+		response = self.client.get(reverse('ms-shelf-mark-autocomplete'), {'project_id': selected_project.id, 'q': 'SM-'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual([item['text'] for item in payload['results']], ['SM-SELECTED'])
+
+	def test_get_all_manuscript_names_filters_by_legacy_project_id_after_uuid_fk_drop(self):
+		selected_project = Projects.objects.create(name='AI selected project')
+		other_project = Projects.objects.create(name='AI other project')
+		selected = Manuscripts.objects.create(name='AI selected manuscript', display_as_main=True)
+		other = Manuscripts.objects.create(name='AI other manuscript', display_as_main=True)
+		MSProjects.objects.create(manuscript_uuid=selected, project_uuid=selected_project)
+		MSProjects.objects.create(manuscript_uuid=other, project_uuid=other_project)
+
+		csv_data = get_all_manuscript_names(selected_project.id)
+
+		self.assertIn('AI selected manuscript', csv_data)
+		self.assertNotIn('AI other manuscript', csv_data)
 
 	def test_formula_autocomplete_returns_uuid(self):
 		user = get_user_model().objects.create_user('formula-autocomplete-user', 'formula-auto@example.com', 'secret')
