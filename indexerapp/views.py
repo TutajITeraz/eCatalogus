@@ -1579,7 +1579,7 @@ class DecorationAjaxView(View):
         info_queryset = ms_instance.ms_decorations.all()
 
         if decoration_type and len(decoration_type)>3 :
-            info_queryset = info_queryset.filter(decoration_type__name=decoration_type)
+            info_queryset = info_queryset.filter(decoration_type_uuid__name__iexact=decoration_type)
 
         info_dict = []
         for entry in info_queryset:
@@ -3735,6 +3735,13 @@ def get_obj_dictionary(obj, skip_fields):
             if isinstance(model_field, models.ForeignKey) and getattr(model_field.target_field, 'name', None) == 'uuid':
                 raw_uuid_value = getattr(obj, model_field.attname)
                 info_strings[field_name] = str(raw_uuid_value) if raw_uuid_value is not None else '-'
+                if field_name.endswith('_uuid'):
+                    legacy_field_name = field_name[:-5]
+                    relation_obj = getattr(obj, field_name, None)
+                    info_strings.setdefault(
+                        legacy_field_name,
+                        str(relation_obj) if relation_obj is not None else '-'
+                    )
                 continue
             field = getattr(obj, field_name)
             if isinstance(field, bool):

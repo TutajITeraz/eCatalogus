@@ -14,7 +14,7 @@ from django.urls import NoReverseMatch, reverse
 
 from etlapp.model_categories import get_sync_model_names
 from indexerapp.ai_tools import get_all_manuscript_names
-from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, Manuscripts, MassHour, MusicNotationNames, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Week, Colours, EditionContent
+from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Watermarks, Week, Colours
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.views import get_obj_dictionary
 
@@ -565,6 +565,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		payload = get_obj_dictionary(condition, skip_fields=[])
 
 		self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
+		self.assertEqual(payload['manuscript'], str(manuscript))
 
 	def test_ms_info_exposes_source_project_metadata(self):
 		manuscript = Manuscripts.objects.create(name='UUID manuscript with source project')
@@ -672,19 +673,130 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 			content_uuid=content,
 			calendar_uuid=calendar,
 			decoration_type_uuid=decoration_type,
+			data_contributor_uuid=Contributors.objects.create(initials='DEC', first_name='Dec', last_name='Contributor'),
 			where_in_ms_from='1r',
 		)
+		Decoration.objects.create(
+			manuscript_uuid=manuscript,
+			content_uuid=content,
+			calendar_uuid=calendar,
+			decoration_type_uuid=DecorationTypes.objects.create(name='Miniatures'),
+			where_in_ms_from='2r',
+		)
 
-		response = self.client.get(reverse('decoration_info'), {'manuscript_uuid': str(manuscript.uuid)})
+		response = self.client.get(
+			reverse('decoration_info'),
+			{'manuscript_uuid': str(manuscript.uuid), 'decoration_type': 'initial'},
+		)
 
 		self.assertEqual(response.status_code, 200)
+		self.assertEqual(len(response.json()['data']), 1)
 		payload = response.json()['data'][0]
 		self.assertEqual(payload['uuid'], str(decoration.uuid))
 		self.assertEqual(payload['manuscript_uuid'], str(manuscript.uuid))
 		self.assertEqual(payload['content_uuid'], str(content.uuid))
 		self.assertEqual(payload['calendar_uuid'], str(calendar.uuid))
 		self.assertEqual(payload['decoration_type_uuid'], str(decoration_type.uuid))
+		self.assertEqual(payload['content'], str(content))
+		self.assertEqual(payload['calendar'], str(calendar))
+		self.assertEqual(payload['decoration_type'], 'Initial')
+		self.assertEqual(payload['data_contributor'], 'Dec Contributor')
 		self.assertNotIn('id', payload)
+
+	def test_manuscript_info_views_expose_legacy_datatable_keys(self):
+		manuscript = Manuscripts.objects.create(name='Legacy datatable manuscript')
+		contributor = Contributors.objects.create(initials='LDT', first_name='Legacy', last_name='Contributor')
+		time_reference = TimeReference.objects.create(
+			time_description='12th century',
+			century_from=12,
+			century_to=12,
+			year_from=1100,
+			year_to=1199,
+		)
+		place = Places.objects.create(
+			country_today_eng='Poland',
+			city_today_eng='Gniezno',
+			repository_today_eng='Cathedral Library',
+		)
+		layout = Layouts.objects.create(
+			manuscript_uuid=manuscript,
+			name='Layout A',
+			where_in_ms_from='1r',
+			data_contributor_uuid=contributor,
+		)
+		hand = Hands.objects.create(name='Hand A')
+		script = ScriptNames.objects.create(name='Caroline')
+		ManuscriptHands.objects.create(
+			manuscript_uuid=manuscript,
+			hand_uuid=hand,
+			script_name_uuid=script,
+			sequence_in_ms=1,
+			where_in_ms_from='1r',
+			is_main_text=True,
+			data_contributor_uuid=contributor,
+		)
+		origin = Origins.objects.create(
+			manuscript_uuid=manuscript,
+			origins_date_uuid=time_reference,
+			origins_place_uuid=place,
+			data_contributor_uuid=contributor,
+		)
+		music_notation_name = MusicNotationNames.objects.create(name='Neumes')
+		music_notation = ManuscriptMusicNotations.objects.create(
+			manuscript_uuid=manuscript,
+			music_notation_name_uuid=music_notation_name,
+			sequence_in_ms=1,
+			where_in_ms_from='1r',
+			dating_uuid=time_reference,
+			data_contributor_uuid=contributor,
+		)
+		watermark = Watermarks.objects.create(name='Bull head', data_contributor_uuid=contributor)
+		ManuscriptWatermarks.objects.create(
+			manuscript_uuid=manuscript,
+			watermark_uuid=watermark,
+			where_in_manuscript='1r',
+		)
+		quire = Quires.objects.create(
+			manuscript_uuid=manuscript,
+			sequence_of_the_quire=1,
+			type_of_the_quire='binion',
+			where_in_ms_from='1r',
+			data_contributor_uuid=contributor,
+		)
+		provenance = Provenance.objects.create(
+			manuscript_uuid=manuscript,
+			date_from_uuid=time_reference,
+			date_to_uuid=time_reference,
+			place_uuid=place,
+			timeline_sequence=1,
+			data_contributor_uuid=contributor,
+		)
+
+		layouts_payload = self.client.get(reverse('layouts_info'), {'manuscript_uuid': str(manuscript.uuid)}).json()['data'][0]
+		hands_payload = self.client.get(reverse('hands_info'), {'manuscript_uuid': str(manuscript.uuid), 'is_main_text': 'true'}).json()['data'][0]
+		origins_payload = self.client.get(reverse('origins_info'), {'manuscript_uuid': str(manuscript.uuid)}).json()['data'][0]
+		music_payload = self.client.get(reverse('music_notation_info'), {'manuscript_uuid': str(manuscript.uuid)}).json()['data'][0]
+		watermarks_payload = self.client.get(reverse('watermarks_info'), {'manuscript_uuid': str(manuscript.uuid)}).json()['data'][0]
+		quires_payload = self.client.get(reverse('quires_info'), {'manuscript_uuid': str(manuscript.uuid)}).json()['data'][0]
+		provenance_payload = self.client.get(reverse('provenance_info'), {'manuscript_uuid': str(manuscript.uuid)}).json()['data'][0]
+
+		self.assertEqual(layouts_payload['uuid'], str(layout.uuid))
+		self.assertEqual(layouts_payload['data_contributor'], str(contributor))
+		self.assertEqual(hands_payload['hand'], str(hand))
+		self.assertEqual(hands_payload['script_name'], str(script))
+		self.assertEqual(hands_payload['data_contributor'], str(contributor))
+		self.assertEqual(origins_payload['origins_date'], str(time_reference))
+		self.assertEqual(origins_payload['origins_place'], str(place))
+		self.assertEqual(origins_payload['data_contributor'], str(contributor))
+		self.assertEqual(music_payload['music_notation_name'], str(music_notation_name))
+		self.assertEqual(music_payload['dating'], str(time_reference))
+		self.assertEqual(music_payload['data_contributor'], str(contributor))
+		self.assertEqual(watermarks_payload['data_contributor'], str(contributor))
+		self.assertEqual(quires_payload['data_contributor'], str(contributor))
+		self.assertEqual(provenance_payload['date_from'], str(time_reference))
+		self.assertEqual(provenance_payload['date_to'], str(time_reference))
+		self.assertEqual(provenance_payload['place'], str(place))
+		self.assertEqual(provenance_payload['data_contributor'], str(contributor))
 
 	def test_binding_info_keeps_uuid_payloads_after_shadow_fk_conversion(self):
 		manuscript = Manuscripts.objects.create(name='Binding manuscript')
