@@ -68,8 +68,8 @@ def _sync_shadow_fk_uuids(sender, instance, **kwargs):
     if kwargs.get('raw'):
         return
 
-    for field, shadow_field in get_model_uuid_shadow_fk_specs(sender):
-        setattr(instance, shadow_field.attname, resolve_shadow_uuid(instance, field))
+    for _legacy_name, field in get_model_uuid_shadow_fk_specs(sender):
+        setattr(instance, field.attname, resolve_shadow_uuid(instance, field))
 
 
 def _has_shared_model_changes(sender, instance):
@@ -149,7 +149,7 @@ def auto_populate_digital_page_number(sender, instance, **kwargs):
         return
     if instance.where_in_ms_from:
         contents = Content.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from,
             digital_page_number__isnull=False
         )
@@ -157,7 +157,7 @@ def auto_populate_digital_page_number(sender, instance, **kwargs):
             if contents.count() > 1:
                 # Log the multiple records
                 logger.warning(
-                    f"Multiple Content records found for manuscript {instance.manuscript_id} "
+                    f"Multiple Content records found for manuscript {instance.manuscript_uuid_id} "
                     f"and where_in_ms_from '{instance.where_in_ms_from}' with non-null digital_page_number. "
                     f"Record IDs: {list(contents.values_list('id', flat=True))}. "
                     "Choosing the first one."
@@ -179,37 +179,37 @@ def update_related_models_digital_page_number(sender, instance, **kwargs):
     if instance.where_in_ms_from and instance.digital_page_number is not None:
         # Update Layouts
         Layouts.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from
         ).update(digital_page_number=instance.digital_page_number)
 
         # Update Quires
         Quires.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from
         ).update(digital_page_number=instance.digital_page_number)
 
         # Update Calendar
         Calendar.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from
         ).update(digital_page_number=instance.digital_page_number)
 
         # Update Decoration
         Decoration.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from
         ).update(digital_page_number=instance.digital_page_number)
 
         # Update ManuscriptHands
         ManuscriptHands.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from
         ).update(digital_page_number=instance.digital_page_number)
 
         # Update ManuscriptMusicNotations
         ManuscriptMusicNotations.objects.filter(
-            manuscript=instance.manuscript,
+            manuscript_uuid=instance.manuscript_uuid,
             where_in_ms_from=instance.where_in_ms_from
         ).update(digital_page_number=instance.digital_page_number)
 

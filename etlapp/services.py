@@ -969,13 +969,17 @@ def _serialize_instance(instance):
         value = getattr(instance, field.attname)
 
         if field.is_relation and field.many_to_one:
+            try:
+                related_object = getattr(instance, field.name)
+            except field.related_model.DoesNotExist:
+                related_object = None
+
+            if related_object is not None and hasattr(related_object, field.target_field.attname):
+                value = getattr(related_object, field.target_field.attname)
+
             payload[field.name] = _serialize_value(value)
-            related_object = getattr(instance, field.name)
-            if (
-                related_object is not None
-                and hasattr(related_object, 'uuid')
-                and not field.name.endswith('_uuid')
-            ):
+
+            if related_object is not None and hasattr(related_object, 'uuid') and not field.name.endswith('_uuid'):
                 payload[f'{field.name}_uuid'] = _serialize_value(getattr(related_object, 'uuid', None))
             continue
 

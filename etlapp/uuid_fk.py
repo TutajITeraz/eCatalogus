@@ -2,7 +2,14 @@ from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 
+from indexerapp.models import UUID_RELATION_COMPAT_ALIASES
+
 from .model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names
+
+
+def get_legacy_fk_aliases(model):
+    aliases = UUID_RELATION_COMPAT_ALIASES.get(model, {})
+    return {canonical_name: legacy_name for legacy_name, canonical_name in aliases.items()}
 
 
 def get_uuid_shadow_model_names(categories=None):
@@ -22,6 +29,7 @@ def get_uuid_shadow_model_names(categories=None):
 
 def get_model_uuid_shadow_fk_specs(model):
     specs = []
+    legacy_names_by_field = get_legacy_fk_aliases(model)
 
     for field in model._meta.concrete_fields:
         if not isinstance(field, models.ForeignKey):
@@ -36,13 +44,14 @@ def get_model_uuid_shadow_fk_specs(model):
         if get_model_category(related_model.__name__) not in SYNC_CATEGORIES:
             continue
 
-        shadow_field_name = f'{field.name}_uuid'
-        try:
-            shadow_field = model._meta.get_field(shadow_field_name)
-        except FieldDoesNotExist:
+        legacy_name = legacy_names_by_field.get(field.name)
+        if legacy_name is None and field.name.endswith('_uuid'):
+            legacy_name = field.name[:-5]
+
+        if legacy_name is None:
             continue
 
-        specs.append((field, shadow_field))
+        specs.append((legacy_name, field))
 
     return tuple(specs)
 
@@ -67,8 +76,13 @@ def resolve_shadow_uuid(instance, field):
     if related_pk is None:
         return None
 
-    related_object = getattr(instance, field.name, None)
-    if related_object is not None and getattr(related_object, 'pk', None) == related_pk:
+    try:
+        related_object = getattr(instance, field.name, None)
+    except field.related_model.DoesNotExist:
+        related_object = None
+
+    target_attname = field.target_field.attname
+    if related_object is not None and getattr(related_object, target_attname, None) == related_pk:
         return getattr(related_object, 'uuid', None)
 
-    return field.related_model.objects.filter(pk=related_pk).values_list('uuid', flat=True).first()
+    return field.related_model.objects.filter(**{target_attname: related_pk}).values_list('uuid', flat=True).first()

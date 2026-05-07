@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import models
 
 from etlapp.model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names
-from etlapp.uuid_fk import resolve_shadow_uuid
+from etlapp.uuid_fk import get_legacy_fk_aliases, resolve_shadow_uuid
 
 
 def _iter_selected_models(model_names=None, categories=None):
@@ -55,6 +55,7 @@ class Command(BaseCommand):
         for model, category in selected_models:
             summary['models'] += 1
             queryset = model.objects.all().order_by('pk')
+            legacy_names_by_field = get_legacy_fk_aliases(model)
 
             fk_specs = []
             m2m_fields = []
@@ -67,13 +68,13 @@ class Command(BaseCommand):
                 if get_model_category(related_model.__name__) not in SYNC_CATEGORIES:
                     continue
 
-                shadow_field = None
-                try:
-                    shadow_field = model._meta.get_field(f'{field.name}_uuid')
-                except FieldDoesNotExist:
-                    shadow_field = None
+                legacy_name = legacy_names_by_field.get(field.name)
+                if legacy_name is None and field.name.endswith('_uuid'):
+                    legacy_name = field.name[:-5]
+                if legacy_name is None:
+                    continue
 
-                fk_specs.append((field, shadow_field))
+                fk_specs.append((legacy_name, field))
                 if related_model == model:
                     summary['self_fk_fields'] += 1
                 if not field.null:
@@ -89,7 +90,7 @@ class Command(BaseCommand):
                 summary['m2m_fields'] += 1
 
             if fk_specs:
-                queryset = queryset.select_related(*[field.name for field, _ in fk_specs])
+                queryset = queryset.select_related(*[field.name for _legacy_name, field in fk_specs])
             if m2m_fields:
                 queryset = queryset.prefetch_related(*[field.name for field in m2m_fields])
 
@@ -103,7 +104,7 @@ class Command(BaseCommand):
                     'self_reference': 0,
                     'missing_shadow_field': 0,
                 }
-                for field, _shadow_field in fk_specs
+                for field_name, field in ((legacy_name, field) for legacy_name, field in fk_specs)
             }
             m2m_counters = {
                 field.name: {
@@ -117,12 +118,10 @@ class Command(BaseCommand):
 
             for instance in queryset.iterator(chunk_size=options['chunk_size']):
                 owner_uuid = getattr(instance, 'uuid', None)
-                for field, shadow_field in fk_specs:
-                    counters = field_counters[field.name]
+                for legacy_name, field in fk_specs:
+                    counters = field_counters[legacy_name]
                     related_pk = getattr(instance, field.attname)
                     if related_pk is None:
-                        if shadow_field is not None and getattr(instance, shadow_field.attname) is not None:
-                            counters['stale_without_fk'] += 1
                         continue
 
                     if owner_uuid is None:
@@ -136,11 +135,7 @@ class Command(BaseCommand):
                     if expected_uuid is None:
                         counters['related_missing_uuid'] += 1
 
-                    if shadow_field is None:
-                        counters['missing_shadow_field'] += 1
-                        continue
-
-                    current_shadow_uuid = getattr(instance, shadow_field.attname)
+                    current_shadow_uuid = getattr(instance, field.attname)
                     if current_shadow_uuid is None:
                         counters['missing_shadow'] += 1
                         continue
@@ -159,15 +154,15 @@ class Command(BaseCommand):
                         counters['owner_missing_uuid'] += 1
                     counters['related_missing_uuid'] += sum(1 for related_object in related_objects if getattr(related_object, 'uuid', None) is None)
 
-            for field, shadow_field in fk_specs:
-                counters = field_counters[field.name]
+            for legacy_name, field in fk_specs:
+                counters = field_counters[legacy_name]
                 total_issues = sum(counters.values()) - counters['self_reference']
                 status = 'ISSUES' if total_issues else 'OK'
                 issues_found = issues_found or bool(total_issues)
                 summary['issues'] += total_issues
-                shadow_name = shadow_field.attname if shadow_field is not None else 'missing'
+                shadow_name = field.attname
                 self.stdout.write(
-                    f'FK {model.__name__}.{field.name} [{category}] shadow={shadow_name} status={status} '
+                    f'FK {model.__name__}.{legacy_name} [{category}] shadow={shadow_name} status={status} '
                     f'owner_missing_uuid={counters["owner_missing_uuid"]} '
                     f'related_missing_uuid={counters["related_missing_uuid"]} '
                     f'missing_shadow={counters["missing_shadow"]} '

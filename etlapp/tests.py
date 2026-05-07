@@ -325,7 +325,7 @@ class ETLDeltaImportViewTests(TestCase):
         imported_type = Type.objects.get(uuid=imported_type_uuid)
         imported_mass_hour = MassHour.objects.get(uuid=imported_mass_hour_uuid)
         self.assertEqual(imported_type.name, 'Imported Type')
-        self.assertEqual(imported_mass_hour.type_id, imported_type.pk)
+        self.assertEqual(imported_mass_hour.type_uuid_id, imported_type.uuid)
         self.assertEqual(response.json()['created'], 2)
 
     def test_shared_import_updates_when_version_is_newer(self):
@@ -648,7 +648,7 @@ class ETLManuscriptPackageViewTests(TestCase):
         content = Content.objects.get(uuid=content_uuid)
         manuscript_genres = ManuscriptGenres.objects.get(uuid=manuscript_genres_uuid)
         self.assertEqual(manuscript.name, 'Imported manuscript')
-        self.assertEqual(content.manuscript_id, manuscript.pk)
+        self.assertEqual(content.manuscript_uuid_id, manuscript.uuid)
         self.assertEqual(manuscript_genres.manuscript_uuid_id, manuscript.uuid)
         self.assertEqual(str(manuscript_genres.genre_uuid_id), genre_uuid)
         self.assertEqual(response.json()['category'], 'ms')
@@ -1092,15 +1092,15 @@ class SyncMetadataTests(TestCase):
         type_one = Type.objects.create(short_name='TPA', name='Type A')
         type_two = Type.objects.create(short_name='TPB', name='Type B')
 
-        mass_hour = MassHour.objects.create(short_name='MHA', name='Mass Hour A', type=type_one)
+        mass_hour = MassHour.objects.create(short_name='MHA', name='Mass Hour A', type_uuid=type_one)
         self.assertEqual(mass_hour.type_uuid, type_one.uuid)
 
-        setattr(mass_hour, 'type_id', type_two.pk)
+        setattr(mass_hour, 'type_uuid_id', type_two.uuid)
         mass_hour.save()
         mass_hour.refresh_from_db()
         self.assertEqual(mass_hour.type_uuid, type_two.uuid)
 
-        setattr(mass_hour, 'type_id', None)
+        setattr(mass_hour, 'type_uuid_id', None)
         mass_hour.save()
         mass_hour.refresh_from_db()
         self.assertIsNone(mass_hour.type_uuid)
@@ -1109,11 +1109,11 @@ class SyncMetadataTests(TestCase):
         bibliography = Bibliography.objects.create(title='Shadow bibliography')
         other_bibliography = Bibliography.objects.create(title='Shadow bibliography two')
         manuscript = Manuscripts.objects.create(name='Shadow manuscript')
-        relation = ManuscriptBibliography.objects.create(manuscript=manuscript, bibliography=bibliography)
+        relation = ManuscriptBibliography.objects.create(manuscript_uuid=manuscript, bibliography_uuid=bibliography)
 
         self.assertEqual(relation.bibliography_uuid, bibliography.uuid)
 
-        setattr(relation, 'bibliography_id', other_bibliography.pk)
+        setattr(relation, 'bibliography_uuid_id', other_bibliography.uuid)
         relation.save()
         relation.refresh_from_db()
         self.assertEqual(relation.bibliography_uuid, other_bibliography.uuid)
@@ -1121,11 +1121,11 @@ class SyncMetadataTests(TestCase):
     def test_ms_internal_shadow_uuid_fk_is_synced_on_save(self):
         manuscript = Manuscripts.objects.create(name='Source manuscript')
         other_manuscript = Manuscripts.objects.create(name='Other manuscript')
-        content = Content.objects.create(manuscript=manuscript, formula_text='Internal shadow')
+        content = Content.objects.create(manuscript_uuid=manuscript, formula_text='Internal shadow')
 
         self.assertEqual(content.manuscript_uuid, manuscript.uuid)
 
-        setattr(content, 'manuscript_id', other_manuscript.pk)
+        setattr(content, 'manuscript_uuid_id', other_manuscript.uuid)
         content.save()
         content.refresh_from_db()
         self.assertEqual(content.manuscript_uuid, other_manuscript.uuid)
@@ -1378,7 +1378,7 @@ class ETLUIViewTests(ETLUIEditorMixin, TestCase):
         manuscript = Manuscripts.objects.get(uuid=manuscript_uuid)
         content = Content.objects.get(uuid=content_uuid)
         self.assertEqual(manuscript.name, 'Remote manuscript')
-        self.assertEqual(content.manuscript_id, manuscript.pk)
+        self.assertEqual(content.manuscript_uuid_id, manuscript.uuid)
         self.assertEqual(response.json()['result']['import_summary']['created'], 2)
 
     @patch('indexerapp.management.commands.pull_etl_category.pull_remote_category')

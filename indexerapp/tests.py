@@ -190,7 +190,7 @@ class AdminUUIDVisibilityTests(TestCase):
 
 	def test_codicology_admin_change_view_accepts_uuid_to_field(self):
 		manuscript = Manuscripts.objects.create(name='UUID codicology manuscript', display_as_main=True)
-		codicology = Codicology.objects.create(manuscript=manuscript)
+		codicology = Codicology.objects.create(manuscript_uuid=manuscript)
 
 		response = self.client.get(
 			reverse('admin:indexerapp_codicology_change', args=(str(codicology.uuid),)),
@@ -233,7 +233,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 			icon='https://example.com/logo.png',
 			project_url='https://example.com/project',
 		)
-		MSProjects.objects.create(manuscript=manuscript, project=project)
+		MSProjects.objects.create(manuscript_uuid=manuscript, project_uuid=project)
 
 		response = self.client.get(reverse('manuscripts-list'), {'format': 'datatables', 'length': 10})
 
@@ -250,8 +250,8 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		other = Manuscripts.objects.create(name='Other source project manuscript', display_as_main=True)
 		selected_project = Projects.objects.create(name='Selected project')
 		other_project = Projects.objects.create(name='Other project')
-		MSProjects.objects.create(manuscript=selected, project=selected_project)
-		MSProjects.objects.create(manuscript=other, project=other_project)
+		MSProjects.objects.create(manuscript_uuid=selected, project_uuid=selected_project)
+		MSProjects.objects.create(manuscript_uuid=other, project_uuid=other_project)
 
 		response = self.client.get(
 			reverse('manuscripts-list'),
@@ -342,7 +342,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		user = get_user_model().objects.create_user('project-autocomplete-user', 'project-auto@example.com', 'secret')
 		project = Projects.objects.create(name='Project autocomplete')
 		manuscript = Manuscripts.objects.create(name='Autocomplete manuscript', display_as_main=True)
-		MSProjects.objects.create(manuscript=manuscript, project=project)
+		MSProjects.objects.create(manuscript_uuid=manuscript, project_uuid=project)
 		self.client.force_login(user)
 
 		response = self.client.get(reverse('projects-autocomplete'), {'q': 'Project'})
@@ -371,7 +371,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_formulas_index_used_in_links_are_uuid_first(self):
 		manuscript = Manuscripts.objects.create(name='Formula index manuscript')
 		formula = Formulas.objects.create(co_no='F-index', text='Formula index text')
-		Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		Content.objects.create(manuscript_uuid=manuscript, formula_uuid=formula, sequence_in_ms=1)
 
 		response = self.client.get(reverse('formulas_index-list'))
 
@@ -398,7 +398,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_rites_index_used_in_links_are_uuid_first(self):
 		manuscript = Manuscripts.objects.create(name='Rites index manuscript')
 		ritename = RiteNames.objects.create(name='Rite index name')
-		Content.objects.create(manuscript=manuscript, rubric=ritename, sequence_in_ms=1)
+		Content.objects.create(manuscript_uuid=manuscript, rubric_uuid=ritename, sequence_in_ms=1)
 
 		response = self.client.get(reverse('rites_index-list'))
 
@@ -413,11 +413,11 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		subject = Subjects.objects.create(name='Subject index name')
 		decoration_type = DecorationTypes.objects.create(name='Initial')
 		decoration = Decoration.objects.create(
-			manuscript=manuscript,
-			decoration_type=decoration_type,
+			manuscript_uuid=manuscript,
+			decoration_type_uuid=decoration_type,
 			where_in_ms_from='1r',
 		)
-		DecorationSubjects.objects.create(decoration=decoration, subject=subject)
+		DecorationSubjects.objects.create(decoration_uuid=decoration, subject_uuid=subject)
 
 		response = self.client.get(reverse('subjects_index-list'))
 
@@ -473,7 +473,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 	def test_get_obj_dictionary_keeps_uuid_fk_values_raw(self):
 		manuscript = Manuscripts.objects.create(name='Dictionary manuscript')
-		condition = Condition.objects.create(manuscript=manuscript)
+		condition = Condition.objects.create(manuscript_uuid=manuscript)
 
 		payload = get_obj_dictionary(condition, skip_fields=[])
 
@@ -486,7 +486,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 			icon='https://example.com/main-info-project.svg',
 			project_url='https://example.com/main-info-project',
 		)
-		MSProjects.objects.create(manuscript=manuscript, project=project)
+		MSProjects.objects.create(manuscript_uuid=manuscript, project_uuid=project)
 
 		response = self.client.get(reverse('ms_info'), {'manuscript_uuid': str(manuscript.uuid)})
 
@@ -505,7 +505,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 	def test_ms_gallery_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Gallery manuscript')
-		Image.objects.create(manuscript=manuscript, name='Gallery image')
+		Image.objects.create(manuscript_uuid=manuscript, name='Gallery image')
 
 		response = self.client.get(reverse('ms_gallery'), {'manuscript_uuid': str(manuscript.uuid)})
 
@@ -527,12 +527,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 200)
-		self.assertEqual(Image.objects.filter(manuscript=manuscript).count(), 1)
+		self.assertEqual(Image.objects.filter(manuscript_uuid=manuscript).count(), 1)
 		self.assertIn('uuid', response.json()['created'][0])
 
 	def test_ms_gallery_delete_accepts_image_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Delete gallery manuscript')
-		image = Image.objects.create(manuscript=manuscript, name='Delete image')
+		image = Image.objects.create(manuscript_uuid=manuscript, name='Delete image')
 
 		response = self.client.delete(
 			reverse('ms_gallery'),
@@ -546,7 +546,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 	def test_layouts_info_uses_uuid_without_legacy_id(self):
 		manuscript = Manuscripts.objects.create(name='Layouts manuscript')
-		layout = Layouts.objects.create(manuscript=manuscript, name='Layout A')
+		layout = Layouts.objects.create(manuscript_uuid=manuscript, name='Layout A')
 
 		response = self.client.get(reverse('layouts_info'), {'manuscript_uuid': str(manuscript.uuid)})
 
@@ -557,7 +557,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 	def test_condition_info_uses_uuid_without_legacy_id(self):
 		manuscript = Manuscripts.objects.create(name='Condition manuscript')
-		condition = Condition.objects.create(manuscript=manuscript)
+		condition = Condition.objects.create(manuscript_uuid=manuscript)
 
 		response = self.client.get(reverse('condition_info'), {'manuscript_uuid': str(manuscript.uuid)})
 
@@ -569,22 +569,22 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_decoration_info_keeps_uuid_payloads_after_shadow_fk_conversion(self):
 		manuscript = Manuscripts.objects.create(name='Decoration manuscript')
 		formula = Formulas.objects.create(co_no='Decor-formula', text='Decoration content formula')
-		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		content = Content.objects.create(manuscript_uuid=manuscript, formula_uuid=formula, sequence_in_ms=1)
 		feast_rank = FeastRanks.objects.create(name='Major feast')
 		calendar = Calendar.objects.create(
-			manuscript=manuscript,
-			content=content,
-			feast_rank=feast_rank,
+			manuscript_uuid=manuscript,
+			content_uuid=content,
+			feast_rank_uuid=feast_rank,
 			latin_name='Kal. Ian.',
 			feast_name='Circumcision',
 			littera_dominicalis='A',
 		)
 		decoration_type = DecorationTypes.objects.create(name='Initial')
 		decoration = Decoration.objects.create(
-			manuscript=manuscript,
-			content=content,
-			calendar=calendar,
-			decoration_type=decoration_type,
+			manuscript_uuid=manuscript,
+			content_uuid=content,
+			calendar_uuid=calendar,
+			decoration_type_uuid=decoration_type,
 			where_in_ms_from='1r',
 		)
 
@@ -602,8 +602,8 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_content_viewset_filters_by_manuscript_uuid(self):
 		selected = Manuscripts.objects.create(name='Selected manuscript', display_as_main=True)
 		other = Manuscripts.objects.create(name='Other manuscript', display_as_main=True)
-		selected_content = Content.objects.create(manuscript=selected, comments='selected')
-		Content.objects.create(manuscript=other, comments='other')
+		selected_content = Content.objects.create(manuscript_uuid=selected, comments='selected')
+		Content.objects.create(manuscript_uuid=other, comments='other')
 
 		response = self.client.get(reverse('content-list'), {'manuscript_uuid': str(selected.uuid)})
 
@@ -648,8 +648,8 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		left = Manuscripts.objects.create(name='Left compare manuscript')
 		right = Manuscripts.objects.create(name='Right compare manuscript')
 		formula = Formulas.objects.create(co_no='F-1', text='Formula text')
-		Content.objects.create(manuscript=left, formula=formula, sequence_in_ms=1)
-		Content.objects.create(manuscript=right, formula=formula, sequence_in_ms=2)
+		Content.objects.create(manuscript_uuid=left, formula_uuid=formula, sequence_in_ms=1)
+		Content.objects.create(manuscript_uuid=right, formula_uuid=formula, sequence_in_ms=2)
 
 		response = self.client.get(
 			reverse('compare_formulas_json'),
@@ -686,7 +686,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 	def test_content_csv_export_uuid_route_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='CSV manuscript')
-		Content.objects.create(manuscript=manuscript, comments='csv row')
+		Content.objects.create(manuscript_uuid=manuscript, comments='csv row')
 
 		response = self.client.get(reverse('content_csv_export_uuid', kwargs={'manuscript_uuid': manuscript.uuid}))
 
@@ -739,7 +739,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertJSONEqual(response.content, {'info': 'success'})
-		self.assertTrue(Content.objects.filter(manuscript=manuscript, formula_text='Imported text').exists())
+		self.assertTrue(Content.objects.filter(manuscript_uuid=manuscript, formula_text='Imported text').exists())
 
 	def test_content_import_rejects_legacy_manuscript_id_payload(self):
 		manuscript = Manuscripts.objects.create(name='Legacy imported manuscript')
@@ -804,19 +804,19 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertJSONEqual(response.content, {'info': 'success'})
-		self.assertTrue(Clla.objects.filter(manuscript=manuscript, clla_no='CLLA 1').exists())
+		self.assertTrue(Clla.objects.filter(manuscript_uuid=manuscript, clla_no='CLLA 1').exists())
 
 	def test_delete_content_uuid_route_accepts_manuscript_uuid(self):
 		admin_user = get_user_model().objects.create_superuser('uuid-admin', 'uuid-admin@example.com', 'secret')
 		self.client.force_login(admin_user)
 		manuscript = Manuscripts.objects.create(name='Delete manuscript')
-		Content.objects.create(manuscript=manuscript, comments='delete me')
+		Content.objects.create(manuscript_uuid=manuscript, comments='delete me')
 
 		response = self.client.delete(reverse('delete_content_uuid', kwargs={'manuscript_uuid': manuscript.uuid}))
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json()['deleted_count'], 1)
-		self.assertFalse(Content.objects.filter(manuscript=manuscript).exists())
+		self.assertFalse(Content.objects.filter(manuscript_uuid=manuscript).exists())
 
 	def test_delete_content_legacy_int_route_is_unavailable(self):
 		with self.assertRaises(NoReverseMatch):
@@ -828,7 +828,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		manuscript = Manuscripts.objects.create(name='Assign manuscript')
 		formula = Formulas.objects.create(co_no='F-assign', text='Assign formula')
 		tradition = Traditions.objects.create(name='Assign tradition')
-		Content.objects.create(manuscript=manuscript, formula=formula)
+		Content.objects.create(manuscript_uuid=manuscript, formula_uuid=formula)
 
 		response = self.client.post(
 			reverse(
@@ -848,7 +848,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_image_shadow_uuid_is_real_uuid_fk(self):
 		manuscript = Manuscripts.objects.create(name='Image UUID FK manuscript')
 
-		image = Image.objects.create(manuscript=manuscript, name='UUID image')
+		image = Image.objects.create(manuscript_uuid=manuscript, name='UUID image')
 
 		self.assertEqual(image.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(image.manuscript_uuid, manuscript)
@@ -857,7 +857,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		manuscript = Manuscripts.objects.create(name='MSProjects UUID FK manuscript')
 		project = Projects.objects.create(name='UUID project')
 
-		relation = MSProjects.objects.create(manuscript=manuscript, project=project)
+		relation = MSProjects.objects.create(manuscript_uuid=manuscript, project_uuid=project)
 
 		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(relation.project_uuid_id, project.uuid)
@@ -867,7 +867,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_layout_shadow_uuid_is_real_uuid_fk(self):
 		manuscript = Manuscripts.objects.create(name='Layouts UUID FK manuscript')
 
-		layout = Layouts.objects.create(manuscript=manuscript, where_in_ms_from='3r')
+		layout = Layouts.objects.create(manuscript_uuid=manuscript, where_in_ms_from='3r')
 
 		self.assertEqual(layout.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(layout.manuscript_uuid, manuscript)
@@ -875,7 +875,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_codicology_shadow_uuid_is_real_uuid_fk(self):
 		manuscript = Manuscripts.objects.create(name='Codicology UUID FK manuscript')
 
-		codicology = Codicology.objects.create(manuscript=manuscript)
+		codicology = Codicology.objects.create(manuscript_uuid=manuscript)
 
 		self.assertEqual(codicology.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(codicology.manuscript_uuid, manuscript)
@@ -883,7 +883,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_condition_shadow_uuid_is_real_uuid_fk(self):
 		manuscript = Manuscripts.objects.create(name='Condition UUID FK manuscript')
 
-		condition = Condition.objects.create(manuscript=manuscript)
+		condition = Condition.objects.create(manuscript_uuid=manuscript)
 
 		self.assertEqual(condition.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(condition.manuscript_uuid, manuscript)
@@ -907,7 +907,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_provenance_shadow_uuid_is_real_uuid_fk(self):
 		manuscript = Manuscripts.objects.create(name='Provenance UUID FK manuscript')
 
-		provenance = Provenance.objects.create(manuscript=manuscript, timeline_sequence=1)
+		provenance = Provenance.objects.create(manuscript_uuid=manuscript, timeline_sequence=1)
 
 		self.assertEqual(provenance.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(provenance.manuscript_uuid, manuscript)
@@ -915,7 +915,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_binding_shadow_uuid_is_real_uuid_fk(self):
 		manuscript = Manuscripts.objects.create(name='Binding UUID FK manuscript')
 
-		binding = Binding.objects.create(manuscript=manuscript)
+		binding = Binding.objects.create(manuscript_uuid=manuscript)
 
 		self.assertEqual(binding.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(binding.manuscript_uuid, manuscript)
@@ -924,7 +924,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		manuscript = Manuscripts.objects.create(name='Bibliography UUID FK manuscript')
 		bibliography = Bibliography.objects.create(title='UUID FK bibliography')
 
-		relation = ManuscriptBibliography.objects.create(manuscript=manuscript, bibliography=bibliography)
+		relation = ManuscriptBibliography.objects.create(manuscript_uuid=manuscript, bibliography_uuid=bibliography)
 
 		self.assertEqual(relation.manuscript_uuid_id, manuscript.uuid)
 		self.assertEqual(relation.manuscript_uuid, manuscript)
@@ -943,7 +943,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_calendar_shadow_uuids_are_real_uuid_fks(self):
 		manuscript = Manuscripts.objects.create(name='Calendar UUID FK manuscript')
 		formula = Formulas.objects.create(co_no='CAL-UUID', text='Calendar UUID formula')
-		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		content = Content.objects.create(manuscript_uuid=manuscript, formula_uuid=formula, sequence_in_ms=1)
 		rubric = RiteNames.objects.create(name='Calendar UUID rubric')
 		feast_rank = FeastRanks.objects.create(name='Calendar UUID feast rank')
 		time_reference = TimeReference.objects.create(
@@ -1000,7 +1000,7 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		subfunction = ContentFunctions.objects.create(name='Content UUID subfunction')
 		contributor = Contributors.objects.create(initials='CNT', first_name='Con', last_name='Tributor')
 		bibliography = Bibliography.objects.create(title='Content UUID bibliography')
-		edition_index = EditionContent.objects.create(bibliography=bibliography)
+		edition_index = EditionContent.objects.create(bibliography_uuid=bibliography)
 		text_standarization = TextStandarization.objects.create(standard_incipit='Content UUID text')
 		layer = Layer.objects.create(short_name='L1', name='Layer One')
 		mass_hour = MassHour.objects.create(short_name='MH1', name='Mass Hour One')
@@ -1010,25 +1010,25 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		day = Day.objects.create(short_name='D1', name='Day One', part='T')
 
 		content = Content.objects.create(
-			manuscript=manuscript,
-			formula=formula,
-			rubric=rubric,
-			liturgical_genre=liturgical_genre,
-			quire=quire,
-			section=section,
-			subsection=subsection,
-			music_notation=music_notation,
-			function=function,
-			subfunction=subfunction,
-			data_contributor=contributor,
-			edition_index=edition_index,
-			text_standarization=text_standarization,
-			layer=layer,
-			mass_hour=mass_hour,
-			genre=genre,
-			season_month=season_month,
-			week=week,
-			day=day,
+			manuscript_uuid=manuscript,
+			formula_uuid=formula,
+			rubric_uuid=rubric,
+			liturgical_genre_uuid=liturgical_genre,
+			quire_uuid=quire,
+			section_uuid=section,
+			subsection_uuid=subsection,
+			music_notation_uuid=music_notation,
+			function_uuid=function,
+			subfunction_uuid=subfunction,
+			data_contributor_uuid=contributor,
+			edition_index_uuid=edition_index,
+			text_standarization_uuid=text_standarization,
+			layer_uuid=layer,
+			mass_hour_uuid=mass_hour,
+			genre_uuid=genre,
+			season_month_uuid=season_month,
+			week_uuid=week,
+			day_uuid=day,
 			sequence_in_ms=1,
 		)
 
@@ -1055,12 +1055,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_decoration_shadow_uuids_are_real_uuid_fks(self):
 		manuscript = Manuscripts.objects.create(name='Decoration UUID FK manuscript')
 		formula = Formulas.objects.create(co_no='DEC-UUID', text='Decoration UUID formula')
-		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		content = Content.objects.create(manuscript_uuid=manuscript, formula_uuid=formula, sequence_in_ms=1)
 		feast_rank = FeastRanks.objects.create(name='Decoration UUID feast rank')
 		calendar = Calendar.objects.create(
-			manuscript=manuscript,
-			content=content,
-			feast_rank=feast_rank,
+			manuscript_uuid=manuscript,
+			content_uuid=content,
+			feast_rank_uuid=feast_rank,
 			latin_name='Kal. Feb.',
 			feast_name='Purification',
 			littera_dominicalis='B',
@@ -1079,15 +1079,15 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		contributor = Contributors.objects.create(initials='DEC', first_name='Dec', last_name='Contributor')
 
 		decoration = Decoration.objects.create(
-			manuscript=manuscript,
-			date_of_the_addition=date_of_addition,
-			content=content,
-			calendar=calendar,
-			decoration_type=decoration_type,
-			decoration_subtype=decoration_subtype,
-			technique=technique,
-			rubric_name_standarized=rubric,
-			data_contributor=contributor,
+			manuscript_uuid=manuscript,
+			date_of_the_addition_uuid=date_of_addition,
+			content_uuid=content,
+			calendar_uuid=calendar,
+			decoration_type_uuid=decoration_type,
+			decoration_subtype_uuid=decoration_subtype,
+			technique_uuid=technique,
+			rubric_name_standarized_uuid=rubric,
+			data_contributor_uuid=contributor,
 			where_in_ms_from='1r',
 		)
 
@@ -1104,33 +1104,33 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_decoration_detail_shadow_uuids_are_real_uuid_fks(self):
 		manuscript = Manuscripts.objects.create(name='Decoration detail UUID FK manuscript')
 		formula = Formulas.objects.create(co_no='DET-UUID', text='Decoration detail UUID formula')
-		content = Content.objects.create(manuscript=manuscript, formula=formula, sequence_in_ms=1)
+		content = Content.objects.create(manuscript_uuid=manuscript, formula_uuid=formula, sequence_in_ms=1)
 		feast_rank = FeastRanks.objects.create(name='Decoration detail feast rank')
 		calendar = Calendar.objects.create(
-			manuscript=manuscript,
-			content=content,
-			feast_rank=feast_rank,
+			manuscript_uuid=manuscript,
+			content_uuid=content,
+			feast_rank_uuid=feast_rank,
 			latin_name='Kal. Mar.',
 			feast_name='Annunciation',
 			littera_dominicalis='C',
 		)
 		decoration_type = DecorationTypes.objects.create(name='Decoration detail type')
 		decoration = Decoration.objects.create(
-			manuscript=manuscript,
-			content=content,
-			calendar=calendar,
-			decoration_type=decoration_type,
+			manuscript_uuid=manuscript,
+			content_uuid=content,
+			calendar_uuid=calendar,
+			decoration_type_uuid=decoration_type,
 			where_in_ms_from='2r',
 		)
 		subject = Subjects.objects.create(name='Decoration detail subject')
 		colour = Colours.objects.create(name='Decoration detail colour')
 		characteristics = Characteristics.objects.create(name='Decoration detail characteristics')
 
-		decoration_subject = DecorationSubjects.objects.create(decoration=decoration, subject=subject)
-		decoration_colour = DecorationColours.objects.create(decoration=decoration, colour=colour)
+		decoration_subject = DecorationSubjects.objects.create(decoration_uuid=decoration, subject_uuid=subject)
+		decoration_colour = DecorationColours.objects.create(decoration_uuid=decoration, colour_uuid=colour)
 		decoration_characteristics = DecorationCharacteristics.objects.create(
-			decoration=decoration,
-			characteristics=characteristics,
+			decoration_uuid=decoration,
+			characteristics_uuid=characteristics,
 		)
 
 		self.assertEqual(decoration_subject.decoration_uuid_id, decoration.uuid)
@@ -1161,7 +1161,7 @@ class AdminUUIDLookupTests(TestCase):
 		admin_user = get_user_model().objects.create_superuser('uuid-admin-3', 'uuid-admin-3@example.com', 'secret')
 		self.client.force_login(admin_user)
 		manuscript = Manuscripts.objects.create(name='Admin UUID manuscript')
-		layout = Layouts.objects.create(manuscript=manuscript, where_in_ms_from='1r')
+		layout = Layouts.objects.create(manuscript_uuid=manuscript, where_in_ms_from='1r')
 
 		response = self.client.get(reverse('admin:indexerapp_layouts_change', args=[layout.uuid]))
 
@@ -1170,7 +1170,7 @@ class AdminUUIDLookupTests(TestCase):
 
 	def test_layout_admin_changelist_link_uses_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Admin UUID changelist manuscript')
-		layout = Layouts.objects.create(manuscript=manuscript, where_in_ms_from='2r')
+		layout = Layouts.objects.create(manuscript_uuid=manuscript, where_in_ms_from='2r')
 		layouts_admin = admin.site._registry[Layouts]
 
 		self.assertEqual(

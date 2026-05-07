@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from django.db import models
 
 from etlapp.model_categories import SYNC_CATEGORIES, get_model_category
+from etlapp.uuid_fk import get_legacy_fk_aliases
 
 
 class Command(BaseCommand):
@@ -27,6 +28,8 @@ class Command(BaseCommand):
             if model_category not in SYNC_CATEGORIES:
                 continue
 
+            legacy_names_by_field = get_legacy_fk_aliases(model)
+
             for field in model._meta.concrete_fields:
                 if not isinstance(field, models.ForeignKey):
                     continue
@@ -39,6 +42,12 @@ class Command(BaseCommand):
                 if related_category not in SYNC_CATEGORIES:
                     continue
 
+                legacy_name = legacy_names_by_field.get(field.name)
+                if legacy_name is None and field.name.endswith('_uuid'):
+                    legacy_name = field.name[:-5]
+                if legacy_name is None:
+                    continue
+
                 related_has_uuid = any(
                     related_field.name == 'uuid'
                     for related_field in related_model._meta.concrete_fields
@@ -48,15 +57,15 @@ class Command(BaseCommand):
                     'model_name': model.__name__,
                     'model_table': model._meta.db_table,
                     'model_category': model_category,
-                    'fk_field': field.name,
-                    'fk_column': field.attname,
+                    'fk_field': legacy_name,
+                    'fk_column': f'{legacy_name}_id',
                     'related_model': related_model.__name__,
                     'related_table': related_model._meta.db_table,
                     'related_category': related_category,
                     'related_has_uuid': 'yes' if related_has_uuid else 'no',
                     'nullable': 'yes' if field.null else 'no',
-                    'suggested_uuid_field': f'{field.name}_uuid',
-                    'suggested_uuid_column': f'{field.name}_uuid',
+                    'suggested_uuid_field': field.name,
+                    'suggested_uuid_column': field.column,
                 })
 
         rows.sort(key=lambda row: (row['model_category'], row['model_name'], row['fk_field']))

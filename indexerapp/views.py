@@ -8,7 +8,7 @@ from django.contrib.auth import login, authenticate
 
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image, DecorationSubjects
+from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image, DecorationSubjects, UUID_RELATION_COMPAT_ALIASES
 from django.http import JsonResponse
 from django.http import Http404
 from django.contrib.contenttypes.models import ContentType
@@ -154,7 +154,21 @@ def _build_uuid_or_pk_filter_kwargs(relation_name, raw_value):
     if relation_name is None:
         return {'uuid': parsed_uuid}
 
+    relation_name = _resolve_relation_lookup_name(relation_name)
     return {f'{relation_name}__uuid': parsed_uuid}
+
+
+UUID_RELATION_LOOKUP_ALIASES = {}
+for _model_aliases in UUID_RELATION_COMPAT_ALIASES.values():
+    for _legacy_name, _canonical_name in _model_aliases.items():
+        UUID_RELATION_LOOKUP_ALIASES.setdefault(_legacy_name, _canonical_name)
+
+
+def _resolve_relation_lookup_name(lookup_name):
+    if not lookup_name:
+        return lookup_name
+
+    return '__'.join(UUID_RELATION_LOOKUP_ALIASES.get(segment, segment) for segment in lookup_name.split('__'))
 
 
 def _filter_queryset_by_uuid_or_pk(queryset, relation_name, raw_value):
@@ -412,7 +426,7 @@ class MSInfoAjaxView(View):
 
         # Main info
         info = get_obj_dictionary(instance, [])
-        source_project_link = instance.ms_projects.select_related('project').order_by('id').first()
+        source_project_link = instance.ms_projects.select_related('project_uuid').order_by('id').first()
         source_project = source_project_link.project if source_project_link else None
         info['source_project_name'] = source_project.name if source_project else ''
         info['source_project_icon'] = source_project.icon if source_project else ''
@@ -514,7 +528,7 @@ class MSGalleryView(View):
         created = []
         for f in files:
             name_without_ext = os.path.splitext(f.name)[0]
-            img = Image.objects.create(manuscript=ms, name=name_without_ext, image=f)
+            img = Image.objects.create(manuscript_uuid=ms, name=name_without_ext, image=f)
             created.append({'uuid': str(img.uuid) if img.uuid else None, 'name': img.name, 'image_url': request.build_absolute_uri(img.image.url) if img.image else None, 'thumbnail_url': request.build_absolute_uri(img.thumbnail.url) if img.thumbnail else None})
 
         return JsonResponse({'status': 'ok', 'created': created})
@@ -544,7 +558,7 @@ class MSGalleryView(View):
 
         if image_uuid:
             try:
-                img = Image.objects.get(uuid=image_uuid, manuscript=ms)
+                img = Image.objects.get(uuid=image_uuid, manuscript_uuid=ms)
             except Image.DoesNotExist:
                 return JsonResponse({'error': 'Image not found for this manuscript'}, status=404)
 
@@ -601,7 +615,7 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
         
         ##Order
         order_column_index = int(request.query_params.get('order[0][column]', 0))
-        order_column_name = request.query_params.get(f'columns[{order_column_index}][data]', 'name')
+        order_column_name = _resolve_relation_lookup_name(request.query_params.get(f'columns[{order_column_index}][data]', 'name'))
         order_direction = request.query_params.get('order[0][dir]', 'asc')
         print("--------------------------------------------")
         print(order_column_index)
@@ -629,7 +643,7 @@ class ContentGlobalFilter(DatatablesFilterSet):
 
     'manuscript', 'formula', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'similarity_by_user', 'similarity_levenshtein' 
 
-    manuscript = filters.NumberFilter(lookup_expr='exact')
+    manuscript = filters.NumberFilter(field_name='manuscript_uuid', lookup_expr='exact')
 
 
     #manuscript = GlobalCharFilter(lookup_expr='icontains')
@@ -646,13 +660,13 @@ class ContentGlobalFilter(DatatablesFilterSet):
 
 
 class ContentViewSet(viewsets.ModelViewSet):
-    queryset = Content.objects.all().order_by('manuscript')
+    queryset = Content.objects.all().order_by('manuscript_uuid')
     serializer_class = ContentSerializer
     filter_backends = [CustomDatatablesFilterBackend]
     filterset_class = ContentGlobalFilter
 
     def get_queryset(self):
-        queryset = Content.objects.filter(manuscript__display_as_main=True)
+        queryset = Content.objects.filter(manuscript_uuid__display_as_main=True)
         manuscript_selector = _get_first_present(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         if manuscript_selector:
             queryset = _filter_queryset_by_uuid_or_pk(queryset, 'manuscript', manuscript_selector)
@@ -660,7 +674,7 @@ class ContentViewSet(viewsets.ModelViewSet):
         #I want to send only if sequence_in_ms is not null or comments is not null
         queryset = queryset.filter(Q(sequence_in_ms__isnull=False) | Q(comments__isnull=False))
         
-        order_column_name = self.request.query_params.get('order_column', 'manuscript')
+        order_column_name = _resolve_relation_lookup_name(self.request.query_params.get('order_column', 'manuscript'))
         order_direction = self.request.query_params.get('order_direction', 'asc')
         if order_direction == 'asc':
             queryset = queryset.order_by(F(order_column_name).asc(nulls_last=True))
@@ -706,7 +720,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         # Extract ordering parameters from DataTables formatted request
 
 
-        order_column_name = self.request.query_params.get('order_column', 'main_script')
+        order_column_name = _resolve_relation_lookup_name(self.request.query_params.get('order_column', 'main_script'))
         #print('order_column_name:'+str(order_column_name))
         order_direction = self.request.query_params.get('order_direction', 'dsc')
         #print('order_direction:'+str(order_direction))
@@ -2038,7 +2052,7 @@ class ProjectsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2Quer
         if not self.request.user.is_authenticated:
             return Projects.objects.none()
 
-        qs = Projects.objects.filter(msprojects__manuscript__display_as_main=True).distinct().order_by('name')
+        qs = Projects.objects.filter(msprojects__manuscript_uuid__display_as_main=True).distinct().order_by('name')
 
         if self.q:
             qs = qs.filter(name__icontains=self.q)
@@ -2228,7 +2242,7 @@ class MSProvenanceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2
     def get_queryset(self):
         # Pobieramy miejsca powiązane z Provenance, tylko te, które mają przypisany place
         qs = Places.objects.filter(
-            provenance__manuscript__display_as_main=True,
+            provenance__manuscript_uuid__display_as_main=True,
             provenance__place__isnull=False
         ).distinct()
 
@@ -2403,7 +2417,7 @@ class DecorationTypeAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Selec
             return DecorationTypes.objects.none()
 
         qs = DecorationTypes.objects.all()
-        qs = qs.filter(parent_type__isnull=True)
+        qs = qs.filter(parent_type_uuid__isnull=True)
 
         if self.q:
             qs = qs.filter(name__icontains=self.q)
@@ -2417,7 +2431,7 @@ class DecorationSubtypeAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Se
             return DecorationTypes.objects.none()
 
         qs = DecorationTypes.objects.all()
-        qs = qs.filter(parent_type__isnull=False)
+        qs = qs.filter(parent_type_uuid__isnull=False)
 
         if self.q:
             qs = qs.filter(name__icontains=self.q)
@@ -3970,7 +3984,7 @@ class contentCompareGraph(View):
         # Query the database for data
         data = []
         for manuscript in [_resolve_object_by_uuid_or_pk(Manuscripts, left), _resolve_object_by_uuid_or_pk(Manuscripts, right)]:
-            content_objects = Content.objects.filter(manuscript=manuscript, formula_id__isnull=False).values(category_column, value_column)
+            content_objects = Content.objects.filter(manuscript_uuid=manuscript, formula_uuid_id__isnull=False).values(category_column, value_column)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
         
         # Create a DataFrame from the fetched data
@@ -4035,7 +4049,7 @@ class contentCompareJSON(View):
         # Query the database for data
         data = []
         for manuscript in [_resolve_object_by_uuid_or_pk(Manuscripts, left), _resolve_object_by_uuid_or_pk(Manuscripts, right)]:
-            content_objects = Content.objects.filter(manuscript=manuscript, formula_id__isnull=False)
+            content_objects = Content.objects.filter(manuscript_uuid=manuscript, formula_uuid_id__isnull=False)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
 
         # Create a DataFrame from the fetched data
@@ -4084,7 +4098,7 @@ class contentCompareEditionGraph(View):
         # Query the database for data
         data = []
         for manuscript in [_resolve_object_by_uuid_or_pk(Manuscripts, left), _resolve_object_by_uuid_or_pk(Manuscripts, right)]:
-            content_objects = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False)
+            content_objects = Content.objects.filter(manuscript_uuid=manuscript, edition_index_uuid_id__isnull=False)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
 
         # Create a DataFrame from the fetched data
@@ -4156,7 +4170,7 @@ class contentCompareEditionJSON(View):
         # Query the database for data
         data = []
         for manuscript in _resolve_manuscript_list(mss):
-            content_objects = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False)
+            content_objects = Content.objects.filter(manuscript_uuid=manuscript, edition_index_uuid_id__isnull=False)
             data.append({'Table': str(manuscript), 'Values': list(content_objects)})
 
         # Create a DataFrame from the fetched data
@@ -4189,7 +4203,7 @@ class MSRitesLookupView(View):
         print("manuscript = "+str(manuscript))
 
         # Get all content related to the manuscript with non-empty edition_index and rubric_sequence fields
-        ms_content = Content.objects.filter(manuscript=manuscript, edition_index__isnull=False, rubric_sequence__isnull=False)
+        ms_content = Content.objects.filter(manuscript_uuid=manuscript, edition_index_uuid_id__isnull=False, rubric_sequence__isnull=False)
 
         sorted_ms_content = ms_content.order_by('rubric_sequence')
         #sorted_ms_content = [str(ms_content.edition_index) for ms_content in sorted_ms_content]
@@ -4214,7 +4228,7 @@ class MSRitesLookupView(View):
         # Iterate through each content entry related to the manuscript
         for content in ms_content:
             # Get all manuscripts related to the current content's edition_index
-            related_manuscripts = Manuscripts.objects.filter(ms_content__edition_index=content.edition_index).exclude(id=manuscript.id)
+            related_manuscripts = Manuscripts.objects.filter(ms_content__edition_index_uuid=content.edition_index_uuid).exclude(id=manuscript.id)
 
             # Initialize list to store edition_index for current content
             edition_index_list = []
@@ -4246,7 +4260,7 @@ class MSRitesLookupView(View):
             last_name=''
             for content in ms_content:
                 # Get content related to the current related manuscript
-                related_content = Content.objects.filter(manuscript=related_ms, edition_index=content.edition_index, rubric_sequence__isnull=False)
+                related_content = Content.objects.filter(manuscript_uuid=related_ms, edition_index_uuid=content.edition_index_uuid, rubric_sequence__isnull=False)
                 
                 if len(related_content)>0:
                     name = str(related_content[0].edition_index)
@@ -4261,7 +4275,7 @@ class MSRitesLookupView(View):
                     last_name = name
 
             # Get sorted list of edition_index for the related manuscript
-            all_content = Content.objects.filter(manuscript=related_ms, edition_index__isnull=False, rubric_sequence__isnull=False)
+            all_content = Content.objects.filter(manuscript_uuid=related_ms, edition_index_uuid_id__isnull=False, rubric_sequence__isnull=False)
             sorted_edition_index = all_content.order_by('rubric_sequence')#.distinct('edition_index')
 
             sorted_unique_edition_index = []
@@ -4414,7 +4428,7 @@ class ManuscriptTEI(TemplateView):
 class ContentCSVExportView(View):
     def get(self, request, manuscript_uuid):
         manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
-        contents = Content.objects.filter(manuscript=manuscript)
+        contents = Content.objects.filter(manuscript_uuid=manuscript)
 
         # Prepare the response as a CSV file
         response = HttpResponse(content_type='text/csv')
@@ -4542,15 +4556,15 @@ class AssignMSContentToTraditionView(View):
         
         # Get all formulas associated with the manuscript through content
         formulas = Content.objects.filter(
-            manuscript_id=manuscript.id,
-            formula_id__isnull=False
-        ).values_list('formula_id', flat=True).distinct()
+            manuscript_uuid=manuscript,
+            formula_uuid_id__isnull=False
+        ).values_list('formula_uuid_id', flat=True).distinct()
         
         # Add relations between formulas and tradition if they don't exist
         added_count = 0
         with transaction.atomic():
             for formula_id in formulas:
-                formula = Formulas.objects.get(pk=formula_id)
+                formula = Formulas.objects.get(uuid=formula_id)
                 if not formula.tradition.filter(id=tradition.id).exists():
                     formula.tradition.add(tradition)
                     added_count += 1
@@ -4567,7 +4581,7 @@ class FormulasIndexViewSet(viewsets.ModelViewSet):
     filter_backends = [CustomDatatablesFilterBackend]
 
     def get_queryset(self):
-        queryset = Formulas.objects.prefetch_related('tradition', 'content_set__manuscript')
+        queryset = Formulas.objects.prefetch_related('tradition', 'content_set__manuscript_uuid')
         
         # Filtering by "used in manuscripts" (checkbox)
         used_in_ms = self.request.GET.get('used_in_ms', None)
@@ -4604,7 +4618,7 @@ class FormulasIndexViewSet(viewsets.ModelViewSet):
                 col_name = None
             
             if col_name == 'used_in_count':
-                queryset = queryset.annotate(used_in_count=Count('content__manuscript', distinct=True))
+                queryset = queryset.annotate(used_in_count=Count('content__manuscript_uuid', distinct=True))
                 queryset = queryset.order_by('-used_in_count' if order_dir == 'desc' else 'used_in_count')
             elif col_name:
                 queryset = queryset.order_by(F(col_name).desc(nulls_last=True) if order_dir == 'desc' else F(col_name).asc(nulls_last=True))
@@ -4626,7 +4640,7 @@ class RiteNamesIndexViewSet(viewsets.ModelViewSet):
         # (Django auto-name for Content.rubric FK with no related_name).
         # ORM annotations/filters use the query name 'content'.
         queryset = RiteNames.objects.prefetch_related(
-            Prefetch('content_set', queryset=Content.objects.select_related('manuscript'))
+            Prefetch('content_set', queryset=Content.objects.select_related('manuscript_uuid'))
         )
 
         search_value = self.request.GET.get('search[value]', None)
@@ -4637,7 +4651,7 @@ class RiteNamesIndexViewSet(viewsets.ModelViewSet):
 
         # Annotate usage count using ORM query name 'content'
         queryset = queryset.annotate(
-            used_in_count=Count('content__manuscript', distinct=True)
+            used_in_count=Count('content__manuscript_uuid', distinct=True)
         )
 
         order_column_index = self.request.GET.get('order[0][column]', None)
@@ -4674,7 +4688,7 @@ class SubjectsIndexViewSet(viewsets.ModelViewSet):
         queryset = Subjects.objects.prefetch_related(
             Prefetch(
                 'decoration_subject',
-                queryset=DecorationSubjects.objects.select_related('decoration__manuscript')
+                queryset=DecorationSubjects.objects.select_related('decoration_uuid__manuscript_uuid')
             )
         )
 
@@ -4686,7 +4700,7 @@ class SubjectsIndexViewSet(viewsets.ModelViewSet):
 
         # Annotate usage count via ORM traversal
         queryset = queryset.annotate(
-            used_in_count=Count('decoration_subject__decoration__manuscript', distinct=True)
+            used_in_count=Count('decoration_subject__decoration_uuid__manuscript_uuid', distinct=True)
         )
 
         order_column_index = self.request.GET.get('order[0][column]', None)

@@ -48,32 +48,32 @@ class Command(BaseCommand):
         for model, specs in model_specs:
             queryset = model.objects.all().order_by('pk')
             if specs:
-                queryset = queryset.select_related(*[field.name for field, _shadow_field in specs])
+                queryset = queryset.select_related(*[field.name for _legacy_name, field in specs])
 
             field_counters = {
-                shadow_field.attname: {'missing': 0, 'mismatch': 0, 'stale_without_fk': 0}
-                for _field, shadow_field in specs
+                field.attname: {'missing': 0, 'mismatch': 0, 'stale_without_fk': 0}
+                for _legacy_name, field in specs
             }
 
             for instance in queryset.iterator(chunk_size=chunk_size):
-                for field, shadow_field in specs:
-                    current_shadow_uuid = getattr(instance, shadow_field.attname)
+                for _legacy_name, field in specs:
+                    current_shadow_uuid = getattr(instance, field.attname)
                     expected_uuid = resolve_shadow_uuid(instance, field)
 
                     if getattr(instance, field.attname) is None:
                         if current_shadow_uuid is not None:
-                            field_counters[shadow_field.attname]['stale_without_fk'] += 1
+                            field_counters[field.attname]['stale_without_fk'] += 1
                         continue
 
                     if current_shadow_uuid is None:
-                        field_counters[shadow_field.attname]['missing'] += 1
+                        field_counters[field.attname]['missing'] += 1
                         continue
 
                     if current_shadow_uuid != expected_uuid:
-                        field_counters[shadow_field.attname]['mismatch'] += 1
+                        field_counters[field.attname]['mismatch'] += 1
 
-            for field, shadow_field in specs:
-                counters = field_counters[shadow_field.attname]
+            for legacy_name, field in specs:
+                counters = field_counters[field.attname]
                 total_issues = counters['missing'] + counters['mismatch'] + counters['stale_without_fk']
                 if total_issues:
                     issues_found = True
@@ -82,7 +82,7 @@ class Command(BaseCommand):
                     status = 'OK'
 
                 self.stdout.write(
-                    f'{model.__name__}.{field.name}: status={status} '
+                    f'{model.__name__}.{legacy_name}: status={status} '
                     f'missing_shadow={counters["missing"]} '
                     f'mismatch={counters["mismatch"]} '
                     f'stale_without_fk={counters["stale_without_fk"]}'

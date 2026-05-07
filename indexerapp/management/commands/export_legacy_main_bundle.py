@@ -2,6 +2,7 @@ import json
 
 from django.apps import apps
 from django.core.management.base import BaseCommand
+from django.core.exceptions import ObjectDoesNotExist
 
 from etlapp.model_categories import get_model_category, get_sync_model_names
 from etlapp.services import _serialize_value
@@ -36,7 +37,10 @@ def _serialize_legacy_instance(instance):
 
         if field.is_relation and field.many_to_one:
             payload[field.name] = _serialize_value(value)
-            related_object = getattr(instance, field.name)
+            try:
+                related_object = getattr(instance, field.name)
+            except ObjectDoesNotExist:
+                related_object = None
             payload[f'{field.name}_uuid'] = (
                 str(_resolve_instance_uuid(related_object)) if related_object is not None else None
             )

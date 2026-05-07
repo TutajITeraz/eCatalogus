@@ -137,9 +137,9 @@ class ContentForm(forms.ModelForm):
         model = Content
         fields = ('__all__')
         widgets = {
-            'formula': autocomplete.ListSelect2(url='formula-autocomplete', attrs={'style': 'width: 400px;'}),
+            'formula_uuid': autocomplete.ListSelect2(url='formula-autocomplete', attrs={'style': 'width: 400px;'}),
             'rite': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 400px;'}),
-            'genre': autocomplete.ListSelect2(url='genre-autocomplete', attrs={'style': 'width: 400px;'})
+            'genre_uuid': autocomplete.ListSelect2(url='genre-autocomplete', attrs={'style': 'width: 400px;'})
         }
 
 
@@ -181,7 +181,7 @@ class EditionContentForm(forms.ModelForm):
         model = EditionContent
         fields = ('__all__')
         widgets = {
-            'rubric_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
         }
 
 
@@ -200,7 +200,7 @@ class RitesInline(admin.TabularInline):
 """
 class ContentInline(admin.TabularInline):
     model = Content
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
 
     form = autocomplete.FutureModelForm
     show_change_link=True
@@ -227,7 +227,7 @@ class FormulasInline(admin.TabularInline):
 # New inlines
 class DecorationSubjectsInline(admin.StackedInline):
     model = DecorationSubjects
-    fk_name = 'decoration'
+    fk_name = 'decoration_uuid'
     extra = 0
 
     form = DecorationSubjectsForm
@@ -242,7 +242,7 @@ class DecorationSubjectsInline(admin.StackedInline):
 # New inlines
 class DecorationColoursInline(admin.StackedInline):
     model = DecorationColours
-    fk_name = 'decoration'
+    fk_name = 'decoration_uuid'
     extra = 0
 
     form = DecorationColoursForm
@@ -257,7 +257,7 @@ class DecorationColoursInline(admin.StackedInline):
 # New inlines
 class DecorationCharacteristicsInline(admin.StackedInline):
     model = DecorationCharacteristics
-    fk_name = 'decoration'
+    fk_name = 'decoration_uuid'
     extra = 0
 
     form = DecorationCharacteristicsForm
@@ -272,7 +272,7 @@ class DecorationCharacteristicsInline(admin.StackedInline):
 
 class ManuscriptBibliographyInline(admin.TabularInline):
     model = ManuscriptBibliography
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
     extra = 0
 
     show_change_link=True
@@ -284,7 +284,7 @@ class ManuscriptBibliographyInline(admin.TabularInline):
 
 class OriginsInline(admin.TabularInline):
     model = Origins
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
     extra = 0
 
     show_change_link=True
@@ -296,7 +296,7 @@ class OriginsInline(admin.TabularInline):
 
 class ProvenanceInline(admin.TabularInline):
     model = Provenance
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
     extra = 0
 
     show_change_link=True
@@ -308,7 +308,7 @@ class ProvenanceInline(admin.TabularInline):
 
 class ManuscriptBindingMaterialsInline(admin.TabularInline):
     model = ManuscriptBindingMaterials
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
     extra = 0
 
     show_change_link=True
@@ -320,7 +320,7 @@ class ManuscriptBindingMaterialsInline(admin.TabularInline):
 
 class ManuscriptBindingComponentsInline(admin.TabularInline):
     model = ManuscriptBindingComponents
-    fk_name = 'manuscript'
+    fk_name = 'manuscript_uuid'
     extra = 0
 
     show_change_link=True
@@ -348,7 +348,7 @@ class ManuscriptGenresInline(admin.TabularInline):
 # Formulas filters
 class FormulasFilter(AutocompleteFilter):
     title = "Formulas"
-    field_name = 'formula'
+    field_name = 'formula_uuid'
 
 class FormulaAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
@@ -363,7 +363,7 @@ class FormulaAutocomplete(autocomplete.Select2QuerySetView):
 # Manuscripts filters
 class ManuscriptsFilter(AutocompleteFilter):
     title = "Manuscripts"
-    field_name = 'manuscript'
+    field_name = 'manuscript_uuid'
 
 class ManuscriptsAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
@@ -474,7 +474,7 @@ class EditionContentAdmin(admin.ModelAdmin):
                              ]
 
     list_filter = [FormulasFilter]
-    autocomplete_fields = ['formula']
+    autocomplete_fields = ['formula_uuid']
 
 
     def formula_standarized(self,obj):
@@ -498,7 +498,7 @@ class ContentAdmin(CustomDebateableAdmin):
     #wrapped_field= easy.SimpleAdminField(lambda x: linebreaksbr(x.formula), 'formula', 'formula')
 
     list_filter = [FormulasFilter, ManuscriptsFilter]
-    autocomplete_fields = ['formula', 'manuscript']
+    autocomplete_fields = ['formula_uuid', 'manuscript_uuid']
 
 
     def formula_standarized(self,obj):
@@ -988,8 +988,8 @@ class CalendarForm(forms.ModelForm):
         fields = ('__all__')
         widgets = {
 
-            'content': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rubric_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'content_uuid': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
+            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
         }
 
 class CalendarAdmin(CustomDebateableAdmin):
@@ -1054,8 +1054,8 @@ class DecorationForm(forms.ModelForm):
         fields = ('__all__')
         widgets = {
 
-            'content': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rubric_name_standarized': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'content_uuid': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
+            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
 
         }
 
@@ -1068,10 +1068,10 @@ class DecorationForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Filter decoration_type to only show DecorationTypes with no parent_type
-        self.fields['decoration_type'].queryset = DecorationTypes.objects.filter(parent_type__isnull=True)
+        self.fields['decoration_type_uuid'].queryset = DecorationTypes.objects.filter(parent_type_uuid__isnull=True)
 
         # Filter decoration_subtype to only show DecorationTypes with a parent_type
-        self.fields['decoration_subtype'].queryset = DecorationTypes.objects.filter(parent_type__isnull=False)
+        self.fields['decoration_subtype_uuid'].queryset = DecorationTypes.objects.filter(parent_type_uuid__isnull=False)
 
 
 class DecorationAdmin(CustomDebateableAdmin):

@@ -49,15 +49,15 @@ class Command(BaseCommand):
         for model, specs in model_specs:
             queryset = model.objects.all().order_by('pk')
             if specs:
-                queryset = queryset.select_related(*[field.name for field, _shadow_field in specs])
+                queryset = queryset.select_related(*[field.name for _legacy_name, field in specs])
 
             model_updates = 0
             for instance in queryset.iterator(chunk_size=chunk_size):
                 updates = {}
-                for field, shadow_field in specs:
+                for _legacy_name, field in specs:
                     expected_uuid = resolve_shadow_uuid(instance, field)
-                    if getattr(instance, shadow_field.attname) != expected_uuid:
-                        updates[shadow_field.attname] = expected_uuid
+                    if getattr(instance, field.attname) != expected_uuid:
+                        updates[field.attname] = expected_uuid
 
                 if not updates:
                     continue

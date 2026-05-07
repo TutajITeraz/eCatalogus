@@ -136,7 +136,7 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
         representation['main_script'] = str(instance.main_script)
         representation['binding_date'] = str(instance.binding_date)
 
-        source_project_link = instance.ms_projects.select_related('project').order_by('id').first()
+        source_project_link = instance.ms_projects.select_related('project_uuid').order_by('id').first()
         source_project = source_project_link.project if source_project_link else None
         representation['source_project_name'] = source_project.name if source_project else ''
         representation['source_project_icon'] = source_project.icon if source_project else ''
@@ -287,7 +287,7 @@ class FormulasIndexSerializer(serializers.ModelSerializer):
 
     def get_used_in(self, obj):
         # We need distinct manuscripts because one formula can appear multiple times in one MS
-        contents = obj.content_set.select_related('manuscript').all()
+        contents = obj.content_set.select_related('manuscript_uuid').all()
         ms_list = {}
         for c in contents:
             if c.manuscript:
@@ -299,7 +299,7 @@ class FormulasIndexSerializer(serializers.ModelSerializer):
         return [{"uuid": k, "name": v} for k, v in ms_list.items()]
 
     def get_used_in_count(self, obj):
-        return obj.content_set.values('manuscript').distinct().count()
+        return obj.content_set.values('manuscript_uuid').distinct().count()
 
 
 class RiteNamesIndexSerializer(serializers.ModelSerializer):
@@ -313,7 +313,7 @@ class RiteNamesIndexSerializer(serializers.ModelSerializer):
         )
 
     def get_used_in(self, obj):
-        contents = obj.content_set.select_related('manuscript').all()
+        contents = obj.content_set.select_related('manuscript_uuid').all()
         ms_list = {}
         for c in contents:
             if c.manuscript:
@@ -323,7 +323,7 @@ class RiteNamesIndexSerializer(serializers.ModelSerializer):
         return [{"uuid": k, "name": v} for k, v in ms_list.items()]
 
     def get_used_in_count(self, obj):
-        return obj.content_set.values('manuscript').distinct().count()
+        return obj.content_set.values('manuscript_uuid').distinct().count()
 
 
 class SubjectsIndexSerializer(serializers.ModelSerializer):
@@ -337,7 +337,7 @@ class SubjectsIndexSerializer(serializers.ModelSerializer):
     def get_used_in(self, obj):
         # Subject -> DecorationSubjects (related_name=decoration_subject) -> Decoration -> Manuscript
         ms_list = {}
-        for ds in obj.decoration_subject.select_related('decoration__manuscript').all():
+        for ds in obj.decoration_subject.select_related('decoration_uuid__manuscript_uuid').all():
             ms = ds.decoration.manuscript if ds.decoration else None
             if ms:
                 manuscript_uuid = str(ms.uuid) if ms.uuid else None
@@ -348,7 +348,7 @@ class SubjectsIndexSerializer(serializers.ModelSerializer):
     def get_used_in_count(self, obj):
         return (
             obj.decoration_subject
-            .values('decoration__manuscript')
+            .values('decoration_uuid__manuscript_uuid')
             .distinct()
             .count()
         )
