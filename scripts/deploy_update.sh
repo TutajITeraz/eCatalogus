@@ -715,7 +715,8 @@ main() {
   run_download_libs
   validate_settings_module
   run_manage check
-  run_manage makemigrations indexerapp --noinput
+  #migrations are now synchronized in repo
+  #run_manage makemigrations indexerapp --noinput
   run_manage migrate --noinput
   run_manage collectstatic --noinput
   link_public_assets
