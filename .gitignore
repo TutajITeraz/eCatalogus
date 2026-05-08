@@ -163,7 +163,6 @@ cython_debug/
 
 
 #Specific:
-indexerapp/migrations/
 ritus_indexer/settings.py
 media/
 media_instances/
