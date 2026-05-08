@@ -712,15 +712,24 @@ main() {
     warn "requirements.txt not found in ${APPDIR}; skipping dependency installation"
   fi
 
+  log "------------------------------ run_download_libs ------------------------------"
   run_download_libs
+  log "------------------------------ validate_settings_module ------------------------------"
   validate_settings_module
+  log "------------------------------ check ------------------------------"
   run_manage check
   #migrations are now synchronized in repo
   #run_manage makemigrations indexerapp --noinput
+  log "------------------------------ migrate ------------------------------"
   run_manage migrate --noinput
+  log "------------------------------ collectstatic ------------------------------"
   run_manage collectstatic --noinput
+  log "------------------------------ link_public_assets ------------------------------"
   link_public_assets
+  log "------------------------------ render_nginx_snippet ------------------------------"
   render_nginx_snippet
+  log "------------------------------ install_directadmin_snippet ------------------------------"
+
   install_directadmin_snippet
   restart_service
 
