@@ -182,6 +182,5 @@ indexerapp/static/css/cdn/
 indexerapp/static/.DS_Store
 /tmp
 .DS_Store
-.env.ecatalogus
-.env.mpl
+.env.*
 /static_assets
