@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 queryset = queryset.prefetch_related(*[field.name for field in m2m_fields])
 
             field_counters = {
-                field.name: {
+                legacy_name: {
                     'owner_missing_uuid': 0,
                     'related_missing_uuid': 0,
                     'missing_shadow': 0,
@@ -104,7 +104,7 @@ class Command(BaseCommand):
                     'self_reference': 0,
                     'missing_shadow_field': 0,
                 }
-                for field_name, field in ((legacy_name, field) for legacy_name, field in fk_specs)
+                for legacy_name, field in fk_specs
             }
             m2m_counters = {
                 field.name: {
@@ -127,7 +127,10 @@ class Command(BaseCommand):
                     if owner_uuid is None:
                         counters['owner_missing_uuid'] += 1
 
-                    related_object = getattr(instance, field.name, None)
+                    try:
+                        related_object = getattr(instance, field.name, None)
+                    except field.related_model.DoesNotExist:
+                        related_object = None
                     if related_object == instance:
                         counters['self_reference'] += 1
 

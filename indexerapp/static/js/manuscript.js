@@ -413,7 +413,7 @@ function init_layouts_table() {
       dataSrc: (data) => data.data,
     },
     processing: false,
-    serverSide: true,
+    serverSide: false,
     lengthMenu: [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, "All"],
@@ -893,7 +893,7 @@ function init_quires_table() {
       dataSrc: (data) => data.data,
     },
     processing: false,
-    serverSide: true,
+    serverSide: false,
     lengthMenu: [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, "All"],
@@ -1783,7 +1783,7 @@ function init_additions_hands() {
       },
     },
     processing: false,
-    serverSide: true,
+    serverSide: false,
     lengthMenu: [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, "All"],
@@ -1989,7 +1989,7 @@ function init_bibliography_table() {
       },
     },
     processing: false,
-    serverSide: true,
+    serverSide: false,
     lengthMenu: [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, "All"],
@@ -2954,8 +2954,12 @@ async function map_init() {
     )
       continue;
 
-    var marker = new L.Marker(new L.LatLng(markers[m].lat, markers[m].lon), {
-      icon: new L.NumberedDivIcon({ number: Number(m) + 1 }),
+    var marker = L.marker([markers[m].lat, markers[m].lon], {
+      icon: L.divIcon({
+        html: `<img src="/static/img/icons/marker_number.svg"><div class="number">${Number(m) + 1}</div>`,
+        className: 'leaflet-marker-icon leaflet-div-icon',
+        iconSize: L.point(25, 41)
+      }),
       autoPanOnFocus: false,
     });
     marker.addTo(map);

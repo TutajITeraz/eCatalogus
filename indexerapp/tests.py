@@ -1,3 +1,4 @@
+import csv
 import json
 from unittest.mock import patch
 
@@ -95,7 +96,7 @@ class AdminUUIDVisibilityTests(TestCase):
 		layouts_admin = admin.site._registry[Layouts]
 		form_class = layouts_admin.get_form(request)
 
-		self.assertEqual(form_class.base_fields['manuscript'].to_field_name, 'uuid')
+		self.assertEqual(form_class.base_fields['manuscript_uuid'].to_field_name, 'uuid')
 
 	def test_content_admin_form_uses_uuid_for_formula_field(self):
 		request = RequestFactory().get('/admin/')
@@ -103,7 +104,7 @@ class AdminUUIDVisibilityTests(TestCase):
 		content_admin = admin.site._registry[Content]
 		form_class = content_admin.get_form(request)
 
-		self.assertEqual(form_class.base_fields['formula'].to_field_name, 'uuid')
+		self.assertEqual(form_class.base_fields['formula_uuid'].to_field_name, 'uuid')
 
 	def test_projects_admin_changelist_links_use_uuid(self):
 		project = Projects.objects.create(name='UUID admin project')
@@ -213,6 +214,70 @@ class AdminUUIDVisibilityTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Add manuscript watermarks')
 		self.assertContains(response, 'name="_to_field" value="uuid"', html=False)
+
+
+class MainInfoAjaxViewTests(TestCase):
+	def test_main_info_ajax_view_returns_user_info(self):
+		user = get_user_model().objects.create_user(username='testuser', password='testpass')
+		self.client.login(username='testuser', password='testpass')
+		
+		response = self.client.get(reverse('main_info'))
+		
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		self.assertEqual(data['username'], 'testuser')
+		self.assertIn('groups', data)
+		self.assertIn('is_superuser', data)
+		self.assertIn('is_staff', data)
+		self.assertIn('import_permissions', data)
+		self.assertIn('edit_mode', data)
+
+
+class ContentCSVExportViewTests(TestCase):
+	def test_content_csv_export_keeps_rubric_and_digital_page_columns_in_order(self):
+		manuscript = Manuscripts.objects.create(name='CSV manuscript', display_as_main=True)
+		content = Content.objects.create(
+			manuscript_uuid=manuscript,
+			formula_text='Lorem ipsum',
+			rubric_name_from_ms='Ingressus',
+			digital_page_number=77,
+		)
+
+		response = self.client.get(reverse('content_csv_export_uuid', args=(manuscript.uuid,)))
+
+		self.assertEqual(response.status_code, 200)
+		rows = list(csv.reader(response.content.decode('utf-8').splitlines()))
+		headers = rows[0]
+		values = rows[1]
+		self.assertEqual(values[headers.index('rubric_name_from_ms')], 'Ingressus')
+		self.assertEqual(values[headers.index('digital_page_number')], '77')
+
+
+class MSGalleryDeletePermissionTests(TestCase):
+	def setUp(self):
+		self.manuscript = Manuscripts.objects.create(name='Gallery manuscript', display_as_main=True)
+		self.image = Image.objects.create(manuscript_uuid=self.manuscript, name='Test image')
+
+	def test_delete_requires_authentication(self):
+		response = self.client.delete(
+			reverse('ms_gallery'),
+			data=json.dumps({'manuscript_uuid': str(self.manuscript.uuid), 'image_uuid': str(self.image.uuid)}),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 401)
+
+	def test_delete_requires_superuser(self):
+		user = get_user_model().objects.create_user(username='gallery-user', password='Secret123!pass')
+		self.client.force_login(user)
+
+		response = self.client.delete(
+			reverse('ms_gallery'),
+			data=json.dumps({'manuscript_uuid': str(self.manuscript.uuid), 'image_uuid': str(self.image.uuid)}),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 403)
 
 
 class ManuscriptUUIDLookupViewTests(TestCase):

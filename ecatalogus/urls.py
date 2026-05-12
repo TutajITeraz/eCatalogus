@@ -15,6 +15,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include,path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from etlapp import urls as etl_urls
 from etlapp.views import ETLAdminSyncView
 from indexerapp import views
@@ -129,6 +130,8 @@ router.register(r'hands', views.ManuscriptHandsViewSet, basename='hands')
 router.register(r'manuscripts', views.ManuscriptsViewSet)
 
 urlpatterns = [
+    path('api/schema/', admin.site.admin_view(SpectacularAPIView.as_view()), name='api-schema'),
+    path('api/schema/swagger/', admin.site.admin_view(SpectacularSwaggerView.as_view(url_name='api-schema')), name='api-schema-swagger'),
     path('admin/etl-sync/', admin.site.admin_view(ETLAdminSyncView.as_view()), name='admin-etl-sync'),
     path('admin/', admin.site.urls),
     path("data-browser/", include("data_browser.urls")),

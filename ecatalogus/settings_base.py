@@ -108,13 +108,15 @@ INSTALLED_APPS = [
     'dal',
     'dal_select2',
     'corsheaders',
+    'drf_spectacular',
     'rest_framework_datatables',
     'django_filters',
     'modelclone',
     'iommi',
     #'osm_field'
     #'zotero'
-    'captcha'
+    'captcha',
+    'import_export',
 ]
 
 REST_FRAMEWORK = {
@@ -123,6 +125,7 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.BrowsableAPIRenderer',
         'rest_framework_datatables.renderers.DatatablesRenderer',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_FILTER_BACKENDS': (
         'rest_framework_datatables.filters.DatatablesFilterBackend',
     ),
@@ -137,6 +140,17 @@ DATATABLES = {
 REST_FRAMEWORK_DATATABLES = {
     'ignore_validation_errors': True,
     'always_serialize': '__all__',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'eCatalogus ETL API',
+    'DESCRIPTION': 'OpenAPI schema for ETL synchronization endpoints used by multi-instance dictionary and manuscript replication.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SCHEMA_PATH_PREFIX': r'/api/etl',
+    'TAGS': [
+        {'name': 'ETL', 'description': 'Machine-to-machine ETL synchronization endpoints.'},
+    ],
 }
 
 MIDDLEWARE = [
@@ -214,3 +228,11 @@ ETL_SLAVE_URLS = []
 ETL_PEER_TOKENS = {}
 ETL_API_TOKEN = os.getenv('ETL_API_TOKEN', '')
 SITE_SUBTITLE = ''
+
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE

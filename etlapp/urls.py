@@ -13,6 +13,7 @@ from .views import (
     ETLUIPullCategoryView,
     ETLUIPullManuscriptView,
     ETLUIResolveConflictView,
+    ETLUITaskStatusView,
 )
 
 
@@ -22,6 +23,7 @@ urlpatterns = [
     path('ui/pull-category/', ETLUIPullCategoryView.as_view(), name='etl-ui-pull-category'),
     path('ui/pull-manuscript/', ETLUIPullManuscriptView.as_view(), name='etl-ui-pull-manuscript'),
     path('ui/resolve-conflict/', ETLUIResolveConflictView.as_view(), name='etl-ui-resolve-conflict'),
+    path('ui/task/<str:task_id>/', ETLUITaskStatusView.as_view(), name='etl-ui-task-status'),
     path('status/', ETLStatusView.as_view(), name='etl-status'),
     path('manuscripts/list/', ETLManuscriptListView.as_view(), name='etl-manuscript-list'),
     path('manuscripts/export/<uuid:manuscript_uuid>/', ETLManuscriptExportView.as_view(), name='etl-manuscript-export'),

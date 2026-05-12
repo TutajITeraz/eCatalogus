@@ -5,6 +5,7 @@ let etlPeerManuscripts = [];
 let etlPendingOperations = 0;
 let etlActiveConflict = null;
 let etlConflictWorkflow = null;
+let etlBusyProgressValue = 0;
 
 async function etl_sync_init() {
     bindETLSyncEvents();
@@ -188,7 +189,7 @@ async function triggerCategoryPull(category) {
     };
     clearActiveConflict();
     appendETLLog(`Pulling ${category} from ${peer.url}${sinceValue ? ` since ${sinceValue}` : ''}...`);
-    beginETLBusyState(`Pulling ${category} data...`);
+    beginETLBusyState(`Pulling ${category} data...`, 12);
     await waitForNextPaint();
 
     try {
@@ -203,13 +204,7 @@ async function triggerCategoryPull(category) {
             }),
         });
 
-        const result = payload.result || {};
-        const importSummary = result.import_summary || {};
-        const deleteSummary = result.delete_summary || {};
-        clearActiveConflict({ resetWorkflow: true });
-        appendETLLog(
-            `${category} pull completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, deleted=${deleteSummary.deleted || 0}, missing_deleted=${deleteSummary.missing || 0}.`
-        );
+        await handleCategoryPullResponse(category, payload);
     } catch (error) {
         if (error.status === 409 && error.payload && error.payload.conflict) {
             updateConflictWorkflowFromPayload(error.payload);
@@ -328,7 +323,7 @@ async function triggerManuscriptPull(manuscriptUuid) {
     }
 
     appendETLLog(`Importing manuscript package ${manuscriptUuid} from ${peer.url}...`);
-    beginETLBusyState('Importing manuscript package...');
+    beginETLBusyState('Importing manuscript package...', 18);
     await waitForNextPaint();
     try {
         const payload = await etlFetchJson('/api/etl/ui/pull-manuscript/', {
@@ -338,11 +333,7 @@ async function triggerManuscriptPull(manuscriptUuid) {
                 manuscript_uuid: manuscriptUuid,
             }),
         });
-        const importSummary = (payload.result || {}).import_summary || {};
-        const mediaSummary = importSummary.media_summary || {};
-        appendETLLog(
-            `Manuscript import completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, media_created=${mediaSummary.created || 0}, media_updated=${mediaSummary.updated || 0}, media_skipped=${mediaSummary.skipped || 0}.`
-        );
+        await handleManuscriptPullResponse(manuscriptUuid, payload);
     } catch (error) {
         appendETLLog(`Manuscript import failed: ${error.message}`);
     } finally {
@@ -375,6 +366,87 @@ async function etlFetchJson(url, options = {}) {
     }
 
     return payload;
+}
+
+async function handleCategoryPullResponse(category, payload) {
+    if (payload.task_id) {
+        appendETLLog(`${category} pull queued as task ${payload.task_id}.`);
+        const taskPayload = await pollETLTask(
+            payload.task_id,
+            `Pulling ${category} data from peer...`,
+            [28, 52, 76, 90]
+        );
+        logCategoryPullSummary(category, taskPayload.result || {});
+        return;
+    }
+
+    if (payload.async_fallback && payload.async_error) {
+        appendETLLog(`Async queue unavailable, switched to direct execution: ${payload.async_error}`);
+    }
+
+    logCategoryPullSummary(category, payload.result || {});
+}
+
+async function handleManuscriptPullResponse(manuscriptUuid, payload) {
+    if (payload.task_id) {
+        appendETLLog(`Manuscript import queued as task ${payload.task_id}.`);
+        const taskPayload = await pollETLTask(
+            payload.task_id,
+            `Importing manuscript package ${manuscriptUuid}...`,
+            [32, 58, 82, 92]
+        );
+        logManuscriptPullSummary(taskPayload.result || {});
+        return;
+    }
+
+    if (payload.async_fallback && payload.async_error) {
+        appendETLLog(`Async queue unavailable, switched to direct execution: ${payload.async_error}`);
+    }
+
+    logManuscriptPullSummary(payload.result || {});
+}
+
+function logCategoryPullSummary(category, result) {
+    const importSummary = result.import_summary || {};
+    const deleteSummary = result.delete_summary || {};
+    clearActiveConflict({ resetWorkflow: true });
+    updateETLBusyProgress(100, `${capitalize(category)} pull completed.`);
+    appendETLLog(
+        `${category} pull completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, deleted=${deleteSummary.deleted || 0}, missing_deleted=${deleteSummary.missing || 0}.`
+    );
+}
+
+function logManuscriptPullSummary(result) {
+    const importSummary = result.import_summary || {};
+    const mediaSummary = importSummary.media_summary || {};
+    updateETLBusyProgress(100, 'Manuscript package imported.');
+    appendETLLog(
+        `Manuscript import completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, media_created=${mediaSummary.created || 0}, media_updated=${mediaSummary.updated || 0}, media_skipped=${mediaSummary.skipped || 0}.`
+    );
+}
+
+async function pollETLTask(taskId, pendingMessage, progressSteps) {
+    const stages = Array.isArray(progressSteps) && progressSteps.length ? progressSteps : [30, 55, 80, 92];
+    let pollCount = 0;
+
+    while (true) {
+        const payload = await etlFetchJson(`/api/etl/ui/task/${encodeURIComponent(taskId)}/`);
+        const statusLabel = String(payload.status || '').toUpperCase();
+
+        if (statusLabel === 'SUCCESS') {
+            updateETLBusyProgress(100, 'Background task finished.');
+            return payload;
+        }
+
+        if (statusLabel === 'FAILURE' || statusLabel === 'REVOKED') {
+            throw new Error(payload.error || `Task ${taskId} failed.`);
+        }
+
+        const nextProgress = stages[Math.min(pollCount, stages.length - 1)];
+        updateETLBusyProgress(nextProgress, `${pendingMessage} Task status: ${statusLabel || 'PENDING'}.`);
+        pollCount += 1;
+        await delay(1200);
+    }
 }
 
 async function resolveActiveConflict(resolution) {
@@ -607,19 +679,35 @@ function waitForNextPaint() {
     });
 }
 
-function beginETLBusyState(message) {
+function delay(ms) {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+    });
+}
+
+function beginETLBusyState(message, progressValue = 10) {
     etlPendingOperations += 1;
-    renderETLBusyState(message || 'Working...');
+    updateETLBusyProgress(progressValue, message || 'Working...');
 }
 
 function endETLBusyState() {
     etlPendingOperations = Math.max(0, etlPendingOperations - 1);
+    if (!etlPendingOperations) {
+        etlBusyProgressValue = 0;
+    }
     renderETLBusyState();
+}
+
+function updateETLBusyProgress(progressValue, message) {
+    etlBusyProgressValue = Math.max(0, Math.min(100, Number(progressValue) || 0));
+    renderETLBusyState(message);
 }
 
 function renderETLBusyState(message) {
     const panel = document.getElementById('etl-busy-panel');
     const text = document.getElementById('etl-busy-text');
+    const progressBar = document.getElementById('etl-busy-progress-bar');
+    const progressLabel = document.getElementById('etl-busy-progress-label');
     const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-peer-select, #etl-since, .etl-import-manuscript, #etl-conflict-keep-local, #etl-conflict-apply-remote, #etl-conflict-close, #etl-conflict-reset-workflow');
     const isBusy = etlPendingOperations > 0;
 
@@ -632,6 +720,14 @@ function renderETLBusyState(message) {
         text.textContent = message;
     } else if (text && isBusy) {
         text.textContent = 'Working... Do not close this browser tab.';
+    }
+
+    if (progressBar) {
+        progressBar.style.width = `${isBusy ? etlBusyProgressValue : 0}%`;
+    }
+
+    if (progressLabel) {
+        progressLabel.textContent = isBusy ? `${Math.round(etlBusyProgressValue)}%` : '';
     }
 
     controls.forEach((element) => {
@@ -654,4 +750,9 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
     return escapeHtml(value);
+}
+
+function capitalize(value) {
+    const stringValue = String(value || '');
+    return stringValue ? stringValue.charAt(0).toUpperCase() + stringValue.slice(1) : '';
 }

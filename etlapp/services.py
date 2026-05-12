@@ -665,7 +665,7 @@ def _prepare_import_values(model, record):
                 continue
 
             if field.name in record:
-                attrs[field.attname] = record[field.name]
+                attrs[field.attname] = field.target_field.to_python(record[field.name])
             continue
 
         if field.name in record:

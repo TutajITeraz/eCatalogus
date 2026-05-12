@@ -39,6 +39,10 @@
         <label for="ms_select">Manuscript:</label>
         <select class="manuscript_filter" id="ms_select">
         </select>
+        <div class="flex flex-col gap-3 mt-4 sm:flex-row sm:flex-wrap">
+            <button class="py-2 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#f1dfcf] rounded w-[200px] hover:bg-[#e6d1bf] text-center" type="button" onclick="openManuscriptAdminPopup()">Add manuscript</button>
+            <button class="py-2 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#f4e8df] rounded w-[200px] hover:bg-[#eadfd6] text-center" type="button" onclick="refreshImporterManuscripts()">Refresh manuscript list</button>
+        </div>
         <button class="py-2 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded w-[200px] hover:bg-[#dec5b2] text-center mt-7" id="download-csv-from-server" onclick="downloadContentCSV()" style="display: none">Download data from the server as .csv</button>
         <button class="py-2 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded w-[200px] hover:bg-[#dec5b2] text-center mt-7" id="delete-ms-content" onclick="deleteMSContent()" style="display: none">Delete all content</button>
     </div>
@@ -59,6 +63,13 @@
     <p id="loading-info">Sending data... please wait. Do NOT close this window</p>
     
     <h2 class="text-[16pt] text-[#0d1b2a] caudex-bold text-left mb-5" >4. Send data to the database:</h2>
+    <div class="mb-4 rounded border border-[#d97706] bg-[#fff3e0] px-4 py-3 text-[#9a3412]">
+        Import can create new records or overwrite existing ones when the file contains stable identifiers. By default UUID and legacy row IDs from the file are stripped before upload.
+    </div>
+    <label class="mb-4 flex items-center gap-2 text-[#0d1b2a]">
+        <input type="checkbox" id="use-file-uuids">
+        <span>Use uuids from file</span>
+    </label>
     <button class="py-2 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded w-[200px] hover:bg-[#dec5b2] text-center mt-7" id="send-to-server" onclick="sendToServer()" style="display: none">Send to database</button>
     
     <div id="tradition_selector">

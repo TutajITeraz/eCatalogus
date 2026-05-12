@@ -9,7 +9,7 @@ Goal
 
 What is included
  - `scripts/install_instance.sh` — installer that validates config early, clones or updates the repo, creates a virtualenv, installs dependencies, downloads frontend libraries, runs `check`, `migrate`, `collectstatic`, refreshes symlinks/permissions, renders managed per-instance settings files, and writes a per-instance config under `scripts/config/`.
- - `scripts/deploy_update.sh` — update script that validates config, preserves local files listed in the config, refuses unexpected dirty working trees, renders managed per-instance settings files, downloads frontend libraries, runs `check`, `migrate`, `collectstatic`, refreshes symlinks/permissions, and restarts the service when possible.
+ - `scripts/deploy_update.sh` — update script that validates config, preserves local files listed in the config, refuses unexpected dirty working trees, renders managed per-instance settings files, downloads frontend libraries, runs `check`, `makemigrations`, `migrate`, `collectstatic`, refreshes symlinks/permissions, installs or renders the DirectAdmin CUSTOM3 snippet, and restarts the service when possible.
  - `scripts/config/example.env` — example environment file showing configurable values (domain, repo URL, branch, paths, preserve list, socket/port, etc.).
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root.
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root (or use `--install-unit` when running the installer with sudo/root).
@@ -18,7 +18,7 @@ Design decisions
  - Scripts always use `git` to obtain code. On existing checkouts they preserve configured files before reset and abort if they detect unexpected local changes.
  - Local instance-specific files that are truly local-only can be preserved by copying them out before `git reset` and restoring them afterwards. Configure the list via `PRESERVE_FILES` in the env file. Do not preserve managed files such as `ecatalogus/settings.py`, `ecatalogus/settings_mpl.py`, `ecatalogus/settings_ecatalogus.py`, or repo-owned overlay static files.
  - By default the service binds to a Unix socket (recommended for Nginx). TCP mode is supported; the installer checks port availability when TCP is selected.
- - The scripts never run `makemigrations` on the server. They only apply committed migrations.
+ - The scripts now run `makemigrations indexerapp --noinput` before `migrate`, because this deployment workflow intentionally generates production migrations per environment.
  - If you pass a config file to `install_instance.sh`, it is used as-is unless you explicitly request `--edit-config`.
  - The scripts are English-only and log each run to the instance `logs/` directory.
  - The scripts will generate the systemd unit into `deploy/` but will only install it to `/etc/systemd/system/` if you explicitly allow it and run the script with root (or use `sudo`).

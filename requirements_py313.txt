@@ -23,6 +23,7 @@ django-select2==8.4.8
 django-simple-captcha==0.6.3
 djangorestframework==3.16.1
 djangorestframework-datatables==0.7.2
+drf-spectacular==0.28.0
 dubo==0.2.13
 feedparser==6.0.12
 fonttools==4.61.1

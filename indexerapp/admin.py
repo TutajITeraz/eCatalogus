@@ -7,6 +7,8 @@ from django.db import models
 from django.forms import TextInput, Textarea
 from django.core.exceptions import ValidationError
 from admin_searchable_dropdown.filters import AutocompleteFilter
+from import_export.admin import ImportExportModelAdmin
+from .resources import *
 #from zotero.admin import TagInlineAdmin
 
 from django import forms
@@ -16,6 +18,14 @@ from django.template.defaultfilters import linebreaksbr
 #for add debate:
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.admin.utils import quote
+ 
+
+class UUIDAutocompleteResultMixin:
+    def get_result_value(self, item):
+        item_uuid = getattr(item, 'uuid', None)
+        if item_uuid:
+            return str(item_uuid)
+        return str(getattr(item, 'pk', item))
 from django.contrib.admin.views.main import ChangeList
 from django.urls import reverse
 from django.utils.html import format_html
@@ -56,10 +66,6 @@ def _model_prefers_uuid_lookup(model):
 ########################  FolioPaginationWidget  ###################################
 
 from django.utils.safestring import mark_safe
-
-class HorizontalRadioRenderer(forms.RadioSelect):
-    def render(self):
-        return mark_safe(u'\n'.join([u'%s\n' % w for w in self]))
 
 
 
@@ -349,8 +355,9 @@ class ManuscriptGenresInline(admin.TabularInline):
 class FormulasFilter(AutocompleteFilter):
     title = "Formulas"
     field_name = 'formula_uuid'
+    field_pk = 'uuid'
 
-class FormulaAutocomplete(autocomplete.Select2QuerySetView):
+class FormulaAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = Formulas.objects.all()
 
@@ -364,8 +371,9 @@ class FormulaAutocomplete(autocomplete.Select2QuerySetView):
 class ManuscriptsFilter(AutocompleteFilter):
     title = "Manuscripts"
     field_name = 'manuscript_uuid'
+    field_pk = 'uuid'
 
-class ManuscriptsAutocomplete(autocomplete.Select2QuerySetView):
+class ManuscriptsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = Manuscripts.objects.all()
 
@@ -466,7 +474,17 @@ class CustomDebateableAdmin(modelclone.ClonableModelAdmin):
     # where_in_ms_start.short_description = 'where in ms from'
     # where_in_ms_end.short_description = 'where in ms to'
 
-class EditionContentAdmin(admin.ModelAdmin):
+
+class ImportExportDebateableAdmin(CustomDebateableAdmin, ImportExportModelAdmin):
+    """
+    Combined admin class that inherits from both CustomDebateableAdmin and ImportExportModelAdmin
+    to provide debate functionality and import/export capabilities.
+    """
+    pass
+
+
+class EditionContentAdmin(ImportExportDebateableAdmin):
+    resource_class = EditionContentResource
     form = EditionContentForm
 
     list_display=  ['id','short_name']+[field.name for field in EditionContent._meta.fields
@@ -474,7 +492,19 @@ class EditionContentAdmin(admin.ModelAdmin):
                              ]
 
     list_filter = [FormulasFilter]
-    autocomplete_fields = ['formula_uuid']
+    autocomplete_fields = [
+        'bibliography_uuid',
+        'formula_uuid',
+        'rubric_name_standarized_uuid',
+        'function_uuid',
+        'subfunction_uuid',
+        'data_contributor_uuid',
+    ]
+    search_fields = [
+        'bibliography_uuid__title__icontains',
+        'formula_uuid__text__icontains',
+        'page',
+    ]
 
 
     def formula_standarized(self,obj):
@@ -486,7 +516,7 @@ class EditionContentAdmin(admin.ModelAdmin):
         return str(obj)
 
 # @admin.register(Content)
-class ContentAdmin(CustomDebateableAdmin):
+class ContentAdmin(ImportExportDebateableAdmin):
     form = ContentForm
     list_display= ['id', 'manuscript', 'formula_text', 'formula_standarized', 'rubric_name_from_ms', 'similarity_levenshtein', 'where_in_ms_from', 'where_in_ms_to', 'original_or_added', 'biblical_reference', 'reference_to_other_items', 'similarity_by_user', 'entry_date', 'sequence_in_ms', 'edition_index', 'comments']
 
@@ -498,7 +528,25 @@ class ContentAdmin(CustomDebateableAdmin):
     #wrapped_field= easy.SimpleAdminField(lambda x: linebreaksbr(x.formula), 'formula', 'formula')
 
     list_filter = [FormulasFilter, ManuscriptsFilter]
-    autocomplete_fields = ['formula_uuid', 'manuscript_uuid']
+    autocomplete_fields = [
+        'manuscript_uuid',
+        'formula_uuid',
+        'rubric_uuid',
+        'liturgical_genre_uuid',
+        'quire_uuid',
+        'section_uuid',
+        'subsection_uuid',
+        'function_uuid',
+        'subfunction_uuid',
+        'data_contributor_uuid',
+        'edition_index_uuid',
+        'genre_uuid',
+        'season_month_uuid',
+        'week_uuid',
+        'day_uuid',
+        'mass_hour_uuid',
+        'layer_uuid',
+    ]
 
 
     def formula_standarized(self,obj):
@@ -519,22 +567,9 @@ class ContentAdmin(CustomDebateableAdmin):
 
     #inlines = [FormulasInline]
 
-"""
-class ManuscriptsAdmin(admin.ModelAdmin):
-    #list_display= ('name','rism_id', 'rites_count')
-    list_display= [field.name for field in Manuscripts._meta.fields
-                             #if not isinstance(field, models.ForeignKey)
-                             ]
 
-    #inlines = [RitesInline]
-    #inlines = (TagInlineAdmin,)
-
-    def rites_count(self,obj):
-        return obj.ms_rites.count()
-"""
-
-
-class ManuscriptsAdmin(CustomDebateableAdmin):
+class ManuscriptsAdmin(ImportExportDebateableAdmin):
+    resource_class = ManuscriptsResource
 
     inlines = [ManuscriptBibliographyInline, OriginsInline, ProvenanceInline, ManuscriptBindingMaterialsInline, ManuscriptBindingComponentsInline, ManuscriptGenresInline ]
 
@@ -548,20 +583,21 @@ class ManuscriptsAdmin(CustomDebateableAdmin):
         'foreign_id__icontains',
         'shelf_mark__icontains',
         'common_name__icontains',
-        'contemporary_repository_place__country_today_eng__icontains',
-        'contemporary_repository_place__region_today_eng__icontains',
-        'contemporary_repository_place__city_today_eng__icontains',
-        'contemporary_repository_place__repository_today_eng__icontains',
-        'place_of_origin__country_today_eng__icontains',
-        'place_of_origin__region_today_eng__icontains',
-        'place_of_origin__city_today_eng__icontains',
-        'place_of_origin__repository_today_eng__icontains',
+        'contemporary_repository_place_uuid__country_today_eng__icontains',
+        'contemporary_repository_place_uuid__region_today_eng__icontains',
+        'contemporary_repository_place_uuid__city_today_eng__icontains',
+        'contemporary_repository_place_uuid__repository_today_eng__icontains',
+        'place_of_origin_uuid__country_today_eng__icontains',
+        'place_of_origin_uuid__region_today_eng__icontains',
+        'place_of_origin_uuid__city_today_eng__icontains',
+        'place_of_origin_uuid__repository_today_eng__icontains',
     ]
     #class Media:
     #    js = ('admin/js/vendor/jquery/jquery.min.js', 'admin/js/jquery.init.js',)  # Dołącz pliki JavaScript związane z obsługą popupów
 
 
-class CllaAdmin(CustomDebateableAdmin):
+class CllaAdmin(ImportExportDebateableAdmin):
+    resource_class = CllaResource
     inlines = []
 
     list_display= [field.name for field in Clla._meta.fields
@@ -569,14 +605,17 @@ class CllaAdmin(CustomDebateableAdmin):
                              ]
 
 
-class ProjectsAdmin(CustomDebateableAdmin):
+class ProjectsAdmin(ImportExportDebateableAdmin):
     inlines = []
 
     list_display= [field.name for field in Projects._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-class MSProjectsAdmin(CustomDebateableAdmin):
+    search_fields = ['name__icontains']
+
+class MSProjectsAdmin(ImportExportDebateableAdmin):
+    resource_class = MSProjectsResource
     inlines = []
 
     list_display= [field.name for field in MSProjects._meta.fields
@@ -584,88 +623,69 @@ class MSProjectsAdmin(CustomDebateableAdmin):
                              ]
 
 
-class FormulasAdmin(CustomDebateableAdmin):
+class FormulasAdmin(ImportExportDebateableAdmin):
     list_display= ('id','text','co_no')
 
     search_fields = ['text__icontains']##_startswith
-"""
-class RitesAdmin(CustomDebateableAdmin):
-    #list_display= ('rubric_name_from_ms','manuscript','rubric_sequence','content_count')
 
-    list_display= [field.name for field in Rites._meta.fields
-                             #if not isinstance(field, models.ForeignKey)
-                             ]
 
-    inlines = [ContentInline]
-
-    def content_count(self,obj):
-        #if obj.content_set is None:
-        #    return 0
-        
-        return obj.content_set.count()
-    
-
-    class Media:
-        js = ('js/admin_content_sequence.js',)
-
-"""
-"""     def save_formset(self, request, form, formset, change):
-        if formset.model == Content:
-            # Get the related Rite for the form
-            rite = form.instance
-
-            # Calculate the maximum sequence_in_ms for the related Rite
-            max_sequence = Content.objects.filter(rite=rite).aggregate(models.Max('sequence_in_ms'))['sequence_in_ms__max']
-
-            if max_sequence is not None:
-                max_sequence += 1
-            else:
-                max_sequence = 1
-
-            for form in formset.forms:
-                if form.instance.sequence_in_ms is None:
-                    form.instance.sequence_in_ms = max_sequence
-                    max_sequence += 1
-                form.instance.save()
-        
-        super(RitesAdmin, self).save_formset(request, form, formset, change)
- """
-
-class PlacesAdmin(admin.ModelAdmin):
+class PlacesAdmin(ImportExportDebateableAdmin):
+    resource_class = PlacesResource
                                         #if field.name != 'id' 
     list_display= [field.name for field in Places._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-class ScriptNamesAdmin(admin.ModelAdmin):
+    search_fields = [
+        'place_type__icontains',
+        'country_today_eng__icontains',
+        'region_today_eng__icontains',
+        'city_today_eng__icontains',
+        'repository_today_eng__icontains',
+        'country_historic_eng__icontains',
+        'region_historic_eng__icontains',
+        'city_historic_eng__icontains',
+        'repository_historic_eng__icontains',
+    ]
+
+class ScriptNamesAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in ScriptNames._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['name__icontains']
 
-class TimeReferenceAdmin(admin.ModelAdmin):
+
+class TimeReferenceAdmin(ImportExportDebateableAdmin):
+    resource_class = TimeReferenceResource
     list_display=  [field.name for field in TimeReference._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['time_description__icontains']
 
-class LiturgicalGenresAdmin(admin.ModelAdmin):
+
+class LiturgicalGenresAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in LiturgicalGenres._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['title__icontains']
 
-class LiturgicalGenresNamesAdmin(admin.ModelAdmin):
+
+class LiturgicalGenresNamesAdmin(ImportExportDebateableAdmin):
+    resource_class = LiturgicalGenresNamesResource
     list_display=  ['id','genre','title']
 
 
-class ManuscriptGenresAdmin(CustomDebateableAdmin):
+class ManuscriptGenresAdmin(ImportExportDebateableAdmin):
     list_display=  ['id','manuscript_uuid','genre_uuid']
 
     list_filter = [ManuscriptsFilter]
 
 
-class CodicologyAdmin(CustomDebateableAdmin):
+class CodicologyAdmin(ImportExportDebateableAdmin):
+    resource_class = CodicologyResource
     list_display=  [field.name for field in Codicology._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -681,7 +701,8 @@ class QuiresForm(forms.ModelForm):
         fields = '__all__'
 
 
-class QuiresAdmin(CustomDebateableAdmin):
+class QuiresAdmin(ImportExportDebateableAdmin):
+    resource_class = QuiresResource
     form = QuiresForm
     readonly_fields = ('digital_page_number',)
 
@@ -694,21 +715,27 @@ class QuiresAdmin(CustomDebateableAdmin):
 
     list_filter = [ManuscriptsFilter]
 
+    search_fields = ['type_of_the_quire__icontains', 'sequence_of_the_quire']
 
-class WatermarksAdmin(admin.ModelAdmin):
+
+class WatermarksAdmin(ImportExportDebateableAdmin):
+    resource_class = WatermarksResource
     list_display=  [field.name for field in Watermarks._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-class ManuscriptWatermarksAdmin(CustomDebateableAdmin):
+class ManuscriptWatermarksAdmin(ImportExportDebateableAdmin):
+    resource_class = ManuscriptWatermarksResource
     list_display=  ['id','manuscript','watermark','where_in_manuscript']
 
     list_filter = [ManuscriptsFilter]
 
-class MusicNotationNamesAdmin(admin.ModelAdmin):
+class MusicNotationNamesAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in MusicNotationNames._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+
+    search_fields = ['name__icontains']
 
 
 class ManuscriptMusicNotationsForm(forms.ModelForm):
@@ -719,7 +746,8 @@ class ManuscriptMusicNotationsForm(forms.ModelForm):
         model = ManuscriptMusicNotations
         fields = '__all__'
 
-class ManuscriptMusicNotationsAdmin(CustomDebateableAdmin):
+class ManuscriptMusicNotationsAdmin(ImportExportDebateableAdmin):
+    resource_class = ManuscriptMusicNotationsResource
     form = ManuscriptMusicNotationsForm
     readonly_fields = ('digital_page_number',)
 
@@ -742,7 +770,8 @@ class ManuscriptHandsForm(forms.ModelForm):
         model = ManuscriptHands
         fields = '__all__'
 
-class ManuscriptHandsAdmin(CustomDebateableAdmin):
+class ManuscriptHandsAdmin(ImportExportDebateableAdmin):
+    resource_class = ManuscriptHandsResource
     list_display=  [field.name for field in ManuscriptHands._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -755,70 +784,79 @@ class ManuscriptHandsAdmin(CustomDebateableAdmin):
     list_filter = [ManuscriptsFilter]
 
 
-class HandsAdmin(admin.ModelAdmin):
+class HandsAdmin(ImportExportDebateableAdmin):
+    resource_class = HandsResource
     list_display=  [field.name for field in Hands._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-class ContentFunctionsAdmin(admin.ModelAdmin):
+class ContentFunctionsAdmin(ImportExportDebateableAdmin):
+    resource_class = ContentFunctionsResource
     list_display=  ['id','name','parent_function']
 
+    search_fields = ['name__icontains']
 
-class SectionsAdmin(admin.ModelAdmin):
+
+class SectionsAdmin(ImportExportDebateableAdmin):
+    resource_class = SectionsResource
     list_display=  ['id','name','parent_section']
 
+    search_fields = ['name__icontains']
 
-class ContributorsAdmin(admin.ModelAdmin):
+
+class ContributorsAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in Contributors._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['initials__icontains', 'first_name__icontains', 'last_name__icontains']
+
 # NEW
 #Origins
-class OriginsAdmin(CustomDebateableAdmin):
+class OriginsAdmin(ImportExportDebateableAdmin):
     list_display=  ['manuscript','origins_date','origins_place', 'data_contributor']
 
     list_filter = [ManuscriptsFilter]
 
-class ProvenanceAdmin(CustomDebateableAdmin):
+class ProvenanceAdmin(ImportExportDebateableAdmin):
     list_display=  ['manuscript','date_from','date_to','place','timeline_sequence','data_contributor']
 
     list_filter = [ManuscriptsFilter]
 
 
 #BindingTypes
-class BindingTypesAdmin(admin.ModelAdmin):
+class BindingTypesAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in BindingTypes._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
 #BindingStyles
-class BindingStylesAdmin(admin.ModelAdmin):
+class BindingStylesAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in BindingStyles._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
 #BindingMaterials
-class BindingMaterialsAdmin(admin.ModelAdmin):
+class BindingMaterialsAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in BindingMaterials._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
 #ManuscriptBindingMaterials
-class ManuscriptBindingMaterialsAdmin(CustomDebateableAdmin):
+class ManuscriptBindingMaterialsAdmin(ImportExportDebateableAdmin):
     list_display=  ['id','manuscript','material']
 
     list_filter = [ManuscriptsFilter]
 
 
 #BindingComponents
-class BindingComponentsAdmin(admin.ModelAdmin):
+class BindingComponentsAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in BindingComponents._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
 #ManuscriptBindingComponents
-class ManuscriptBindingComponentsAdmin(admin.ModelAdmin):
+class ManuscriptBindingComponentsAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in ManuscriptBindingComponents._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -826,13 +864,13 @@ class ManuscriptBindingComponentsAdmin(admin.ModelAdmin):
     list_filter = [ManuscriptsFilter]
 
 #BindingDecorationTypes
-class BindingDecorationTypesAdmin(admin.ModelAdmin):
+class BindingDecorationTypesAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in BindingDecorationTypes._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
 #ManuscriptBindingDecorations
-class ManuscriptBindingDecorationsAdmin(admin.ModelAdmin):
+class ManuscriptBindingDecorationsAdmin(ImportExportDebateableAdmin):
     list_display=  ['id','manuscript','decoration']
 
     list_filter = [ManuscriptsFilter]
@@ -845,13 +883,15 @@ class BindingAdmin((CustomDebateableAdmin)):
     
     list_filter = [ManuscriptsFilter]
 
-class RiteNamesAdmin(CustomDebateableAdmin):
+class RiteNamesAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in RiteNames._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['name__icontains', 'english_translation__icontains']
 
-class ConditionAdmin(CustomDebateableAdmin):
+
+class ConditionAdmin(ImportExportDebateableAdmin):
     list_display=  ['manuscript']+[field.name for field in Condition._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -859,10 +899,12 @@ class ConditionAdmin(CustomDebateableAdmin):
     list_filter = [ManuscriptsFilter]
 
 
-class BibliographyAdmin(admin.ModelAdmin):
+class BibliographyAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in Bibliography._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+
+    search_fields = ['title__icontains', 'author__icontains', 'shortname__icontains']
 
 
 class AttributeDebateForm(forms.ModelForm):
@@ -947,7 +989,7 @@ class AttributeDebateForm(forms.ModelForm):
         )
 
 
-class AttributeDebateAdmin(admin.ModelAdmin):
+class AttributeDebateAdmin(ImportExportDebateableAdmin):
     form = AttributeDebateForm
     change_form_template = 'admin/indexerapp/attributedebate/change_form.html'
     list_display=  [field.name for field in AttributeDebate._meta.fields
@@ -963,7 +1005,7 @@ class LayoutsForm(forms.ModelForm):
         model = Layouts
         fields = '__all__'
 
-class LayoutsAdmin(CustomDebateableAdmin):
+class LayoutsAdmin(ImportExportDebateableAdmin):
     form = LayoutsForm
     readonly_fields = ('digital_page_number',)
 
@@ -992,7 +1034,7 @@ class CalendarForm(forms.ModelForm):
             'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
         }
 
-class CalendarAdmin(CustomDebateableAdmin):
+class CalendarAdmin(ImportExportDebateableAdmin):
     form = CalendarForm
 
     readonly_fields = ('digital_page_number',)
@@ -1007,7 +1049,7 @@ class CalendarAdmin(CustomDebateableAdmin):
 
 
 #FeastRanks
-class FeastRanksAdmin(admin.ModelAdmin):
+class FeastRanksAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in FeastRanks._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -1046,35 +1088,12 @@ class DecorationTypesAdmin(admin.ModelAdmin):
 
 #Decoration #[ ] TODO Zmienić z admin.ModelAdmin na CustomDebateableAdmin
 class DecorationForm(forms.ModelForm):
-    #where_in_ms_from = FolioPaginationField()
-    #where_in_ms_to = FolioPaginationField()
-
-    class Meta:
-        model = Decoration
-        fields = ('__all__')
-        widgets = {
-
-            'content_uuid': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
-
-        }
-
-
-class DecorationForm(forms.ModelForm):
     class Meta:
         model = Decoration
         fields = '__all__'
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Filter decoration_type to only show DecorationTypes with no parent_type
-        self.fields['decoration_type_uuid'].queryset = DecorationTypes.objects.filter(parent_type_uuid__isnull=True)
 
-        # Filter decoration_subtype to only show DecorationTypes with a parent_type
-        self.fields['decoration_subtype_uuid'].queryset = DecorationTypes.objects.filter(parent_type_uuid__isnull=False)
-
-
-class DecorationAdmin(CustomDebateableAdmin):
+class DecorationAdmin(ImportExportDebateableAdmin):
     form = DecorationForm
     inlines = [DecorationSubjectsInline, DecorationColoursInline, DecorationCharacteristicsInline]
 
@@ -1088,7 +1107,7 @@ class DecorationAdmin(CustomDebateableAdmin):
     list_filter = [ManuscriptsFilter]
 
 
-class DecorationSubjectsAdmin(CustomDebateableAdmin):
+class DecorationSubjectsAdmin(ImportExportDebateableAdmin):
 
     form = DecorationSubjectsForm
 
@@ -1096,7 +1115,7 @@ class DecorationSubjectsAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-class DecorationColoursAdmin(CustomDebateableAdmin):
+class DecorationColoursAdmin(ImportExportDebateableAdmin):
 
     form = DecorationColoursForm
 
@@ -1104,7 +1123,7 @@ class DecorationColoursAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-class DecorationCharacteristicsAdmin(CustomDebateableAdmin):
+class DecorationCharacteristicsAdmin(ImportExportDebateableAdmin):
 
     form = DecorationCharacteristicsForm
 
@@ -1112,7 +1131,7 @@ class DecorationCharacteristicsAdmin(CustomDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
                              
-class ManuscriptBibliographyAdmin(CustomDebateableAdmin):
+class ManuscriptBibliographyAdmin(ImportExportDebateableAdmin):
     list_display=  [field.name for field in ManuscriptBibliography._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -1147,6 +1166,8 @@ class MassHourAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['short_name__icontains', 'name__icontains']
+
 class TypeAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Type._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -1157,25 +1178,35 @@ class LayerAdmin(admin.ModelAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
+    search_fields = ['short_name__icontains', 'name__icontains']
+
 class GenreAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Genre._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+
+    search_fields = ['short_name__icontains', 'name__icontains']
 
 class SeasonMonthAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in SeasonMonth._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]              
 
+    search_fields = ['short_name__icontains', 'name__icontains']
+
 class WeekAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Week._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]      
 
+    search_fields = ['short_name__icontains', 'name__icontains']
+
 class DayAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Day._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
+
+    search_fields = ['short_name__icontains', 'name__icontains']
 
 class CeremonyAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Ceremony._meta.fields

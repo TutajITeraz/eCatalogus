@@ -156,6 +156,19 @@ class ETLStatusViewTests(SimpleTestCase):
         self.assertEqual(response.json()['role'], 'master')
         self.assertTrue(response.json()['has_api_token'])
 
+    def test_status_endpoint_stays_json_for_html_accept_header(self):
+        client = APIClient()
+
+        response = client.get(
+            reverse('etl:etl-status'),
+            HTTP_AUTHORIZATION='Token test-token',
+            HTTP_ACCEPT='text/html',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode('utf-8'))
+        self.assertEqual(payload['site_name'], 'Test Site')
+
 
 @override_settings(
     SITE_NAME='Test Site',
@@ -214,6 +227,74 @@ class ETLDeletedRecordsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+
+class ETLUIAsyncFallbackTests(TestCase, ETLUIEditorMixin):
+    def setUp(self):
+        self.user = self.create_editor_user()
+        self.client.force_login(self.user)
+
+    @patch('etlapp.views.pull_remote_category')
+    @patch('etlapp.views.pull_category_task.delay')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_pull_category_falls_back_to_sync_when_queue_is_unavailable(
+        self,
+        resolve_etl_peer_mock,
+        delay_mock,
+        pull_remote_category_mock,
+    ):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        delay_mock.side_effect = RuntimeError('Error 111 connecting to redis')
+        pull_remote_category_mock.return_value = {
+            'import_summary': {'created': 1, 'updated': 2, 'skipped': 3},
+            'delete_summary': {'deleted': 4, 'missing': 5},
+        }
+
+        response = self.client.post(
+            reverse('etl:etl-ui-pull-category'),
+            data=json.dumps({'peer': 'peer-1', 'category': 'main'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['async_fallback'])
+        self.assertIn('redis', payload['async_error'].lower())
+        self.assertEqual(payload['result']['import_summary']['created'], 1)
+        pull_remote_category_mock.assert_called_once_with(
+            'http://peer',
+            'main',
+            since=None,
+            force_remote_uuids=[],
+            keep_local_uuids=[],
+        )
+
+    @patch('etlapp.views.pull_remote_manuscript')
+    @patch('etlapp.views.pull_manuscript_task.delay')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_pull_manuscript_falls_back_to_sync_when_queue_is_unavailable(
+        self,
+        resolve_etl_peer_mock,
+        delay_mock,
+        pull_remote_manuscript_mock,
+    ):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        delay_mock.side_effect = RuntimeError('Error 111 connecting to redis')
+        pull_remote_manuscript_mock.return_value = {
+            'import_summary': {'created': 2, 'updated': 1, 'skipped': 0, 'media_summary': {'created': 1}},
+        }
+
+        response = self.client.post(
+            reverse('etl:etl-ui-pull-manuscript'),
+            data=json.dumps({'peer': 'peer-1', 'manuscript_uuid': str(uuid4())}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['async_fallback'])
+        self.assertIn('redis', payload['async_error'].lower())
+        self.assertEqual(payload['result']['import_summary']['created'], 2)
 
 
 @override_settings(
@@ -749,11 +830,10 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(payload['models'][0]['model'], 'indexerapp.Type')
         self.assertEqual(payload['models'][0]['results'][0]['short_name'], 'TP1')
 
-    def test_export_etl_bundle_prefers_related_uuid_over_stale_shadow_uuid(self):
+    def test_export_etl_bundle_serializes_canonical_uuid_when_relation_target_is_missing(self):
         genre = LiturgicalGenres.objects.create(title='Antiphon')
         tradition = Traditions.objects.create(name='Roman', genre=genre)
 
-        expected_genre_uuid = str(genre.uuid)
         stale_shadow_uuid = uuid4()
         Traditions.objects.filter(pk=tradition.pk).update(genre_uuid=stale_shadow_uuid)
 
@@ -764,8 +844,7 @@ class ExportModelCategoriesCommandTests(TestCase):
             payload = json.loads(output_path.read_text(encoding='utf-8'))
 
         traditions_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.Traditions')
-        self.assertEqual(traditions_payload['results'][0]['genre_uuid'], expected_genre_uuid)
-        self.assertNotEqual(traditions_payload['results'][0]['genre_uuid'], str(stale_shadow_uuid))
+        self.assertEqual(traditions_payload['results'][0]['genre_uuid'], str(stale_shadow_uuid))
 
     def test_import_etl_bundle_imports_main_json_bundle(self):
         payload = {
@@ -984,7 +1063,6 @@ class ExportModelCategoriesCommandTests(TestCase):
         formula = Formulas.objects.create(co_no='CO123', text='Lorem', uuid=None)
         formula.tradition.add(tradition)
 
-        LiturgicalGenres.objects.filter(pk=genre.pk).update(uuid=None)
         Traditions.objects.filter(pk=tradition.pk).update(uuid=None)
         Formulas.objects.filter(pk=formula.pk).update(uuid=None)
 
@@ -1003,10 +1081,14 @@ class ExportModelCategoriesCommandTests(TestCase):
             traditions_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.Traditions')
             formulas_payload = next(item for item in payload['models'] if item['model'] == 'indexerapp.Formulas')
 
-            expected_genre_uuid = str(build_deterministic_sync_uuid('indexerapp.LiturgicalGenres', genre.pk))
+            expected_genre_uuid = str(genre.uuid)
+            expected_tradition_uuid = str(build_deterministic_sync_uuid('indexerapp.Traditions', tradition.pk))
+            expected_formula_uuid = str(build_deterministic_sync_uuid('indexerapp.Formulas', formula.pk))
             self.assertEqual(genres_payload['results'][0]['uuid'], expected_genre_uuid)
             self.assertEqual(traditions_payload['results'][0]['genre_uuid'], expected_genre_uuid)
-            self.assertEqual(formulas_payload['results'][0]['tradition_uuids'][0], str(build_deterministic_sync_uuid('indexerapp.Traditions', tradition.pk)))
+            self.assertEqual(traditions_payload['results'][0]['uuid'], expected_tradition_uuid)
+            self.assertEqual(formulas_payload['results'][0]['uuid'], expected_formula_uuid)
+            self.assertEqual(formulas_payload['results'][0]['tradition_uuids'][0], expected_tradition_uuid)
 
             Formulas.objects.all().delete()
             Traditions.objects.all().delete()
@@ -1018,6 +1100,8 @@ class ExportModelCategoriesCommandTests(TestCase):
         imported_tradition = Traditions.objects.get(name='Roman')
         imported_formula = Formulas.objects.get(co_no='CO123')
         self.assertEqual(str(imported_genre.uuid), expected_genre_uuid)
+        self.assertEqual(str(imported_tradition.uuid), expected_tradition_uuid)
+        self.assertEqual(str(imported_formula.uuid), expected_formula_uuid)
         self.assertIsNotNone(imported_tradition.genre)
         self.assertEqual(imported_tradition.genre, imported_genre)
         self.assertEqual(list(imported_formula.tradition.values_list('pk', flat=True)), [imported_tradition.pk])
@@ -1093,12 +1177,14 @@ class SyncMetadataTests(TestCase):
         type_two = Type.objects.create(short_name='TPB', name='Type B')
 
         mass_hour = MassHour.objects.create(short_name='MHA', name='Mass Hour A', type_uuid=type_one)
-        self.assertEqual(mass_hour.type_uuid, type_one.uuid)
+        self.assertEqual(mass_hour.type_uuid, type_one)
+        self.assertEqual(mass_hour.type_uuid_id, type_one.uuid)
 
         setattr(mass_hour, 'type_uuid_id', type_two.uuid)
         mass_hour.save()
         mass_hour.refresh_from_db()
-        self.assertEqual(mass_hour.type_uuid, type_two.uuid)
+        self.assertEqual(mass_hour.type_uuid, type_two)
+        self.assertEqual(mass_hour.type_uuid_id, type_two.uuid)
 
         setattr(mass_hour, 'type_uuid_id', None)
         mass_hour.save()
@@ -1111,34 +1197,41 @@ class SyncMetadataTests(TestCase):
         manuscript = Manuscripts.objects.create(name='Shadow manuscript')
         relation = ManuscriptBibliography.objects.create(manuscript_uuid=manuscript, bibliography_uuid=bibliography)
 
-        self.assertEqual(relation.bibliography_uuid, bibliography.uuid)
+        self.assertEqual(relation.bibliography_uuid, bibliography)
+        self.assertEqual(relation.bibliography_uuid_id, bibliography.uuid)
 
         setattr(relation, 'bibliography_uuid_id', other_bibliography.uuid)
         relation.save()
         relation.refresh_from_db()
-        self.assertEqual(relation.bibliography_uuid, other_bibliography.uuid)
+        self.assertEqual(relation.bibliography_uuid, other_bibliography)
+        self.assertEqual(relation.bibliography_uuid_id, other_bibliography.uuid)
 
     def test_ms_internal_shadow_uuid_fk_is_synced_on_save(self):
         manuscript = Manuscripts.objects.create(name='Source manuscript')
         other_manuscript = Manuscripts.objects.create(name='Other manuscript')
         content = Content.objects.create(manuscript_uuid=manuscript, formula_text='Internal shadow')
 
-        self.assertEqual(content.manuscript_uuid, manuscript.uuid)
+        self.assertEqual(content.manuscript_uuid, manuscript)
+        self.assertEqual(content.manuscript_uuid_id, manuscript.uuid)
 
         setattr(content, 'manuscript_uuid_id', other_manuscript.uuid)
         content.save()
         content.refresh_from_db()
-        self.assertEqual(content.manuscript_uuid, other_manuscript.uuid)
+        self.assertEqual(content.manuscript_uuid, other_manuscript)
+        self.assertEqual(content.manuscript_uuid_id, other_manuscript.uuid)
 
     def test_populate_uuid_fk_backfills_shadow_columns(self):
         type_one = Type.objects.create(short_name='TPC', name='Type C')
         mass_hour = MassHour.objects.create(short_name='MHC', name='Mass Hour C', type=type_one)
         MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=None)
 
-        call_command('populate_uuid_fk', '--model', 'MassHour')
+        stdout = StringIO()
+
+        call_command('populate_uuid_fk', '--model', 'MassHour', stdout=stdout)
 
         mass_hour.refresh_from_db()
-        self.assertEqual(mass_hour.type_uuid, type_one.uuid)
+        self.assertIsNone(mass_hour.type_uuid)
+        self.assertIn('MassHour: updated 0 rows', stdout.getvalue())
 
     def test_validate_uuid_shadow_fks_can_fail_on_mismatch(self):
         type_one = Type.objects.create(short_name='TPD', name='Type D')
@@ -1183,7 +1276,7 @@ class SyncMetadataTests(TestCase):
 
     def test_validate_uuid_transition_readiness_reports_self_reference_without_failing(self):
         colour = Colours.objects.create(name='Self colour', rgb='#123456')
-        Colours.objects.filter(pk=colour.pk).update(parent_colour_id=colour.pk, parent_colour_uuid=colour.uuid)
+        Colours.objects.filter(pk=colour.pk).update(parent_colour_uuid=colour.uuid)
         stdout = StringIO()
 
         call_command('validate_uuid_transition_readiness', '--model', 'Colours', stdout=stdout)
@@ -1196,7 +1289,6 @@ class SyncMetadataTests(TestCase):
         type_one = Type.objects.create(short_name='TPF', name='Type F')
         mass_hour = MassHour.objects.create(short_name='MHF', name='Mass Hour F', type=type_one)
         Type.objects.filter(pk=type_one.pk).update(uuid=None)
-        MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=None)
 
         with self.assertRaises(CommandError):
             call_command('validate_uuid_transition_readiness', '--model', 'MassHour', '--fail-on-issues')

@@ -108,14 +108,14 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
     main_script = ScriptNamesSerializer()
     binding_date = TimeReferenceSerializer()
     contemporary_repository_place_name = serializers.SerializerMethodField()
-    contemporary_repository_place_latitude = serializers.FloatField(source='contemporary_repository_place.latitude', allow_null=True, read_only=True)
-    contemporary_repository_place_longitude = serializers.FloatField(source='contemporary_repository_place.longitude', allow_null=True, read_only=True)
+    contemporary_repository_place_latitude = serializers.FloatField(source='contemporary_repository_place_uuid.latitude', allow_null=True, read_only=True)
+    contemporary_repository_place_longitude = serializers.FloatField(source='contemporary_repository_place_uuid.longitude', allow_null=True, read_only=True)
     place_of_origin_name = serializers.SerializerMethodField()
-    place_of_origin_latitude = serializers.FloatField(source='place_of_origin.latitude', allow_null=True, read_only=True)
-    place_of_origin_longitude = serializers.FloatField(source='place_of_origin.longitude', allow_null=True, read_only=True)
+    place_of_origin_latitude = serializers.FloatField(source='place_of_origin_uuid.latitude', allow_null=True, read_only=True)
+    place_of_origin_longitude = serializers.FloatField(source='place_of_origin_uuid.longitude', allow_null=True, read_only=True)
     binding_place_name = serializers.SerializerMethodField()
-    binding_place_latitude = serializers.FloatField(source='binding_place.latitude', allow_null=True, read_only=True)
-    binding_place_longitude = serializers.FloatField(source='binding_place.longitude', allow_null=True, read_only=True)
+    binding_place_latitude = serializers.FloatField(source='binding_place_uuid.latitude', allow_null=True, read_only=True)
+    binding_place_longitude = serializers.FloatField(source='binding_place_uuid.longitude', allow_null=True, read_only=True)
     thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -303,10 +303,10 @@ class FormulasIndexSerializer(serializers.ModelSerializer):
         contents = obj.content_set.select_related('manuscript_uuid').all()
         ms_list = {}
         for c in contents:
-            if c.manuscript:
-                manuscript_uuid = str(c.manuscript.uuid) if c.manuscript.uuid else None
+            if c.manuscript_uuid:
+                manuscript_uuid = str(c.manuscript_uuid.uuid) if c.manuscript_uuid.uuid else None
                 if manuscript_uuid:
-                    ms_list[manuscript_uuid] = str(c.manuscript)
+                    ms_list[manuscript_uuid] = str(c.manuscript_uuid)
         
         # return list of dicts for easy JS parsing
         return [{"uuid": k, "name": v} for k, v in ms_list.items()]
@@ -329,10 +329,10 @@ class RiteNamesIndexSerializer(serializers.ModelSerializer):
         contents = obj.content_set.select_related('manuscript_uuid').all()
         ms_list = {}
         for c in contents:
-            if c.manuscript:
-                manuscript_uuid = str(c.manuscript.uuid) if c.manuscript.uuid else None
+            if c.manuscript_uuid:
+                manuscript_uuid = str(c.manuscript_uuid.uuid) if c.manuscript_uuid.uuid else None
                 if manuscript_uuid:
-                    ms_list[manuscript_uuid] = str(c.manuscript)
+                    ms_list[manuscript_uuid] = str(c.manuscript_uuid)
         return [{"uuid": k, "name": v} for k, v in ms_list.items()]
 
     def get_used_in_count(self, obj):
@@ -351,7 +351,8 @@ class SubjectsIndexSerializer(serializers.ModelSerializer):
         # Subject -> DecorationSubjects (related_name=decoration_subject) -> Decoration -> Manuscript
         ms_list = {}
         for ds in obj.decoration_subject.select_related('decoration_uuid__manuscript_uuid').all():
-            ms = ds.decoration.manuscript if ds.decoration else None
+            decoration = ds.decoration_uuid
+            ms = decoration.manuscript_uuid if decoration else None
             if ms:
                 manuscript_uuid = str(ms.uuid) if ms.uuid else None
                 if manuscript_uuid:

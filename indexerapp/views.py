@@ -8,7 +8,7 @@ from django.contrib.auth import login, authenticate
 
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents,  UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image, DecorationSubjects, UUID_RELATION_COMPAT_ALIASES
+from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas, Subjects, Characteristics, DecorationTechniques, RiteNames, ManuscriptMusicNotations, Provenance, Codicology, Layouts, TimeReference, Bibliography, EditionContent, BindingTypes, BindingStyles, BindingMaterials, Colours, Clla, Projects, MSProjects, DecorationTypes, BindingDecorationTypes, BindingComponents, Binding, ManuscriptBindingComponents, UserOpenAIAPIKey, ImproveOurDataEntry, Traditions, LiturgicalGenres, Genre, MusicNotationNames, Image, DecorationSubjects, UUID_RELATION_COMPAT_ALIASES, Contributors, Quires, Sections, ContentFunctions, Layer, MassHour, SeasonMonth, Week, Day
 from django.http import JsonResponse
 from django.http import Http404
 from django.contrib.contenttypes.models import ContentType
@@ -135,6 +135,17 @@ def _resolve_object_by_uuid_or_pk(model, raw_value):
         raise Http404()
 
     return instance
+
+
+def _resolve_related_uuid_or_pk(model, raw_value):
+    if raw_value in (None, ''):
+        return None
+
+    try:
+        return _resolve_object_by_uuid_or_pk(model, raw_value).uuid
+    except Http404:
+        related_object = model.objects.filter(pk=raw_value).only('uuid').first()
+        return related_object.uuid if related_object else None
 
 
 def _resolve_manuscript(source, *keys):
@@ -374,9 +385,6 @@ class SetAPIKeyView(View):
 class MainInfoAjaxView(View):
     def get(self, request, *args, **kwargs):
         # Assuming you want to retrieve the username from the currently logged-in user
-        print(request.user);
-
-        username = request.user.get_username()
         groups = []
         if request.user.is_authenticated:
             groups = list(request.user.groups.values_list('name', flat=True))
@@ -388,6 +396,8 @@ class MainInfoAjaxView(View):
         edit_mode = False
         if hasattr(request.user, "profile"):
             edit_mode = request.user.profile.edit_mode
+
+        username = request.user.username if request.user.is_authenticated else ''
 
         # Define the list of permissions to check
         permissions_to_check = [
@@ -427,17 +437,13 @@ class MSInfoAjaxView(View):
         # Main info
         info = get_obj_dictionary(instance, [])
         source_project_link = instance.ms_projects.select_related('project_uuid').order_by('id').first()
-        source_project = source_project_link.project if source_project_link else None
+        source_project = source_project_link.project_uuid if source_project_link else None
         info['source_project_name'] = source_project.name if source_project else ''
         info['source_project_icon'] = source_project.icon if source_project else ''
         info['source_project_url'] = source_project.project_url if source_project else ''
 
         #authors_names = [str(author) for author in instance.authors.all()]
         #info['authors']=authors_names
-
-        print("This is MSInfoAjaxView")
-        #print("This is info ms_genres:", info.ms_genres)
-        print("This is instance ms_genres:", instance.ms_genres.all())
 
         info['ms_genres'] = [str(genre.genre_uuid) for genre in instance.ms_genres.all()]
 
@@ -540,6 +546,11 @@ class MSGalleryView(View):
         - manuscript_uuid (required)
         - image_uuid (optional) -> deletes single image; if omitted deletes all images for manuscript
         """
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+        if not request.user.is_superuser:
+            return JsonResponse({'error': 'Only superusers can delete images.'}, status=403)
+
         try:
             payload = json.loads(request.body.decode('utf-8') or '{}')
         except Exception:
@@ -603,9 +614,6 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
         where_min = request.query_params.get('where_min')
         where_max = request.query_params.get('where_max')
 
-        print(where_min)
-        print(where_min)
-
         if where_min is not None:
             queryset = queryset.filter(where_in_ms_from__gte=where_min)
         
@@ -617,11 +625,6 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
         order_column_index = int(request.query_params.get('order[0][column]', 0))
         order_column_name = _resolve_relation_lookup_name(request.query_params.get(f'columns[{order_column_index}][data]', 'name'))
         order_direction = request.query_params.get('order[0][dir]', 'asc')
-        print("--------------------------------------------")
-        print(order_column_index)
-        print(order_column_name)
-        print(order_direction)
-        print("--------------------------------------------")
         # Skip ordering for FormulasIndexViewSet (handled there) or when column is empty
         if getattr(view, 'skip_custom_ordering', False) or view.__class__.__name__ == 'FormulasIndexViewSet':
             return queryset
@@ -827,23 +830,23 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
                 Q(shelf_mark__icontains=search_value) |
                 Q(common_name__icontains=search_value) |
 
-                Q(contemporary_repository_place__country_today_eng__icontains=search_value) |
-                Q(contemporary_repository_place__region_today_eng__icontains=search_value) |
-                Q(contemporary_repository_place__city_today_eng__icontains=search_value) |
-                Q(contemporary_repository_place__repository_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place_uuid__country_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place_uuid__region_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place_uuid__city_today_eng__icontains=search_value) |
+                Q(contemporary_repository_place_uuid__repository_today_eng__icontains=search_value) |
 
-                Q(place_of_origin__country_today_eng__icontains=search_value) |
-                Q(place_of_origin__region_today_eng__icontains=search_value) |
-                Q(place_of_origin__city_today_eng__icontains=search_value) |
-                Q(place_of_origin__repository_today_eng__icontains=search_value) |
+                Q(place_of_origin_uuid__country_today_eng__icontains=search_value) |
+                Q(place_of_origin_uuid__region_today_eng__icontains=search_value) |
+                Q(place_of_origin_uuid__city_today_eng__icontains=search_value) |
+                Q(place_of_origin_uuid__repository_today_eng__icontains=search_value) |
 
-                Q(dating__time_description__icontains=search_value) |
+                Q(dating_uuid__time_description__icontains=search_value) |
 
                 Q(general_comment__icontains=search_value) |
 
-                Q(main_script__name__icontains=search_value)
+                Q(main_script_uuid__name__icontains=search_value)
 
-                #Q(contemporary_repository_place__icontains=search_value)
+                #Q(contemporary_repository_place_uuid__icontains=search_value)
             )
 
                 
@@ -1646,6 +1649,7 @@ class ConditionAjaxView(View):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [
             'id',
+            'uuid',
             'manuscript',
             'manuscript_uuid',
             'conservation_date_uuid',
@@ -2169,7 +2173,7 @@ class MSShelfMarkAutocomplete(autocomplete.Select2QuerySetView):
 class MSContemporaryRepositoryPlaceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = Places.objects.filter(
-            manuscripts__contemporary_repository_place__isnull=False,
+            manuscripts__contemporary_repository_place_uuid__isnull=False,
             manuscripts__display_as_main=True
         ).distinct()
 
@@ -2267,7 +2271,7 @@ class MSProvenanceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2
 class MSMainScriptAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = ScriptNames.objects.exclude(
-            manuscripts__main_script=None
+            manuscripts__main_script_uuid=None
         ).filter(
             manuscripts__display_as_main=True
         ).distinct()
@@ -2749,11 +2753,14 @@ class ContentImportView(View):
             # Obsłuż wyjątek, jeśli nie można odnaleźć modelu o danej nazwie
             return False
 
-    def resolve_manuscript_id(self, row):
+    def resolve_manuscript(self, row):
         manuscript_uuid = row.get('manuscript_uuid')
         if manuscript_uuid:
-            return _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid).pk
+            return _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
         raise Http404('manuscript_uuid is required')
+
+    def resolve_related_uuid(self, model, raw_value):
+        return _resolve_related_uuid_or_pk(model, raw_value)
 
     def import_content(self, data):
 
@@ -2767,7 +2774,7 @@ class ContentImportView(View):
                         row[key] = None
 
                 try:
-                    manuscript_id = self.resolve_manuscript_id(row)
+                    manuscript = self.resolve_manuscript(row)
                 except Http404:
                     selector = row.get('manuscript_uuid') or row.get('manuscript_id')
                     return JsonResponse({'info': f'error: could not resolve manuscript selector "{selector}"'}, status=200)
@@ -2787,19 +2794,19 @@ class ContentImportView(View):
                     # Create a new ManuscriptMusicNotations entry
                     try:
                         manuscript_music_notation = ManuscriptMusicNotations(
-                            manuscript_id=manuscript_id,
-                            music_notation_name_id=music_notation_name_id,
+                            manuscript_uuid_id=manuscript.uuid,
+                            music_notation_name_uuid_id=self.resolve_related_uuid(MusicNotationNames, music_notation_name_id),
                             where_in_ms_from=row.get('where_in_ms_from') or "",
                             where_in_ms_to=row.get('where_in_ms_to') or "",
                             digital_page_number=row.get('digital_page_number'),
                             sequence_in_ms=row.get('sequence_in_ms') or 0,
-                            dating=None,
+                            dating_uuid=None,
                             original=None,
                             on_lines=None,
                             music_custos=None,
                             number_of_lines=None,
                             comment=None,
-                            data_contributor_id=row.get('contributor_id')
+                            data_contributor_uuid_id=self.resolve_related_uuid(Contributors, row.get('contributor_id'))
                         )
                         manuscript_music_notation.save()
                         new_music_notation_id = manuscript_music_notation.id
@@ -2833,22 +2840,18 @@ class ContentImportView(View):
                 new_genre = None
                 if 'genre' in row:
                     new_genre = self.get_id_by_name('Genre', row.get('genre'), 'short_name')
-                print('new_genre', new_genre)
 
                 new_season_month = None
                 if 'season_month' in row:
                     new_season_month = self.get_id_by_name('SeasonMonth', row.get('season_month'), 'short_name')
-                print('new_season_month', new_season_month)
 
                 new_week = None
                 if 'week' in row:
                     new_week = self.get_id_by_name('Week', row.get('week'), 'short_name')
-                print('new_week', new_week)
 
                 new_day = None
                 if 'day' in row:
                     new_day = self.get_id_by_name('Day', row.get('day'), 'short_name')
-                print('new_day', new_day)
 
                 new_proper_texts = None
                 if 'proper_texts' in row and row.get('proper_texts') is not None:
@@ -2922,9 +2925,9 @@ class ContentImportView(View):
 
 
                 content = Content(
-                    manuscript_id=manuscript_id,
-                    formula_id=row.get('formula_id'),
-                    rubric_id=row.get('rubric_id'),
+                    manuscript_uuid_id=manuscript.uuid,
+                    formula_uuid_id=self.resolve_related_uuid(Formulas, row.get('formula_id')),
+                    rubric_uuid_id=self.resolve_related_uuid(RiteNames, row.get('rubric_id')),
                     rubric_name_from_ms=row.get('rubric_name_from_ms'),
                     subrubric_name_from_ms=row.get('subrubric_name_from_ms'),
                     rubric_sequence=row.get('rubric_sequence_in_the_MS'),
@@ -2934,27 +2937,27 @@ class ContentImportView(View):
                     where_in_ms_to=row.get('where_in_ms_to'),
                     digital_page_number=row.get('digital_page_number'),
                     original_or_added=row.get('original_or_added'),
-                    liturgical_genre_id=row.get('liturgical_genre_id'),
-                    quire_id=row.get('quire_id'),
-                    section_id=row.get('section_id'),
-                    subsection_id=row.get('subsection_id'),
-                    music_notation_id=row.get('music_notation_id'),
-                    function_id=row.get('function_id'),
-                    subfunction_id=row.get('subfunction_id'),
+                    liturgical_genre_uuid_id=self.resolve_related_uuid(LiturgicalGenres, row.get('liturgical_genre_id')),
+                    quire_uuid_id=self.resolve_related_uuid(Quires, row.get('quire_id')),
+                    section_uuid_id=self.resolve_related_uuid(Sections, row.get('section_id')),
+                    subsection_uuid_id=self.resolve_related_uuid(Sections, row.get('subsection_id')),
+                    music_notation_uuid_id=self.resolve_related_uuid(ManuscriptMusicNotations, row.get('music_notation_id')),
+                    function_uuid_id=self.resolve_related_uuid(ContentFunctions, row.get('function_id')),
+                    subfunction_uuid_id=self.resolve_related_uuid(ContentFunctions, row.get('subfunction_id')),
                     biblical_reference=row.get('biblical_reference'),
                     reference_to_other_items=row.get('reference_to_other_items'),
                     similarity_by_user=row.get('similarity_by_user'),
                     #entry_date=row.get('entry_date'),
-                    edition_index_id=row.get('edition_index'),
+                    edition_index_uuid_id=self.resolve_related_uuid(EditionContent, row.get('edition_index')),
                     edition_subindex=row.get('edition_subindex'),
                     comments=row.get('comments'),
 
-                    layer_id=row.get('layer'),
-                    mass_hour_id=row.get('mass_hour'),
-                    genre_id=row.get('genre'),
-                    season_month_id=row.get('season_month'),
-                    week_id=row.get('week'),
-                    day_id=row.get('day'),
+                    layer_uuid_id=self.resolve_related_uuid(Layer, row.get('layer')),
+                    mass_hour_uuid_id=self.resolve_related_uuid(MassHour, row.get('mass_hour')),
+                    genre_uuid_id=self.resolve_related_uuid(Genre, row.get('genre')),
+                    season_month_uuid_id=self.resolve_related_uuid(SeasonMonth, row.get('season_month')),
+                    week_uuid_id=self.resolve_related_uuid(Week, row.get('week')),
+                    day_uuid_id=self.resolve_related_uuid(Day, row.get('day')),
                     proper_texts=row.get('proper_texts'),
 
 
@@ -2966,7 +2969,7 @@ class ContentImportView(View):
                 #print(f"AutoField values: {auto_field_values}")
 
                 #content.authors.set(row.get('authors', []))
-                content.data_contributor_id = row.get('contributor_id')
+                content.data_contributor_uuid_id = self.resolve_related_uuid(Contributors, row.get('contributor_id'))
 
                 #content.save()
                 content_list.append(content)
@@ -3344,7 +3347,7 @@ class CllaImportView(View):
                     return JsonResponse({'info': f'error: could not resolve manuscript selector "{selector}"'}, status=200)
 
                 try:
-                    manuscript_id = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid).pk
+                    manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
                 except Http404:
                     selector = row.get('manuscript_uuid') or row.get('manuscript_id')
                     return JsonResponse({'info': f'error: could not resolve manuscript selector "{selector}"'}, status=200)
@@ -3364,10 +3367,10 @@ class CllaImportView(View):
 
 
                 content = Clla(
-                    manuscript_id = manuscript_id,
+                    manuscript_uuid_id = manuscript.uuid,
                     clla_no = row.get('clla_no'),
                     liturgical_genre = row.get('liturgical_genre'),
-                    dating_id = row.get('dating'),
+                    dating_uuid_id = _resolve_related_uuid_or_pk(TimeReference, row.get('dating')),
                     dating_comment = row.get('dating_comment'),
                     provenance = row.get('provenance'),
                     provenance_comment = row.get('provenance_comment'),
@@ -3987,7 +3990,6 @@ class contentCompareGraph(View):
 
         for index, row in df.iterrows():
             for value_pair in row['Values']:
-                print("value_pair: "+str(value_pair))
                 reshaped_data.append({'Table': row['Table'], 'formula_id': value_pair['formula_id'], 'sequence_in_ms': value_pair['sequence_in_ms']})
 
         reshaped_df = pd.DataFrame(reshaped_data)
@@ -4192,8 +4194,6 @@ class MSRitesLookupView(View):
     def get(self, request, *args, **kwargs):
         manuscript = _resolve_manuscript(request.GET, 'manuscript_uuid', 'ms_uuid')
 
-        print("manuscript = "+str(manuscript))
-
         # Get all content related to the manuscript with non-empty edition_index and rubric_sequence fields
         ms_content = Content.objects.filter(manuscript_uuid=manuscript, edition_index_uuid_id__isnull=False, rubric_sequence__isnull=False)
 
@@ -4212,8 +4212,6 @@ class MSRitesLookupView(View):
 
         # Initialize dictionary to store similar manuscripts data
         similar_manuscripts = {}
-
-        print("ms_content len = "+str(len(ms_content)))
 
         all_related_manuscript_ids = {}
 
@@ -4447,8 +4445,8 @@ class ContentCSVExportView(View):
                 content.similarity_by_user,
                 foliation(content.where_in_ms_from),
                 foliation(content.where_in_ms_to),
-                content.digital_page_number,
                 content.rubric_name_from_ms,
+                content.digital_page_number,
                 content.rubric.id if content.rubric else "",
                 content.rubric_sequence,
                 content.original_or_added,
@@ -4480,7 +4478,7 @@ class DeleteContentView(View):
         manuscript = _resolve_object_by_uuid_or_pk(Manuscripts, manuscript_uuid)
         
         # Delete all related content
-        deleted_count, _ = Content.objects.filter(manuscript_id=manuscript.id).delete()
+        deleted_count, _ = Content.objects.filter(manuscript_uuid=manuscript).delete()
         
         return JsonResponse({'status': 'success', 'deleted_count': deleted_count})
 

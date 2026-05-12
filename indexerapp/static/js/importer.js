@@ -5,6 +5,38 @@ let contributorId;
 let dataTable;
 let tableName;
 
+function sanitizeImportRow(row) {
+    const cleanedRow = {...row};
+
+    if (shouldUseFileUuids()) {
+        return cleanedRow;
+    }
+
+    delete cleanedRow.uuid;
+    delete cleanedRow.id;
+
+    Object.keys(cleanedRow).forEach((key) => {
+        if (key === 'manuscript_uuid') {
+            return;
+        }
+
+        if (tableName === 'Content' && ['formula_id', 'rubric_id', 'subrubric_id'].includes(key)) {
+            return;
+        }
+
+        if (key.endsWith('_uuid')) {
+            delete cleanedRow[key];
+        }
+    });
+
+    return cleanedRow;
+}
+
+function shouldUseFileUuids() {
+    const checkbox = document.getElementById('use-file-uuids');
+    return checkbox ? checkbox.checked : false;
+}
+
 function hasSelectedManuscript() {
     return !!manuscriptUuid;
 }
@@ -540,7 +572,7 @@ function sendToServer() {
 
     if(tableName == 'Content' || tableName == 'EditionContent' || tableName == 'Manuscripts')
     {
-        if (! (contributorId > 0 && contributorId < 99999999))
+        if (!contributorId)
         {
             alert('You have to select contributor from the list!')
             return;
@@ -588,6 +620,8 @@ function sendToServer() {
         });
     }
 
+
+    data = data.map((row) => sanitizeImportRow(row));
 
     document.getElementById('loading-info').style.display = 'block';
 
@@ -686,7 +720,7 @@ importer_init = function()
 
     $('.manuscript_filter').on('select2:select', function (e) {
         var data = e.params.data;
-        manuscriptUuid = data.uuid || null;
+        manuscriptUuid = data.id || data.uuid || null;
         console.log(manuscriptUuid);
         document.getElementById('download-csv-from-server').style.display = 'block';
         document.getElementById("delete-ms-content").style.display = 'block';
@@ -745,6 +779,27 @@ importer_init = function()
 
         //content_table.columns(0).search(contributor_id).draw();
     });
+}
+
+function openManuscriptAdminPopup() {
+    const popup = window.open(
+        pageRoot + '/admin/indexerapp/manuscripts/add/?_to_field=uuid&_popup=1',
+        'add_manuscript',
+        'height=800,width=1200,resizable=yes,scrollbars=yes'
+    );
+
+    if (popup) {
+        popup.focus();
+    }
+}
+
+function refreshImporterManuscripts() {
+    const select = $('.manuscript_filter');
+    manuscriptUuid = null;
+    select.val(null).trigger('change');
+    document.getElementById('download-csv-from-server').style.display = 'none';
+    document.getElementById('delete-ms-content').style.display = 'none';
+    document.getElementById('content-to-tradition').style.display = 'none';
 }
 
 function deleteMSContent() {

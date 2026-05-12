@@ -105,26 +105,8 @@
         }
     }
 
-    @keyframes etl-sync-progress {
-        0% {
-            transform: translateX(-100%);
-        }
-        100% {
-            transform: translateX(250%);
-        }
-    }
-
     .etl-sync-spinner {
         animation: etl-sync-spin 0.8s linear infinite;
-    }
-
-    .etl-sync-progress-bar::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        width: 35%;
-        background: linear-gradient(90deg, rgba(199, 150, 106, 0) 0%, rgba(199, 150, 106, 0.85) 45%, rgba(199, 150, 106, 0) 100%);
-        animation: etl-sync-progress 1.4s ease-in-out infinite;
     }
 
     #content-main .etl-admin-shell pre {
@@ -175,7 +157,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 <div class="text-xs text-[#8a6d55] mt-1">Do not close the browser tab until the operation finishes.</div>
             </div>
         </div>
-        <div class="etl-sync-progress-bar relative mt-3 h-2 overflow-hidden rounded bg-[#ead7c7]"></div>
+        <div class="mt-3 flex items-center gap-3">
+            <div class="relative h-2 flex-1 overflow-hidden rounded bg-[#ead7c7]">
+                <div id="etl-busy-progress-bar" class="h-full rounded bg-[#c7966a] transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="etl-busy-progress-label" class="min-w-[48px] text-right text-xs font-semibold text-[#8a6d55]"></div>
+        </div>
     </section>
 
     <div class="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-5 mb-6">
