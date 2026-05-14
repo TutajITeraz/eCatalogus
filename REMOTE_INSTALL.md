@@ -96,25 +96,22 @@ Adding a new instance
 	 - `mkdir -p /home/ispan/domains/<domain>/ecatalogus`
 	 - `cd /home/ispan/domains/<domain>/ecatalogus`
 	 - `git clone https://github.com/TutajITeraz/eCatalogus.git .`
- - 5. Run the installer interactively to create the runtime `.env` file with secrets:
-	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env`
-	 - This will prompt for database credentials, SECRET_KEY, and other secrets, creating the `.env` file.
- - 6. Run the full installation:
-	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full --non-interactive`
- - 7. Create the static symlink if not present:
+ - 5. Run the full installation (it will prompt for .env secrets if the file is missing):
+	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full`
+ - 6. Create the static symlink if not present:
 	 - `ln -sf ../ecatalogus/static_assets ../public_html/static`
- - 8. To install and enable the generated systemd unit:
-	 - `sudo cp deploy/<instance_slug>.service /etc/systemd/system/`
+ - 7. To install and enable the generated systemd unit:
+	 - `sudo cp deploy/gunicorn_<instance_slug>.service /etc/systemd/system/`
 	 - `sudo systemctl daemon-reload`
-	 - `sudo systemctl enable --now <instance_slug>`
- - 9. For DirectAdmin CUSTOM3 snippet (for Nginx config):
-	 - Copy the snippet from `deploy/` to DirectAdmin's custom config (e.g., `/usr/local/directadmin/data/users/<user>/domains/<domain>.conf`)
+	 - `sudo systemctl enable --now gunicorn_<instance_slug>.service`
+ - 8. For DirectAdmin CUSTOM3 snippet (for Nginx config):
+	 - Copy `deploy/nginx_<instance_slug>_custom3.conf` to DirectAdmin's custom config (e.g., `/usr/local/directadmin/data/users/<user>/domains/<domain>.conf`)
 	 - Run DirectAdmin config rewrite (e.g., via DirectAdmin panel or command).
- - 10. Verify the selected overlay:
+ - 9. Verify the selected overlay:
 	 - `source .venv/bin/activate`
 	 - `export DJANGO_SETTINGS_MODULE=ecatalogus.settings_<instance_slug>`
 	 - `python manage.py findstatic js/config.js img/logo_flat.svg --verbosity 2`
- - 11. For later updates:
+ - 10. For later updates:
 	 - `./scripts/deploy_update.sh scripts/config/<instance_slug>.env`
 
 Upgrading an older single-instance install

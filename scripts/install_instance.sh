@@ -930,6 +930,10 @@ run_manage() {
     return 0
   fi
   (
+    cd "$APPDIR"
+    "$venv_python" manage.py "$@"
+  )
+}
 
 ensure_parent_traversal() {
   local target_path=$1
@@ -940,10 +944,6 @@ ensure_parent_traversal() {
     chmod o+x "$current_path" 2>/dev/null || true
     current_path=$(dirname "$current_path")
   done
-}
-    cd "$APPDIR"
-    "$venv_python" manage.py "$@"
-  )
 }
 
 get_django_database_config() {
@@ -1180,7 +1180,7 @@ render_nginx_snippet() {
     return 0
   fi
   mkdir -p "${SCRIPT_DIR}/../deploy"
-  cat > "$out_snippet" <<'EOF'
+  cat > "$out_snippet" <<EOF
 location = /favicon.ico {
     access_log off;
     log_not_found off;
@@ -1335,6 +1335,10 @@ run_action_full() {
   update_gauge 45 "Rendering instance settings"
   render_instance_settings_files
   load_runtime_env
+  update_gauge 48 "Rendering deploy files"
+  save_effective_config
+  render_service
+  render_nginx_snippet
   update_gauge 50 "Installing dependencies"
   install_dependencies
   update_gauge 55 "Fetching frontend libraries"
@@ -1353,23 +1357,22 @@ run_action_full() {
   run_manage collectstatic --noinput
   update_gauge 96 "Refreshing symlinks"
   link_public_assets
-  update_gauge 98 "Rendering service unit"
-  save_effective_config
-  render_service
+  update_gauge 98 "Installing generated configs"
   install_unit_file
-  # Render DirectAdmin nginx CUSTOM3 snippet and attempt install when running as root
-  render_nginx_snippet
   install_directadmin_snippet
   # If the systemd unit was not installed automatically, print manual instructions
   if [[ "$INSTALL_UNIT" -ne 1 ]]; then
     local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
+    local snippet_out="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
+    local target_unit="/etc/systemd/system/gunicorn_${SERVICE_SHORTNAME}.service"
     log "Systemd unit was rendered to: ${service_out}"
+    log "DirectAdmin CUSTOM3 snippet was rendered to: ${snippet_out}"
     log "To install and start the unit as root, run the following commands:"
-    cat <<'CMDS'
-cp /home/ispan/domains/ecatalogus.ispan.pl/ecatalogus/deploy/gunicorn_ecatalogus.service /etc/systemd/system/
+    cat <<CMDS
+cp "${service_out}" "${target_unit}"
 systemctl daemon-reload
-systemctl enable --now gunicorn_ecatalogus.service
-journalctl -u gunicorn_ecatalogus -f
+systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+journalctl -u "gunicorn_${SERVICE_SHORTNAME}" -f
 CMDS
   fi
   update_gauge 100 "Completed"
