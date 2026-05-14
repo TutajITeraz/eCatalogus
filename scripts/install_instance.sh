@@ -947,6 +947,44 @@ run_download_libs() {
   fi
 }
 
+cleanup_legacy_static_artifacts() {
+  local nested_static_dir="${STATIC_DIR}/static_assets"
+  local legacy_staticfiles_dir="${APPDIR}/staticfiles"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    if [[ -e "$nested_static_dir" || -L "$nested_static_dir" ]]; then
+      log "DRY-RUN: would remove legacy nested static artifact ${nested_static_dir}"
+    fi
+    if [[ -d "$legacy_staticfiles_dir" ]]; then
+      log "DRY-RUN: would remove legacy static output directory ${legacy_staticfiles_dir}"
+    fi
+    return 0
+  fi
+
+  if [[ -e "$nested_static_dir" || -L "$nested_static_dir" ]]; then
+    rm -rf "$nested_static_dir"
+    log "Removed legacy nested static artifact ${nested_static_dir}"
+  fi
+
+  if [[ -d "$legacy_staticfiles_dir" ]]; then
+    rm -rf "$legacy_staticfiles_dir"
+    log "Removed legacy static output directory ${legacy_staticfiles_dir}"
+  fi
+}
+
+recreate_symlink() {
+  local target_path=$1
+  local link_path=$2
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would recreate symlink ${link_path} -> ${target_path}"
+    return 0
+  fi
+
+  rm -rf "$link_path"
+  ln -s "$target_path" "$link_path"
+}
+
 run_manage() {
   local venv_python="${VENV_PATH}/bin/python"
   [[ -x "$venv_python" ]] || die "Virtualenv Python not found: ${venv_python}"
@@ -1085,13 +1123,13 @@ link_public_assets() {
   mkdir -p "$MEDIA_DIR" "$STATIC_DIR"
 
   # Create/replace symlinks (use absolute paths to avoid confusion)
-  if ln -sfn "$MEDIA_DIR" "$PUBLIC_HTML/media"; then
+  if recreate_symlink "$MEDIA_DIR" "$PUBLIC_HTML/media"; then
     log "Linked ${PUBLIC_HTML}/media -> ${MEDIA_DIR}"
   else
     warn "Failed to link ${PUBLIC_HTML}/media -> ${MEDIA_DIR}"
   fi
 
-  if ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"; then
+  if recreate_symlink "$STATIC_DIR" "$PUBLIC_HTML/static"; then
     log "Linked ${PUBLIC_HTML}/static -> ${STATIC_DIR}"
   else
     warn "Failed to link ${PUBLIC_HTML}/static -> ${STATIC_DIR}"
@@ -1381,6 +1419,7 @@ run_action_full() {
   run_manage migrate --noinput
   # Attempt to create admin user if credentials were provided in .env
   create_admin_user
+  cleanup_legacy_static_artifacts
   update_gauge 92 "Collecting static files"
   run_manage collectstatic --noinput
   update_gauge 96 "Refreshing symlinks"

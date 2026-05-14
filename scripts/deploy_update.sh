@@ -439,6 +439,44 @@ run_download_libs() {
   fi
 }
 
+cleanup_legacy_static_artifacts() {
+  local nested_static_dir="${STATIC_DIR}/static_assets"
+  local legacy_staticfiles_dir="${APPDIR}/staticfiles"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    if [[ -e "$nested_static_dir" || -L "$nested_static_dir" ]]; then
+      log "DRY-RUN: would remove legacy nested static artifact ${nested_static_dir}"
+    fi
+    if [[ -d "$legacy_staticfiles_dir" ]]; then
+      log "DRY-RUN: would remove legacy static output directory ${legacy_staticfiles_dir}"
+    fi
+    return 0
+  fi
+
+  if [[ -e "$nested_static_dir" || -L "$nested_static_dir" ]]; then
+    rm -rf "$nested_static_dir"
+    log "Removed legacy nested static artifact ${nested_static_dir}"
+  fi
+
+  if [[ -d "$legacy_staticfiles_dir" ]]; then
+    rm -rf "$legacy_staticfiles_dir"
+    log "Removed legacy static output directory ${legacy_staticfiles_dir}"
+  fi
+}
+
+recreate_symlink() {
+  local target_path=$1
+  local link_path=$2
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would recreate symlink ${link_path} -> ${target_path}"
+    return 0
+  fi
+
+  rm -rf "$link_path"
+  ln -s "$target_path" "$link_path"
+}
+
 ensure_parent_traversal() {
   local target_path=$1
   local current_path
@@ -490,8 +528,8 @@ link_public_assets() {
 
   mkdir -p "$PUBLIC_HTML"
   mkdir -p "$MEDIA_DIR" "$STATIC_DIR"
-  ln -sfn "$MEDIA_DIR" "$PUBLIC_HTML/media"
-  ln -sfn "$STATIC_DIR" "$PUBLIC_HTML/static"
+  recreate_symlink "$MEDIA_DIR" "$PUBLIC_HTML/media"
+  recreate_symlink "$STATIC_DIR" "$PUBLIC_HTML/static"
   chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "$MEDIA_DIR" "$STATIC_DIR" 2>/dev/null || true
   chown "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML" 2>/dev/null || true
   chown -h "${DEPLOY_USER}:${DEPLOY_USER}" "$PUBLIC_HTML/media" "$PUBLIC_HTML/static" 2>/dev/null || true
@@ -676,6 +714,8 @@ main() {
   #run_manage makemigrations indexerapp --noinput
   log "------------------------------ migrate ------------------------------"
   run_manage migrate --noinput
+  log "------------------------------ cleanup_legacy_static_artifacts ------------------------------"
+  cleanup_legacy_static_artifacts
   log "------------------------------ collectstatic ------------------------------"
   run_manage collectstatic --noinput
   log "------------------------------ link_public_assets ------------------------------"
