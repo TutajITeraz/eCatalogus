@@ -348,7 +348,7 @@ resolve_config() {
 
   APPDIR=${APPDIR:-/home/${DEPLOY_USER}/domains/${DOMAIN}/ecatalogus}
   VENV_PATH=${VENV_PATH:-${APPDIR}/.venv}
-  STATIC_DIR=${STATIC_DIR:-${APPDIR}/staticfiles}
+  STATIC_DIR=${STATIC_DIR:-${APPDIR}/static_assets}
   PUBLIC_HTML=${PUBLIC_HTML:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html}
   LOG_DIR=${LOG_DIR:-${APPDIR}/logs}
   DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ecatalogus.settings}

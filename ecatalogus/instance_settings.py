@@ -207,7 +207,6 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         'DATABASES': {'default': database_config},
         'STATICFILES_DIRS': [
             base_dir / overlay_dir,
-            base_dir / 'static_assets',
             base_dir / 'indexerapp/static',
         ],
         'MEDIA_ROOT': os.getenv(media_root_env_name, os.getenv('MEDIA_ROOT', default_media_root)),
