@@ -92,21 +92,29 @@ Adding a new instance
 	 - This generates `scripts/config/<instance_slug>.env`, `ecatalogus/settings_<instance_slug>.py`, and other necessary files. The creator will prompt for instance type (e.g., ecatalogus or mpl), media directory, and other settings.
  - 2. Commit the generated files to the repository.
  - 3. Create the domain in DirectAdmin so the domain directories already exist.
- - 4. On the server, clone or update the repository in the app directory (e.g., `/home/ispan/domains/example.com/ecatalogus`):
-	 - If not cloned: `git clone https://github.com/TutajITeraz/eCatalogus.git .`
-	 - If already cloned: `git pull https://github.com/TutajITeraz/eCatalogus.git main`
- - 5. Run the installer with the generated config:
+ - 4. On the server, create the app directory and clone the repository:
+	 - `mkdir -p /home/ispan/domains/<domain>/ecatalogus`
+	 - `cd /home/ispan/domains/<domain>/ecatalogus`
+	 - `git clone https://github.com/TutajITeraz/eCatalogus.git .`
+ - 5. Run the installer interactively to create the runtime `.env` file with secrets:
+	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env`
+	 - This will prompt for database credentials, SECRET_KEY, and other secrets, creating the `.env` file.
+ - 6. Run the full installation:
 	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full --non-interactive`
- - 6. To install and enable the generated systemd unit immediately:
-	 - `sudo ./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full --non-interactive --install-unit`
- - 7. Verify the selected overlay before opening the site:
+ - 7. Create the static symlink if not present:
+	 - `ln -sf ../ecatalogus/static_assets ../public_html/static`
+ - 8. To install and enable the generated systemd unit:
+	 - `sudo cp deploy/<instance_slug>.service /etc/systemd/system/`
+	 - `sudo systemctl daemon-reload`
+	 - `sudo systemctl enable --now <instance_slug>`
+ - 9. For DirectAdmin CUSTOM3 snippet (for Nginx config):
+	 - Copy the snippet from `deploy/` to DirectAdmin's custom config (e.g., `/usr/local/directadmin/data/users/<user>/domains/<domain>.conf`)
+	 - Run DirectAdmin config rewrite (e.g., via DirectAdmin panel or command).
+ - 10. Verify the selected overlay:
 	 - `source .venv/bin/activate`
-	 - `export DJANGO_SETTINGS_MODULE=<value from config>`
+	 - `export DJANGO_SETTINGS_MODULE=ecatalogus.settings_<instance_slug>`
 	 - `python manage.py findstatic js/config.js img/logo_flat.svg --verbosity 2`
- - 8. Confirm that `public_html/static` points to `static_assets` and that collected files were refreshed:
-	 - `readlink "$PUBLIC_HTML/static"`
-	 - `ls -l "$APPDIR/static_assets/img/logo_flat.svg"`
- - 9. For later updates use:
+ - 11. For later updates:
 	 - `./scripts/deploy_update.sh scripts/config/<instance_slug>.env`
 
 Upgrading an older single-instance install
