@@ -233,6 +233,7 @@ path_is_preserved() {
 path_is_managed_generated() {
   local path=$1
   local module_name="${DJANGO_SETTINGS_MODULE##*.}"
+  local legacy_domain_config="scripts/config/${DOMAIN}.env"
 
   case "$path" in
     ecatalogus/settings.py)
@@ -245,6 +246,9 @@ path_is_managed_generated() {
       return 0
       ;;
     "deploy/gunicorn_${SERVICE_SHORTNAME}.service")
+      return 0
+      ;;
+    "$legacy_domain_config")
       return 0
       ;;
   esac

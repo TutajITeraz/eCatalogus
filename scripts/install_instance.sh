@@ -1087,11 +1087,14 @@ link_public_assets() {
 
 save_effective_config() {
   local out_conf="${SCRIPT_DIR}/config/${DOMAIN}.env"
+  if [[ "$CONFIG_WAS_PROVIDED" -eq 1 && -n "$CONFIG_SOURCE" ]]; then
+    out_conf="$CONFIG_SOURCE"
+  fi
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would save effective config to ${out_conf}"
     return 0
   fi
-  mkdir -p "${SCRIPT_DIR}/config"
+  mkdir -p "$(dirname "$out_conf")"
   cat > "$out_conf" <<EOF
 DOMAIN=${DOMAIN}
 DEPLOY_USER=${DEPLOY_USER}
