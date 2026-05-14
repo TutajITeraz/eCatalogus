@@ -99,7 +99,7 @@ Adding a new instance
  - 5. Run the full installation (it will prompt for .env secrets if the file is missing):
 	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full`
  - 6. Create the static symlink if not present:
-	 - `ln -sf ../ecatalogus/static_assets ../public_html/static`
+	 - `ln -sf ../ecatalogus/staticfiles ../public_html/static`
  - 7. To install and enable the generated systemd unit:
 	 - `sudo cp deploy/gunicorn_<instance_slug>.service /etc/systemd/system/`
 	 - `sudo systemctl daemon-reload`
