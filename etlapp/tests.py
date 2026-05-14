@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import tempfile
 from decimal import Decimal
 from io import StringIO
@@ -19,7 +20,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from etlapp.views import ETLAdminSyncView
-from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, import_manuscript_payload
+from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
@@ -168,6 +169,61 @@ class ETLStatusViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         payload = json.loads(response.content.decode('utf-8'))
         self.assertEqual(payload['site_name'], 'Test Site')
+
+
+class ETLRegistryPeerConfigTests(SimpleTestCase):
+    def test_registry_peer_config_uses_peer_specific_token_aliases(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry_path = Path(tmp_dir) / 'instance_registry.toml'
+            registry_path.write_text(
+                '\n'.join([
+                    'version = 1',
+                    '',
+                    '[instances.ecatalogus]',
+                    'slug = "ecatalogus"',
+                    'site_name = "eCatalogus"',
+                    'public_url = "https://ecatalogus.example.pl"',
+                    'role = "master"',
+                    'peer_id = "ecatalogus"',
+                    'canonical_master = true',
+                    '',
+                    '[instances.mpl]',
+                    'slug = "mpl"',
+                    'site_name = "Liturgica Poloniae"',
+                    'public_url = "https://mpl.example.pl"',
+                    'role = "slave"',
+                    'peer_id = "mpl"',
+                    'default_parent_peer = "ecatalogus"',
+                    'source_peers = ["ecatalogus"]',
+                    '',
+                    '[instances.limbo]',
+                    'slug = "limbo"',
+                    'site_name = "MPL Limbo"',
+                    'public_url = "https://limbo.example.pl"',
+                    'role = "slave"',
+                    'peer_id = "limbo"',
+                    'default_parent_peer = "mpl"',
+                    'source_peers = ["mpl"]',
+                ]),
+                encoding='utf-8',
+            )
+
+            env_updates = {
+                'LIMBO_ETL_MPL_API_TOKEN': 'limbo-to-mpl-token',
+            }
+            with patch.dict(os.environ, env_updates, clear=False):
+                with override_settings(
+                    ETL_ROLE='slave',
+                    ETL_PEER_REGISTRY_PATH=str(registry_path),
+                    SETTINGS_MODULE='ecatalogus.settings_limbo',
+                    ETL_API_TOKEN='local-limbo-token',
+                ):
+                    peers = get_etl_peer_configs()
+
+            self.assertEqual(len(peers), 1)
+            self.assertEqual(peers[0]['id'], 'mpl')
+            self.assertEqual(peers[0]['url'], 'https://mpl.example.pl')
+            self.assertEqual(peers[0]['api_token'], 'limbo-to-mpl-token')
 
 
 @override_settings(

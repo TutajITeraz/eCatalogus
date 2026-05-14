@@ -9,7 +9,7 @@ class Command(BaseCommand):
     help = 'Pulls an ETL category from a configured peer without using the GUI.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--peer', required=True, help='Peer id from ETL peer configuration, e.g. master or slave-1.')
+        parser.add_argument('--peer', required=True, help='Peer id from ETL peer configuration, e.g. ecatalogus or mpl.')
         parser.add_argument('--category', choices=['main', 'shared'], required=True, help='ETL category to pull.')
         parser.add_argument('--since', help='Optional ISO datetime/date lower bound for incremental pull.')
         parser.add_argument(

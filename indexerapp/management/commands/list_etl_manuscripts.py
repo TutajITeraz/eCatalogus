@@ -9,7 +9,7 @@ class Command(BaseCommand):
     help = 'Lists remote manuscripts available for ETL pull from a configured peer.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--peer', required=True, help='Peer id from ETL peer configuration, e.g. master or slave-1.')
+        parser.add_argument('--peer', required=True, help='Peer id from ETL peer configuration, e.g. ecatalogus or mpl.')
 
     def handle(self, *args, **options):
         try:

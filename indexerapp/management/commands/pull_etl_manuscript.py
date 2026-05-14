@@ -9,7 +9,7 @@ class Command(BaseCommand):
     help = 'Pulls one manuscript ETL package from a configured peer without using the GUI.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--peer', required=True, help='Peer id from ETL peer configuration, e.g. master or slave-1.')
+        parser.add_argument('--peer', required=True, help='Peer id from ETL peer configuration, e.g. ecatalogus or mpl.')
         parser.add_argument('--manuscript-uuid', required=True, help='UUID of the manuscript package to pull.')
 
     def handle(self, *args, **options):

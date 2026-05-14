@@ -184,3 +184,8 @@ indexerapp/static/.DS_Store
 .DS_Store
 .env.*
 /static_assets
+ETL_UUID_PROD_README.md
+ETL plan
+ETL_plan_full.md
+ETL_plan_multiinstance.md
+UI_UUID_INVENTORY.md

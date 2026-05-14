@@ -2,6 +2,8 @@ import base64
 from decimal import Decimal
 import json
 import os
+from pathlib import Path
+import tomllib
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
@@ -14,6 +16,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from indexerapp.models import DeletedRecord, Manuscripts
+from ecatalogus.instance_settings import build_registry_peer_token_map, infer_instance_slug
 
 from .model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names, summarize_categories
 
@@ -44,7 +47,8 @@ class ETLImportConflictError(Exception):
 
 
 def build_status_payload():
-    slave_urls = list(getattr(settings, 'ETL_SLAVE_URLS', []))
+    peers = get_etl_peer_configs()
+    slave_urls = [peer['url'] for peer in peers]
     role = getattr(settings, 'ETL_ROLE', 'undefined')
     model_names = [
         model.__name__
@@ -56,12 +60,90 @@ def build_status_payload():
         'role': role,
         'master_url': getattr(settings, 'ETL_MASTER_URL', None),
         'slave_urls': slave_urls,
+        'peer_ids': [peer['id'] for peer in peers],
         'has_api_token': bool(getattr(settings, 'ETL_API_TOKEN', '')),
         'model_category_counts': dict(summarize_categories(model_names)),
     }
 
 
+def _load_registry_peer_configs():
+    registry_path = getattr(settings, 'ETL_PEER_REGISTRY_PATH', None)
+    if not registry_path:
+        return []
+
+    path = Path(registry_path)
+    if not path.exists():
+        return []
+
+    try:
+        with path.open('rb') as handle:
+            payload = tomllib.load(handle)
+    except tomllib.TOMLDecodeError:
+        return []
+
+    instances = payload.get('instances', {}) or {}
+    explicit_self_peer_id = getattr(settings, 'ETL_SELF_PEER_ID', '') or getattr(settings, 'INSTANCE_SLUG', '')
+    inferred_self_peer_id = infer_instance_slug(getattr(settings, 'SETTINGS_MODULE', ''), '')
+    inferred_context = bool(inferred_self_peer_id and inferred_self_peer_id != explicit_self_peer_id)
+    if inferred_context:
+        explicit_self_peer_id = ''
+    self_peer_id = explicit_self_peer_id or inferred_self_peer_id
+    self_entry = instances.get(self_peer_id, {}) if self_peer_id else {}
+    if explicit_self_peer_id:
+        source_peers = list(getattr(settings, 'ETL_SOURCE_PEERS', []) or self_entry.get('source_peers') or [])
+        default_parent_peer = getattr(settings, 'ETL_DEFAULT_PARENT_PEER', '') or self_entry.get('default_parent_peer') or ''
+    else:
+        source_peers = list(self_entry.get('source_peers') or getattr(settings, 'ETL_SOURCE_PEERS', []) or [])
+        default_parent_peer = self_entry.get('default_parent_peer') or getattr(settings, 'ETL_DEFAULT_PARENT_PEER', '') or ''
+
+    if not source_peers and getattr(settings, 'ETL_ROLE', '') == 'master':
+        source_peers = [peer_id for peer_id in instances.keys() if peer_id != self_peer_id]
+
+    if default_parent_peer and default_parent_peer not in source_peers:
+        source_peers.insert(0, default_parent_peer)
+
+    peers = []
+    peer_tokens = dict(getattr(settings, 'ETL_PEER_TOKENS', {}) or {})
+    if self_peer_id:
+        if inferred_context:
+            instance_env_prefix = self_peer_id.upper().replace('-', '_')
+        else:
+            instance_env_prefix = getattr(settings, 'INSTANCE_ENV_PREFIX', self_peer_id.upper().replace('-', '_'))
+        peer_tokens.update(
+            build_registry_peer_token_map(
+                env_prefix=instance_env_prefix,
+                registry=instances,
+                source_peers=source_peers,
+                default_parent_peer=default_parent_peer,
+            )
+        )
+    seen_urls = set()
+    for peer_id in source_peers:
+        peer_entry = instances.get(peer_id)
+        if not peer_entry:
+            continue
+
+        normalized_url = _normalize_peer_url(peer_entry.get('public_url') or peer_entry.get('etl_url'))
+        if not normalized_url or normalized_url in seen_urls:
+            continue
+
+        peers.append({
+            'id': peer_entry.get('peer_id') or peer_id,
+            'label': peer_entry.get('site_name') or peer_entry.get('slug') or peer_id,
+            'url': normalized_url,
+            'api_token': peer_tokens.get(normalized_url) or peer_tokens.get(peer_id) or getattr(settings, 'ETL_API_TOKEN', ''),
+            'role': peer_entry.get('role', 'slave'),
+        })
+        seen_urls.add(normalized_url)
+
+    return peers
+
+
 def get_etl_peer_configs():
+    registry_peers = _load_registry_peer_configs()
+    if registry_peers:
+        return registry_peers
+
     peers = []
     seen_urls = set()
     peer_tokens = getattr(settings, 'ETL_PEER_TOKENS', {}) or {}

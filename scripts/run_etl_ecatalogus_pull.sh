@@ -31,7 +31,7 @@ else
 fi
 
 SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-ecatalogus.settings_ecatalogus}"
-PEER_ID="${ETL_PULL_PEER_ID:-slave-1}"
+PEER_ID="${ETL_PULL_PEER_ID:-mpl}"
 
 cd "$APPDIR"
 export DJANGO_SETTINGS_MODULE="$SETTINGS_MODULE"

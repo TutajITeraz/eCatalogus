@@ -62,10 +62,16 @@ _load_env_file(BASE_DIR / '.env')
 
 _module_name = os.getenv('DJANGO_SETTINGS_MODULE', '')
 _instance_env_name = None
-if _module_name.endswith('settings_mpl'):
-    _instance_env_name = '.env.mpl'
-elif _module_name.endswith('settings_ecatalogus'):
-    _instance_env_name = '.env.ecatalogus'
+
+if '.' in _module_name:
+    _module_short_name = _module_name.rsplit('.', 1)[-1]
+else:
+    _module_short_name = _module_name
+
+if _module_short_name.startswith('settings_'):
+    _instance_slug = _module_short_name[len('settings_'):].strip()
+    if _instance_slug:
+        _instance_env_name = f'.env.{_instance_slug}'
 
 if _instance_env_name is not None:
     _load_env_file(

@@ -372,17 +372,13 @@ resolve_instance_runtime_paths() {
     return 0
   fi
 
-  case "$DJANGO_SETTINGS_MODULE" in
-    ecatalogus.settings_mpl)
-      MEDIA_DIR="${APPDIR}/media_instances/mpl"
-      ;;
-    ecatalogus.settings_ecatalogus)
-      MEDIA_DIR="${APPDIR}/media_instances/ecatalogus"
-      ;;
-    *)
-      MEDIA_DIR="${APPDIR}/media"
-      ;;
-  esac
+  local module_name="${DJANGO_SETTINGS_MODULE##*.}"
+  if [[ "$module_name" == settings_* ]]; then
+    MEDIA_DIR="${APPDIR}/media_instances/${module_name#settings_}"
+    return 0
+  fi
+
+  MEDIA_DIR="${APPDIR}/media"
 }
 
 validate_required() {
@@ -800,53 +796,16 @@ render_instance_settings_files() {
   local module_name="${DJANGO_SETTINGS_MODULE##*.}"
   local settings_file="${settings_dir}/${module_name}.py"
   local alias_file="${settings_dir}/settings.py"
-  local overlay_dir=""
-  local site_name=""
-  local etl_role=""
-  local etl_master_url="None"
-  local etl_slave_urls="[]"
-  local etl_peers="{}"
-  local default_db_name=""
+  local instance_slug="${module_name#settings_}"
+  local default_db_name="${SERVICE_SHORTNAME:-$instance_slug}"
   local default_allowed_hosts="${DOMAIN},127.0.0.1,localhost"
   local default_csrf_origins="https://${DOMAIN},http://${DOMAIN},https://127.0.0.1,http://127.0.0.1"
   local default_cors_origins="https://${DOMAIN},http://${DOMAIN},http://localhost:3000,http://localhost:8000"
-  local media_env_name=""
-  local default_media_root=""
-  local session_cookie_name="sessionid"
-  local csrf_cookie_name="csrftoken"
 
-  case "$module_name" in
-    settings_ecatalogus)
-      overlay_dir="static_ecatalogus"
-      site_name="eCatalogus"
-      etl_role="master"
-      etl_master_url="None"
-      etl_slave_urls="[os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080')]"
-      etl_peers="{os.getenv('ETL_MPL_URL', 'http://127.0.0.1:8080'): os.getenv('ETL_MPL_API_TOKEN', 'mpl-token-change-me')}"
-      default_db_name="ecatalogus"
-      media_env_name="ECATALOGUS_MEDIA_ROOT"
-      default_media_root="str(BASE_DIR / 'media_instances' / 'ecatalogus')"
-      session_cookie_name="ecatalogus_sessionid"
-      csrf_cookie_name="ecatalogus_csrftoken"
-      ;;
-    settings_mpl)
-      overlay_dir="static_mpl"
-      site_name="Liturgica Poloniae"
-      etl_role="slave"
-      etl_master_url="os.getenv('ETL_MASTER_URL', 'http://127.0.0.1:8000')"
-      etl_slave_urls="[]"
-      etl_peers="{ETL_MASTER_URL: os.getenv('ETL_MASTER_API_TOKEN', 'ecatalogus-main-token-change-me')}"
-      default_db_name="mpl"
-      media_env_name="MPL_MEDIA_ROOT"
-      default_media_root="str(BASE_DIR / 'media_instances' / 'mpl')"
-      session_cookie_name="mpl_sessionid"
-      csrf_cookie_name="mpl_csrftoken"
-      ;;
-    *)
-      warn "No managed instance settings template for ${DJANGO_SETTINGS_MODULE}; skipping settings file rendering"
-      return 0
-      ;;
-  esac
+  if [[ "$module_name" != settings_* ]]; then
+    warn "No managed instance settings template for ${DJANGO_SETTINGS_MODULE}; skipping settings file rendering"
+    return 0
+  fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would render ${settings_file} and ${alias_file}"
@@ -858,55 +817,27 @@ render_instance_settings_files() {
 """Managed by scripts/install_instance.sh for ${DOMAIN}."""
 
 from .settings_base import *
+from .instance_settings import apply_instance_settings
 
 
-def _csv_env(name, default=""):
-    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
-
-
-def _bool_env(name, default="0"):
-    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
-
-
-SECRET_KEY = os.getenv('SECRET_KEY', '${module_name}-secret-key-change-me')
-DEBUG = _bool_env('DEBUG', '0')
-
-ALLOWED_HOSTS = _csv_env('ALLOWED_HOSTS', '${default_allowed_hosts}')
-CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS', '${default_csrf_origins}')
-CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS', '${default_cors_origins}')
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'CONN_MAX_AGE': 0,
-        'NAME': os.getenv('DATABASE_NAME', '${default_db_name}'),
-        'USER': os.getenv('DATABASE_USER', 'ecatalogus_user'),
-        'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
-        'HOST': os.getenv('DATABASE_HOST', '127.0.0.1'),
-        'PORT': os.getenv('DATABASE_PORT', '3306'),
-    'OPTIONS': {
+apply_instance_settings(
+  globals(),
+  instance_slug='${instance_slug}',
+  defaults={
+    'domain': '${DOMAIN}',
+    'overlay_dir': 'static_${instance_slug}',
+    'database_name': '${default_db_name}',
+    'database_user': 'ecatalogus_user',
+    'public_url': 'https://${DOMAIN}',
+    'allowed_hosts': ${default_allowed_hosts@Q}.split(','),
+    'csrf_trusted_origins': ${default_csrf_origins@Q}.split(','),
+    'cors_allowed_origins': ${default_cors_origins@Q}.split(','),
+    'database_options': {
       'charset': '${DB_CHARSET}',
       'init_command': 'SET NAMES ${DB_CHARSET} COLLATE ${DB_COLLATION}',
     },
-    }
-}
-
-STATICFILES_DIRS = [
-    BASE_DIR / '${overlay_dir}',
-    BASE_DIR / 'indexerapp/static',
-]
-
-MEDIA_ROOT = os.getenv('${media_env_name}', ${default_media_root})
-
-SITE_NAME = '${site_name}'
-SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', '${session_cookie_name}')
-CSRF_COOKIE_NAME = os.getenv('CSRF_COOKIE_NAME', '${csrf_cookie_name}')
-
-ETL_ROLE = '${etl_role}'
-ETL_MASTER_URL = ${etl_master_url}
-ETL_SLAVE_URLS = ${etl_slave_urls}
-ETL_API_TOKEN = os.getenv('ETL_API_TOKEN', '${SERVICE_SHORTNAME}-token-change-me')
-ETL_PEER_TOKENS = ${etl_peers}
+  },
+)
 EOF
 
   cat > "$alias_file" <<EOF

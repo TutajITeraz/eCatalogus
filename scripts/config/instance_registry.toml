@@ -1,0 +1,50 @@
+version = 1
+
+[instances.ecatalogus]
+slug = "ecatalogus"
+site_name = "eCatalogus"
+domain = "ecatalogus.ispan.pl"
+public_url = "https://ecatalogus.ispan.pl"
+settings_module = "ecatalogus.settings_ecatalogus"
+overlay_dir = "static_ecatalogus"
+role = "master"
+peer_id = "ecatalogus"
+canonical_master = true
+source_peers = ["mpl"]
+project_id = 0
+foreign_id_name = "foreign id"
+local_port = 8000
+
+[instances.limbo]
+slug = "limbo"
+site_name = "MPL Limbo"
+domain = "limbo.monumenta-poloniae-liturgica.ispan.pl"
+public_url = "https://limbo.monumenta-poloniae-liturgica.ispan.pl"
+settings_module = "ecatalogus.settings_limbo"
+overlay_dir = "static_limbo"
+role = "slave"
+peer_id = "limbo"
+canonical_master = false
+default_parent_peer = "mpl"
+source_peers = ["mpl"]
+project_id = 2
+foreign_id_name = "MSPL no."
+local_port = 8081
+database_name = "limbo"
+database_user = "ecatalogus_user"
+
+[instances.mpl]
+slug = "mpl"
+site_name = "Liturgica Poloniae"
+domain = "monumenta-poloniae-liturgica.ispan.pl"
+public_url = "https://monumenta-poloniae-liturgica.ispan.pl"
+settings_module = "ecatalogus.settings_mpl"
+overlay_dir = "static_mpl"
+role = "slave"
+peer_id = "mpl"
+canonical_master = false
+default_parent_peer = "ecatalogus"
+source_peers = ["ecatalogus"]
+project_id = 2
+foreign_id_name = "MSPL no."
+local_port = 8080

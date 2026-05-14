@@ -87,22 +87,18 @@ Notes
  - The deploy script restarts the service when it can. If sudo is unavailable, it prints a warning so you can restart the service manually.
 
 Adding a new instance
- - 1. Create the domain in DirectAdmin so the domain directories already exist.
- - 2. Copy `scripts/config/example.env` to `scripts/config/<domain>.env` and edit at minimum: `DOMAIN`, `DEPLOY_USER`, `REPO_URL`, `SERVICE_SHORTNAME`, `DJANGO_SETTINGS_MODULE`, and optionally `PYTHON_BIN`, `SOCKET_PATH`, `PORT`, `PUBLIC_HTML`.
- - 3. Choose the instance type by setting `DJANGO_SETTINGS_MODULE`:
-	 - `ecatalogus.settings_ecatalogus` for eCatalogus branding and `static_ecatalogus/`
-	 - `ecatalogus.settings_mpl` for Liturgica Poloniae branding and `static_mpl/`
- - 3a. Assign a dedicated media directory for the instance, for example:
-	 - `APPDIR/media_instances/ecatalogus/`
-	 - `APPDIR/media_instances/mpl/`
- - 3b. Ensure instance settings also use distinct cookie names when multiple instances share one host:
-	 - `SESSION_COOKIE_NAME`
-	 - `CSRF_COOKIE_NAME`
- - 4. Keep `PRESERVE_FILES` minimal. Prefer preserving only truly local files such as `local_settings.py`. Do not include `config.js`, `settings.py`, or overlay static files unless you intentionally maintain custom, non-repo variants.
- - 5. Run the installer:
-	 - `./scripts/install_instance.sh scripts/config/<domain>.env --action full --non-interactive`
+ - 1. Locally, run the instance creator to prepare the instance files:
+	 - `python scripts/instance_creator.py <instance_slug>`
+	 - This generates `scripts/config/<instance_slug>.env`, `ecatalogus/settings_<instance_slug>.py`, and other necessary files. The creator will prompt for instance type (e.g., ecatalogus or mpl), media directory, and other settings.
+ - 2. Commit the generated files to the repository.
+ - 3. Create the domain in DirectAdmin so the domain directories already exist.
+ - 4. On the server, clone or update the repository in the app directory (e.g., `/home/ispan/domains/example.com/ecatalogus`):
+	 - If not cloned: `git clone https://github.com/TutajITeraz/eCatalogus.git .`
+	 - If already cloned: `git pull https://github.com/TutajITeraz/eCatalogus.git main`
+ - 5. Run the installer with the generated config:
+	 - `./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full --non-interactive`
  - 6. To install and enable the generated systemd unit immediately:
-	 - `sudo ./scripts/install_instance.sh scripts/config/<domain>.env --action full --non-interactive --install-unit`
+	 - `sudo ./scripts/install_instance.sh scripts/config/<instance_slug>.env --action full --non-interactive --install-unit`
  - 7. Verify the selected overlay before opening the site:
 	 - `source .venv/bin/activate`
 	 - `export DJANGO_SETTINGS_MODULE=<value from config>`
@@ -111,7 +107,7 @@ Adding a new instance
 	 - `readlink "$PUBLIC_HTML/static"`
 	 - `ls -l "$APPDIR/static_assets/img/logo_flat.svg"`
  - 9. For later updates use:
-	 - `./scripts/deploy_update.sh scripts/config/<domain>.env`
+	 - `./scripts/deploy_update.sh scripts/config/<instance_slug>.env`
 
 Upgrading an older single-instance install
  - If the old install served media directly from `APPDIR/media`, run `./scripts/deploy_update.sh scripts/config/<domain>.env` first.
