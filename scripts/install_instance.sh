@@ -1204,10 +1204,10 @@ location /media/ {
 
 location / {
     proxy_pass http://unix:${PUBLIC_HTML}/gunicorn.sock;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header Host \$host;
+  proxy_set_header X-Real-IP \$remote_addr;
+  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto \$scheme;
 
     proxy_buffer_size 128k;
     proxy_buffers 4 256k;
