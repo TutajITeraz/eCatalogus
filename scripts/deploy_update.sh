@@ -234,6 +234,25 @@ path_is_managed_generated() {
   local path=$1
   local module_name="${DJANGO_SETTINGS_MODULE##*.}"
   local legacy_domain_config="scripts/config/${DOMAIN}.env"
+  local rel_static_dir=""
+
+  if [[ "$STATIC_DIR" == "$APPDIR"/* ]]; then
+    rel_static_dir="${STATIC_DIR#${APPDIR}/}"
+  fi
+
+  if [[ -n "$rel_static_dir" ]]; then
+    case "$path" in
+      "$rel_static_dir"|"$rel_static_dir"/*)
+        return 0
+        ;;
+    esac
+  fi
+
+  case "$path" in
+    staticfiles|staticfiles/*)
+      return 0
+      ;;
+  esac
 
   case "$path" in
     ecatalogus/settings.py)

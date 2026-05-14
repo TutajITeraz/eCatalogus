@@ -523,6 +523,31 @@ path_is_preserved() {
   return 1
 }
 
+path_is_managed_generated() {
+  local path=$1
+  local rel_static_dir=""
+
+  if [[ "$STATIC_DIR" == "$APPDIR"/* ]]; then
+    rel_static_dir="${STATIC_DIR#${APPDIR}/}"
+  fi
+
+  if [[ -n "$rel_static_dir" ]]; then
+    case "$path" in
+      "$rel_static_dir"|"$rel_static_dir"/*)
+        return 0
+        ;;
+    esac
+  fi
+
+  case "$path" in
+    staticfiles|staticfiles/*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 backup_preserved_files() {
   TMP_PRESERVE=$(mktemp -d)
   local rel_path
@@ -552,7 +577,7 @@ guard_unexpected_git_changes() {
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     line=${line:3}
-    if path_is_preserved "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
+    if path_is_preserved "$line" || path_is_managed_generated "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
       continue
     fi
     unexpected+=("$line")
