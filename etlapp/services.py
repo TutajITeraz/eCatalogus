@@ -318,11 +318,7 @@ def build_delta_export_payload(category, since=None):
     exported_models = []
     total_records = 0
 
-    for model_name in get_sync_model_names():
-        if get_model_category(model_name) != category:
-            continue
-
-        model = apps.get_model('indexerapp', model_name)
+    for model in _get_category_models_in_dependency_order(category):
         entry_date_field = _get_concrete_field(model, 'entry_date')
         if entry_date_field is None:
             continue
@@ -600,7 +596,17 @@ def _import_models_payload(category, payload, force_remote_uuids=None, keep_loca
         'models': [],
     }
 
-    for model_payload in model_payloads:
+    dependency_order = {
+        model._meta.label: index
+        for index, model in enumerate(_get_category_models_in_dependency_order(category))
+    }
+
+    ordered_model_payloads = sorted(
+        model_payloads,
+        key=lambda model_payload: dependency_order.get(model_payload.get('model'), len(dependency_order)),
+    )
+
+    for model_payload in ordered_model_payloads:
         model_label = model_payload.get('model')
         if not model_label:
             raise ValueError('Each model payload must include model.')
@@ -979,6 +985,17 @@ def _get_same_category_dependencies(model, category):
         if not field.is_relation or not field.many_to_one:
             continue
 
+        related_model = field.related_model
+        if related_model is None or related_model._meta.app_label != 'indexerapp':
+            continue
+        if related_model.__name__ == model.__name__:
+            continue
+        if get_model_category(related_model.__name__) != category:
+            continue
+
+        dependencies.add(related_model.__name__)
+
+    for field in model._meta.many_to_many:
         related_model = field.related_model
         if related_model is None or related_model._meta.app_label != 'indexerapp':
             continue

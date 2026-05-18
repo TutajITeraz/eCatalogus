@@ -22,7 +22,7 @@ from rest_framework.test import APIClient
 from etlapp.views import ETLAdminSyncView
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_manuscript_payload
 from etlapp.uuid_utils import build_deterministic_sync_uuid
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -463,6 +463,51 @@ class ETLDeltaImportViewTests(TestCase):
         imported_mass_hour = MassHour.objects.get(uuid=imported_mass_hour_uuid)
         self.assertEqual(imported_type.name, 'Imported Type')
         self.assertEqual(imported_mass_hour.type_uuid_id, imported_type.uuid)
+        self.assertEqual(response.json()['created'], 2)
+
+    def test_main_import_reorders_models_to_satisfy_m2m_dependencies(self):
+        imported_type_uuid = str(uuid4())
+        imported_day_uuid = str(uuid4())
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'main'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Day',
+                        'results': [
+                            {
+                                'uuid': imported_day_uuid,
+                                'part': 'T',
+                                'short_name': 'SUN',
+                                'name': 'Sunday',
+                                'types_uuids': [imported_type_uuid],
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.Type',
+                        'results': [
+                            {
+                                'uuid': imported_type_uuid,
+                                'short_name': 'TP1',
+                                'name': 'Imported Type',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        imported_day = Day.objects.get(uuid=imported_day_uuid)
+        imported_type = Type.objects.get(uuid=imported_type_uuid)
+        self.assertEqual(list(imported_day.types.values_list('uuid', flat=True)), [imported_type.uuid])
         self.assertEqual(response.json()['created'], 2)
 
     def test_shared_import_updates_when_version_is_newer(self):
