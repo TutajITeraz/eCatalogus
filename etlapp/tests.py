@@ -225,6 +225,59 @@ class ETLRegistryPeerConfigTests(SimpleTestCase):
             self.assertEqual(peers[0]['url'], 'https://mpl.example.pl')
             self.assertEqual(peers[0]['api_token'], 'limbo-to-mpl-token')
 
+    def test_registry_peer_config_does_not_override_parent_peer_specific_token_with_master_alias(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry_path = Path(tmp_dir) / 'instance_registry.toml'
+            registry_path.write_text(
+                '\n'.join([
+                    'version = 1',
+                    '',
+                    '[instances.ecatalogus]',
+                    'slug = "ecatalogus"',
+                    'site_name = "eCatalogus"',
+                    'public_url = "https://ecatalogus.example.pl"',
+                    'role = "master"',
+                    'peer_id = "ecatalogus"',
+                    'canonical_master = true',
+                    '',
+                    '[instances.mpl]',
+                    'slug = "mpl"',
+                    'site_name = "Liturgica Poloniae"',
+                    'public_url = "https://mpl.example.pl"',
+                    'role = "slave"',
+                    'peer_id = "mpl"',
+                    'default_parent_peer = "ecatalogus"',
+                    'source_peers = ["ecatalogus"]',
+                    '',
+                    '[instances.limbo]',
+                    'slug = "limbo"',
+                    'site_name = "MPL Limbo"',
+                    'public_url = "https://limbo.example.pl"',
+                    'role = "slave"',
+                    'peer_id = "limbo"',
+                    'default_parent_peer = "mpl"',
+                    'source_peers = ["mpl"]',
+                ]),
+                encoding='utf-8',
+            )
+
+            env_updates = {
+                'ETL_MASTER_API_TOKEN': 'ecatalogus-master-token',
+                'LIMBO_TO_MPL_ETL_API_TOKEN': 'limbo-to-mpl-token',
+            }
+            with patch.dict(os.environ, env_updates, clear=False):
+                with override_settings(
+                    ETL_ROLE='slave',
+                    ETL_PEER_REGISTRY_PATH=str(registry_path),
+                    SETTINGS_MODULE='ecatalogus.settings_limbo',
+                    ETL_API_TOKEN='local-limbo-token',
+                ):
+                    peers = get_etl_peer_configs()
+
+            self.assertEqual(len(peers), 1)
+            self.assertEqual(peers[0]['id'], 'mpl')
+            self.assertEqual(peers[0]['api_token'], 'limbo-to-mpl-token')
+
 
 @override_settings(
     SITE_NAME='Test Site',

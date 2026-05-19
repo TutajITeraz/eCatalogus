@@ -70,7 +70,7 @@ def build_registry_peer_token_map(*, env_prefix, registry, source_peers, default
             f'ETL_{peer_env_prefix}_API_TOKEN',
             f'{peer_env_prefix}_ETL_API_TOKEN',
         ]
-        if peer_id == default_parent_peer or peer_entry.get('role') == 'master' or peer_entry.get('canonical_master'):
+        if peer_entry.get('role') == 'master' or peer_entry.get('canonical_master'):
             candidate_names = [
                 f'{env_prefix}_ETL_MASTER_API_TOKEN',
                 'ETL_MASTER_API_TOKEN',

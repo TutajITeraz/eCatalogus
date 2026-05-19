@@ -11,9 +11,8 @@ What is included
  - `scripts/install_instance.sh` — installer that validates config early, clones or updates the repo, creates a virtualenv, installs dependencies, downloads frontend libraries, runs `check`, `migrate`, `collectstatic`, refreshes symlinks/permissions, renders managed per-instance settings files, and writes a per-instance config under `scripts/config/`.
  - `scripts/deploy_update.sh` — update script that validates config, preserves local files listed in the config, refuses unexpected dirty working trees, renders managed per-instance settings files, downloads frontend libraries, runs `check`, `makemigrations`, `migrate`, `collectstatic`, refreshes symlinks/permissions, installs or renders the DirectAdmin CUSTOM3 snippet, and restarts the service when possible.
  - `scripts/config/example.env` — example environment file showing configurable values (domain, repo URL, branch, paths, preserve list, socket/port, etc.).
- - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root.
- - `deploy/celery.service.template` — Celery worker systemd service template with placeholders. The installer and deploy script render a per-instance unit into `deploy/` so async ETL can run without hand-writing unit files.
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root (or use `--install-unit` when running the installer with sudo/root).
+ - `deploy/celery.service.template` — Celery worker systemd service template with placeholders. The installer and deploy script render a per-instance unit into `deploy/` so async ETL can run without hand-writing unit files.
 
 Design decisions
  - Scripts always use `git` to obtain code. On existing checkouts they preserve configured files before reset and abort if they detect unexpected local changes.
@@ -52,9 +51,11 @@ How to use
 	 - `./scripts/deploy_update.sh scripts/config/<domain>.env`
 
 Notes about systemd and privileges
- - Creating and enabling the systemd unit requires root. The installer will render `deploy/{SERVICE_SHORTNAME}.service` inside the repo for review.
- - To install the unit, copy the rendered file to `/etc/systemd/system/`, then run:
-	 - `sudo systemctl daemon-reload && sudo systemctl enable --now {SERVICE_SHORTNAME}`
+ - Creating and enabling the systemd units requires root. The installer will render `deploy/gunicorn_{SERVICE_SHORTNAME}.service` and `deploy/celery_{SERVICE_SHORTNAME}.service` inside the repo for review.
+ - To install the units manually, copy the rendered files to `/etc/systemd/system/`, then run:
+	 - `sudo systemctl daemon-reload`
+	 - `sudo systemctl enable --now gunicorn_{SERVICE_SHORTNAME}.service`
+	 - `sudo systemctl enable --now celery_{SERVICE_SHORTNAME}.service`
 
 Secrets and runtime `.env`
  - The installer and deploy scripts will source a per-instance secrets file at `APPDIR/.env` (for example `/home/ispan/domains/example.com/ecatalogus/.env`) if present. This file should NOT be committed to git and should contain runtime secrets such as `SECRET_KEY`, DB overrides, and tokens expected by your Django settings.
@@ -105,8 +106,10 @@ Adding a new instance
 	 - `rm -rf ../public_html/static && ln -s /home/ispan/domains/<domain>/ecatalogus/static_assets ../public_html/static`
  - 7. To install and enable the generated systemd unit:
 	 - `sudo cp deploy/gunicorn_<instance_slug>.service /etc/systemd/system/`
+	 - `sudo cp deploy/celery_<instance_slug>.service /etc/systemd/system/`
 	 - `sudo systemctl daemon-reload`
 	 - `sudo systemctl enable --now gunicorn_<instance_slug>.service`
+	 - `sudo systemctl enable --now celery_<instance_slug>.service`
  - 8. For DirectAdmin CUSTOM3 snippet (for Nginx config):
 	 - Copy `deploy/nginx_<instance_slug>_custom3.conf` to DirectAdmin's custom config (e.g., `/usr/local/directadmin/data/users/<user>/domains/<domain>.conf`)
 	 - Run DirectAdmin config rewrite (e.g., via DirectAdmin panel or command).
