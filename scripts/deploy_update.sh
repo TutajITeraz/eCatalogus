@@ -13,6 +13,7 @@ LOG_FILE=""
 TMP_PRESERVE=""
 TMP_RENDERED_SETTINGS=""
 MEDIA_DIR=""
+ENV_FILE=""
 
 usage() {
   cat <<EOF
@@ -320,20 +321,20 @@ guard_unexpected_git_changes() {
 }
 
 load_runtime_env() {
-  local env_file="${APPDIR}/.env"
-  [[ -f "$env_file" ]] || die "Runtime env file is missing: ${env_file}"
+  ENV_FILE="${APPDIR}/.env"
+  [[ -f "$ENV_FILE" ]] || die "Runtime env file is missing: ${ENV_FILE}"
   local configured_settings_module="$DJANGO_SETTINGS_MODULE"
   set -a
   # shellcheck source=/dev/null
-  source "$env_file"
+  source "$ENV_FILE"
   set +a
   if [[ "${DJANGO_SETTINGS_MODULE:-}" != "$configured_settings_module" ]]; then
     warn "Runtime env DJANGO_SETTINGS_MODULE (${DJANGO_SETTINGS_MODULE:-unset}) differs from deploy config (${configured_settings_module}); using deploy config."
     DJANGO_SETTINGS_MODULE="$configured_settings_module"
     if [[ "$DRY_RUN" -eq 0 ]]; then
-      upsert_env_value "$env_file" "DJANGO_SETTINGS_MODULE" "${DJANGO_SETTINGS_MODULE}"
-      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$env_file" 2>/dev/null || true
-      chmod 600 "$env_file"
+      upsert_env_value "$ENV_FILE" "DJANGO_SETTINGS_MODULE" "${DJANGO_SETTINGS_MODULE}"
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+      chmod 600 "$ENV_FILE"
     fi
   fi
   export DJANGO_SETTINGS_MODULE
