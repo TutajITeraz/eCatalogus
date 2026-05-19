@@ -267,6 +267,9 @@ path_is_managed_generated() {
     "deploy/gunicorn_${SERVICE_SHORTNAME}.service")
       return 0
       ;;
+    "deploy/celery_${SERVICE_SHORTNAME}.service")
+      return 0
+      ;;
     "$legacy_domain_config")
       return 0
       ;;
@@ -541,6 +544,110 @@ link_public_assets() {
   ensure_parent_traversal "$PUBLIC_HTML"
 }
 
+render_service() {
+  local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
+  local template="${SCRIPT_DIR}/../deploy/gunicorn.service.template"
+  local bind_arg=""
+  [[ -f "$template" ]] || die "Service template not found: ${template}"
+  if [[ "$USE_TCP" -eq 1 ]]; then
+    bind_arg="--bind ${TCP_BIND_HOST}:${PORT}"
+  else
+    bind_arg="--bind unix:${SOCKET_PATH}"
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render systemd unit to ${service_out}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/../deploy"
+
+  local chosen_gunicorn path_val
+  if [[ -x "${VENV_PATH}/bin/gunicorn" ]]; then
+    chosen_gunicorn="${VENV_PATH}/bin/gunicorn"
+    path_val="${VENV_PATH}/bin"
+  else
+    if command -v gunicorn >/dev/null 2>&1; then
+      chosen_gunicorn=$(command -v gunicorn)
+      path_val=$(dirname "$chosen_gunicorn")
+    else
+      chosen_gunicorn="${VENV_PATH}/bin/gunicorn"
+      path_val="${VENV_PATH}/bin"
+      warn "Gunicorn binary not found yet; rendering service to expected venv path ${chosen_gunicorn}"
+    fi
+  fi
+
+  local py_path
+  py_path="${APPDIR}"
+  if [[ -x "${VENV_PATH}/bin/python" ]]; then
+    local venv_site
+    venv_site=$("${VENV_PATH}/bin/python" -c 'import site, sys; s=site.getsitepackages(); print(s[0] if s else "")' 2>/dev/null || true)
+    if [[ -n "$venv_site" ]]; then
+      py_path="${APPDIR}:$venv_site"
+    fi
+  fi
+
+  sed -e "s|{SERVICE_SHORTNAME}|${SERVICE_SHORTNAME}|g" \
+      -e "s|{APPDIR}|${APPDIR}|g" \
+      -e "s|{VENV_PATH}|${VENV_PATH}|g" \
+      -e "s|{SOCKET_PATH}|${SOCKET_PATH}|g" \
+      -e "s|{PORT}|${PORT}|g" \
+      -e "s|{DJANGO_SETTINGS_MODULE}|${DJANGO_SETTINGS_MODULE}|g" \
+      -e "s|{BIND}|${bind_arg}|g" \
+      -e "s|{ENV_FILE}|${ENV_FILE}|g" \
+      -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
+      -e "s|{WORKERS}|3|g" \
+      -e "s|{WSGI_MODULE}|ecatalogus.wsgi|g" \
+      -e "s|{GUNICORN_BIN}|${chosen_gunicorn}|g" \
+      -e "s|{PATH}|${path_val}|g" \
+      -e "s|{PYTHONPATH}|${py_path}|g" \
+      "$template" > "$service_out"
+  log "Rendered systemd unit to ${service_out}"
+}
+
+render_celery_service() {
+  local service_out="${SCRIPT_DIR}/../deploy/celery_${SERVICE_SHORTNAME}.service"
+  local template="${SCRIPT_DIR}/../deploy/celery.service.template"
+  [[ -f "$template" ]] || die "Service template not found: ${template}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render Celery systemd unit to ${service_out}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/../deploy"
+
+  local chosen_celery path_val
+  if [[ -x "${VENV_PATH}/bin/celery" ]]; then
+    chosen_celery="${VENV_PATH}/bin/celery"
+    path_val="${VENV_PATH}/bin"
+  elif command -v celery >/dev/null 2>&1; then
+    chosen_celery=$(command -v celery)
+    path_val=$(dirname "$chosen_celery")
+  else
+    chosen_celery="${VENV_PATH}/bin/celery"
+    path_val="${VENV_PATH}/bin"
+    warn "Celery binary not found yet; rendering service to expected venv path ${chosen_celery}"
+  fi
+
+  local py_path
+  py_path="${APPDIR}"
+  if [[ -x "${VENV_PATH}/bin/python" ]]; then
+    local venv_site
+    venv_site=$("${VENV_PATH}/bin/python" -c 'import site, sys; s=site.getsitepackages(); print(s[0] if s else "")' 2>/dev/null || true)
+    if [[ -n "$venv_site" ]]; then
+      py_path="${APPDIR}:$venv_site"
+    fi
+  fi
+
+  sed -e "s|{SERVICE_SHORTNAME}|${SERVICE_SHORTNAME}|g" \
+      -e "s|{APPDIR}|${APPDIR}|g" \
+      -e "s|{DJANGO_SETTINGS_MODULE}|${DJANGO_SETTINGS_MODULE}|g" \
+      -e "s|{ENV_FILE}|${ENV_FILE}|g" \
+      -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
+      -e "s|{CELERY_BIN}|${chosen_celery}|g" \
+      -e "s|{PATH}|${path_val}|g" \
+      -e "s|{PYTHONPATH}|${py_path}|g" \
+      "$template" > "$service_out"
+  log "Rendered Celery systemd unit to ${service_out}"
+}
+
 render_nginx_snippet() {
   local out_snippet="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
   resolve_instance_runtime_paths
@@ -645,19 +752,29 @@ install_directadmin_snippet() {
 
 restart_service() {
   local svc="gunicorn_${SERVICE_SHORTNAME}.service"
+  local celery_svc="celery_${SERVICE_SHORTNAME}.service"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "DRY-RUN: would restart ${svc}"
+    log "DRY-RUN: would restart ${svc} and ${celery_svc}"
     return 0
   fi
+
+  local restart_cmd=""
   if [[ $EUID -eq 0 ]]; then
-    systemctl restart "$svc"
+    restart_cmd="systemctl"
+  elif sudo -n true 2>/dev/null; then
+    restart_cmd="sudo systemctl"
+  else
+    warn "Could not restart ${svc} automatically. Restart it manually to apply the new code."
+    warn "Could not restart ${celery_svc} automatically. Restart it manually if async ETL is enabled."
     return 0
   fi
-  if sudo -n true 2>/dev/null; then
-    sudo systemctl restart "$svc"
-    return 0
+
+  ${restart_cmd} restart "$svc"
+  if ${restart_cmd} list-unit-files "$celery_svc" --no-legend >/dev/null 2>&1; then
+    ${restart_cmd} restart "$celery_svc"
+  else
+    warn "Celery unit ${celery_svc} is not installed; async ETL will continue to fall back to direct execution until it is installed."
   fi
-  warn "Could not restart ${svc} automatically. Restart it manually to apply the new code."
 }
 
 main() {
@@ -720,6 +837,10 @@ main() {
   run_manage collectstatic --noinput
   log "------------------------------ link_public_assets ------------------------------"
   link_public_assets
+  log "------------------------------ render_service ------------------------------"
+  render_service
+  log "------------------------------ render_celery_service ------------------------------"
+  render_celery_service
   log "------------------------------ render_nginx_snippet ------------------------------"
   render_nginx_snippet
   log "------------------------------ install_directadmin_snippet ------------------------------"

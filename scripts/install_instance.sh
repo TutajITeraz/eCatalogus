@@ -1238,6 +1238,51 @@ render_service() {
   log "Rendered systemd unit to ${service_out}"
 }
 
+render_celery_service() {
+  local service_out="${SCRIPT_DIR}/../deploy/celery_${SERVICE_SHORTNAME}.service"
+  local template="${SCRIPT_DIR}/../deploy/celery.service.template"
+  [[ -f "$template" ]] || die "Service template not found: ${template}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: would render Celery systemd unit to ${service_out}"
+    return 0
+  fi
+  mkdir -p "${SCRIPT_DIR}/../deploy"
+
+  local chosen_celery path_val
+  if [[ -x "${VENV_PATH}/bin/celery" ]]; then
+    chosen_celery="${VENV_PATH}/bin/celery"
+    path_val="${VENV_PATH}/bin"
+  elif command -v celery >/dev/null 2>&1; then
+    chosen_celery=$(command -v celery)
+    path_val=$(dirname "$chosen_celery")
+  else
+    chosen_celery="${VENV_PATH}/bin/celery"
+    path_val="${VENV_PATH}/bin"
+    warn "Celery binary not found yet; rendering service to expected venv path ${chosen_celery}"
+  fi
+
+  local py_path
+  py_path="${APPDIR}"
+  if [[ -x "${VENV_PATH}/bin/python" ]]; then
+    local venv_site
+    venv_site=$("${VENV_PATH}/bin/python" -c 'import site, sys; s=site.getsitepackages(); print(s[0] if s else "")' 2>/dev/null || true)
+    if [[ -n "$venv_site" ]]; then
+      py_path="${APPDIR}:$venv_site"
+    fi
+  fi
+
+  sed -e "s|{SERVICE_SHORTNAME}|${SERVICE_SHORTNAME}|g" \
+      -e "s|{APPDIR}|${APPDIR}|g" \
+      -e "s|{DJANGO_SETTINGS_MODULE}|${DJANGO_SETTINGS_MODULE}|g" \
+      -e "s|{ENV_FILE}|${ENV_FILE}|g" \
+      -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
+      -e "s|{CELERY_BIN}|${chosen_celery}|g" \
+      -e "s|{PATH}|${path_val}|g" \
+      -e "s|{PYTHONPATH}|${py_path}|g" \
+      "$template" > "$service_out"
+  log "Rendered Celery systemd unit to ${service_out}"
+}
+
 render_nginx_snippet() {
   local out_snippet="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
   resolve_instance_runtime_paths
@@ -1322,21 +1367,28 @@ install_unit_file() {
   [[ "$INSTALL_UNIT" -eq 1 ]] || return 0
   local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
   local target_unit="/etc/systemd/system/gunicorn_${SERVICE_SHORTNAME}.service"
+  local celery_service_out="${SCRIPT_DIR}/../deploy/celery_${SERVICE_SHORTNAME}.service"
+  local celery_target_unit="/etc/systemd/system/celery_${SERVICE_SHORTNAME}.service"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "DRY-RUN: would install ${service_out} to ${target_unit} and enable the service"
+    log "DRY-RUN: would install ${service_out} to ${target_unit} and ${celery_service_out} to ${celery_target_unit}, then enable both services"
     return 0
   fi
   [[ -f "$service_out" ]] || die "Rendered service file not found: ${service_out}"
+  [[ -f "$celery_service_out" ]] || die "Rendered service file not found: ${celery_service_out}"
   if [[ $EUID -eq 0 ]]; then
     cp -f "$service_out" "$target_unit"
+    cp -f "$celery_service_out" "$celery_target_unit"
     systemctl daemon-reload
     systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+    systemctl enable --now "celery_${SERVICE_SHORTNAME}.service"
     return 0
   fi
   if sudo -n true 2>/dev/null; then
     sudo cp -f "$service_out" "$target_unit"
+    sudo cp -f "$celery_service_out" "$celery_target_unit"
     sudo systemctl daemon-reload
     sudo systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+    sudo systemctl enable --now "celery_${SERVICE_SHORTNAME}.service"
     return 0
   fi
   # Not running as root and no passwordless sudo: do not fail, print manual instructions instead
@@ -1344,9 +1396,12 @@ install_unit_file() {
   log "To install the service as root, run the following commands on the server as root or via sudo:"
   cat <<CMDS
 cp "${service_out}" "${target_unit}"
+cp "${celery_service_out}" "${celery_target_unit}"
 systemctl daemon-reload
 systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+systemctl enable --now "celery_${SERVICE_SHORTNAME}.service"
 journalctl -u "gunicorn_${SERVICE_SHORTNAME}" -f
+journalctl -u "celery_${SERVICE_SHORTNAME}" -f
 CMDS
   return 0
 }
@@ -1404,6 +1459,7 @@ run_action_full() {
   update_gauge 48 "Rendering deploy files"
   save_effective_config
   render_service
+  render_celery_service
   render_nginx_snippet
   update_gauge 50 "Installing dependencies"
   install_dependencies
@@ -1430,16 +1486,22 @@ run_action_full() {
   # If the systemd unit was not installed automatically, print manual instructions
   if [[ "$INSTALL_UNIT" -ne 1 ]]; then
     local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
+    local celery_service_out="${SCRIPT_DIR}/../deploy/celery_${SERVICE_SHORTNAME}.service"
     local snippet_out="${SCRIPT_DIR}/../deploy/nginx_${SERVICE_SHORTNAME}_custom3.conf"
     local target_unit="/etc/systemd/system/gunicorn_${SERVICE_SHORTNAME}.service"
+    local celery_target_unit="/etc/systemd/system/celery_${SERVICE_SHORTNAME}.service"
     log "Systemd unit was rendered to: ${service_out}"
+    log "Celery systemd unit was rendered to: ${celery_service_out}"
     log "DirectAdmin CUSTOM3 snippet was rendered to: ${snippet_out}"
     log "To install and start the unit as root, run the following commands:"
     cat <<CMDS
 cp "${service_out}" "${target_unit}"
+cp "${celery_service_out}" "${celery_target_unit}"
 systemctl daemon-reload
 systemctl enable --now "gunicorn_${SERVICE_SHORTNAME}.service"
+systemctl enable --now "celery_${SERVICE_SHORTNAME}.service"
 journalctl -u "gunicorn_${SERVICE_SHORTNAME}" -f
+journalctl -u "celery_${SERVICE_SHORTNAME}" -f
 CMDS
   fi
   update_gauge 100 "Completed"

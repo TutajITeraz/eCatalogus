@@ -12,6 +12,7 @@ What is included
  - `scripts/deploy_update.sh` — update script that validates config, preserves local files listed in the config, refuses unexpected dirty working trees, renders managed per-instance settings files, downloads frontend libraries, runs `check`, `makemigrations`, `migrate`, `collectstatic`, refreshes symlinks/permissions, installs or renders the DirectAdmin CUSTOM3 snippet, and restarts the service when possible.
  - `scripts/config/example.env` — example environment file showing configurable values (domain, repo URL, branch, paths, preserve list, socket/port, etc.).
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root.
+ - `deploy/celery.service.template` — Celery worker systemd service template with placeholders. The installer and deploy script render a per-instance unit into `deploy/` so async ETL can run without hand-writing unit files.
  - `deploy/gunicorn.service.template` — systemd service template with placeholders. The installer writes a rendered copy into `deploy/` for review; installing the unit on the server requires root (or use `--install-unit` when running the installer with sudo/root).
 
 Design decisions
@@ -28,6 +29,7 @@ Prerequisites (server)
  - `git` and a system Python matching the target environment installed.
  - `whiptail` recommended for nicer interactive prompts (optional).
  - `gunicorn` will be installed into the instance virtualenv and `systemd` will be used to run the service (copy the generated unit to `/etc/systemd/system/` as root).
+ - Async ETL also requires a Redis server reachable via `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND`. Redis is a host-level dependency, not a per-instance service.
 
 How to use
  - Prepare a per-instance env file in `scripts/config/<domain>.env` (copy `scripts/config/example.env` and edit values).
@@ -45,6 +47,7 @@ How to use
 	 - `./scripts/install_instance.sh scripts/config/<domain>.env --action full --non-interactive --force-reset`
  - To install and enable the generated systemd unit in one step (requires root or sudo):
  	 - `sudo ./scripts/install_instance.sh scripts/config/<domain>.env --install-unit`
+ 	 - This installs and enables both `gunicorn_<instance_slug>.service` and `celery_<instance_slug>.service`.
  - Update (on the server, as the deploy user):
 	 - `./scripts/deploy_update.sh scripts/config/<domain>.env`
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=Celery worker for {SERVICE_SHORTNAME}
+After=network.target
+
+[Service]
+User={DEPLOY_USER}
+Group={DEPLOY_USER}
+WorkingDirectory={APPDIR}
+EnvironmentFile={ENV_FILE}
+Environment="PATH={PATH}"
+Environment="PYTHONPATH={PYTHONPATH}"
+Environment="DJANGO_SETTINGS_MODULE={DJANGO_SETTINGS_MODULE}"
+ExecStart={CELERY_BIN} -A ecatalogus worker --loglevel=INFO --hostname={SERVICE_SHORTNAME}@%H
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
