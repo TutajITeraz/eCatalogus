@@ -12,6 +12,7 @@ Instance-specific values (NOT here):
 
 from pathlib import Path
 import os
+import re
 import shlex
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -86,6 +87,37 @@ def csv_env(name, default=""):
 
 def bool_env(name, default="0"):
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _clean_env_runtime_value(raw_value):
+    if raw_value is None:
+        return ''
+
+    value = str(raw_value).strip()
+    if not value:
+        return ''
+
+    if value[0] in {'"', "'"}:
+        try:
+            parsed = shlex.split(value)
+        except ValueError:
+            parsed = None
+        if parsed:
+            return parsed[0].strip()
+
+    value = re.split(r'\s+#', value, maxsplit=1)[0].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+    return value
+
+
+def text_env(*names, default=''):
+    for name in names:
+        raw_value = os.getenv(name)
+        cleaned = _clean_env_runtime_value(raw_value)
+        if cleaned != '':
+            return cleaned
+    return default
 
 
 SESSION_COOKIE_DOMAIN_DYNAMIC = csv_env(
@@ -234,6 +266,13 @@ ETL_SLAVE_URLS = []
 ETL_PEER_TOKENS = {}
 ETL_API_TOKEN = os.getenv('ETL_API_TOKEN', '')
 SITE_SUBTITLE = ''
+ZOTERO_LIBRARY_TYPE = text_env('ZOTERO_LIBRARY_TYPE', 'ZOTERO_library_type', default='group') or 'group'
+ZOTERO_LIBRARY_ID = text_env('ZOTERO_LIBRARY_ID', 'ZOTERO_library_id')
+ZOTERO_API_KEY = text_env('ZOTERO_API_KEY', 'ZOTERO_api_key')
+ZOTERO_BIBLIOGRAPHY_STYLE = text_env(
+    'ZOTERO_BIBLIOGRAPHY_STYLE',
+    'https://www.zotero.org/styles/pontifical-biblical-institute',
+)
 
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')

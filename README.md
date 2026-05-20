@@ -124,6 +124,20 @@ Those instance settings should define at minimum:
 - distinct `SESSION_COOKIE_NAME` and `CSRF_COOKIE_NAME`
 - distinct `MEDIA_ROOT`
 
+Runtime secrets belong in `.env` or `.env.<instance>` files, not in committed settings or views. Zotero bibliography integration now expects these runtime variables:
+- `ZOTERO_LIBRARY_TYPE` — usually `group`
+- `ZOTERO_LIBRARY_ID` — Zotero library or group id
+- `ZOTERO_API_KEY` — secret API token for the selected library
+- `ZOTERO_BIBLIOGRAPHY_STYLE` — optional CSL style URL for print rendering
+
+Example runtime snippet:
+```bash
+ZOTERO_LIBRARY_TYPE=group
+ZOTERO_LIBRARY_ID=5244710
+ZOTERO_API_KEY=replace-me
+ZOTERO_BIBLIOGRAPHY_STYLE=https://www.zotero.org/styles/pontifical-biblical-institute
+```
+
 ## Following commands must be executed in the project directory!
 ```
 

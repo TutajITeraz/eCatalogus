@@ -1,0 +1,459 @@
+{% extends 'admin/base_site.html' %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/cdn/select2.min.css' %}">
+<script src="{% static 'js/cdn/jquery-3.7.1.min.js' %}"></script>
+<script src="{% static 'js/cdn/select2.min.js' %}"></script>
+<script src="{% static 'js/bibliography_zotero_importer.js' %}"></script>
+<style>
+    .zotero-importer-shell {
+        --zotero-shell-bg: var(--body-bg, #f7efe7);
+        --zotero-panel-bg: var(--darkened-bg, #fffaf6);
+        --zotero-card-bg: var(--body-bg, #fff);
+        --zotero-border: var(--hairline-color, var(--border-color, #decdbf));
+        --zotero-text: var(--body-fg, #203040);
+        --zotero-muted: var(--body-quiet-color, #5a6b7c);
+        --zotero-link: var(--link-fg, #355070);
+        --zotero-accent: #795a42;
+        --zotero-accent-soft: rgba(121, 90, 66, 0.12);
+        --zotero-success-soft: rgba(52, 122, 77, 0.12);
+        --zotero-error-soft: rgba(155, 64, 55, 0.12);
+        max-width: 1400px;
+        background: var(--zotero-shell-bg);
+        border: 1px solid var(--zotero-border);
+        border-radius: 16px;
+        padding: 1.25rem;
+        box-shadow: 0 12px 24px rgba(61, 75, 92, 0.08);
+        color: var(--zotero-text);
+    }
+
+    #content .zotero-importer-shell,
+    #content .zotero-importer-shell h1,
+    #content .zotero-importer-shell h2,
+    #content .zotero-importer-shell h3,
+    #content .zotero-importer-shell p,
+    #content .zotero-importer-shell label,
+    #content .zotero-importer-shell strong,
+    #content .zotero-importer-shell span,
+    #content .zotero-importer-shell div,
+    #content .zotero-importer-shell li,
+    #content .zotero-importer-shell a {
+        color: inherit;
+    }
+
+    .zotero-toolbar,
+    .zotero-panels {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .zotero-toolbar {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        margin-bottom: 1rem;
+    }
+
+    .zotero-panel {
+        background: var(--zotero-panel-bg);
+        border: 1px solid var(--zotero-border);
+        border-radius: 14px;
+        padding: 1rem;
+    }
+
+    .zotero-panels {
+        grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+    }
+
+    .zotero-tree {
+        list-style: none;
+        margin: 0;
+        padding-left: 1rem;
+    }
+
+    .zotero-tree-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.3rem 0;
+    }
+
+    .zotero-tree-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .zotero-item-label {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        margin: 0;
+        cursor: pointer;
+    }
+
+    .zotero-item-details {
+        min-width: 0;
+        flex: 1;
+    }
+
+    #content .zotero-importer-shell input[type="checkbox"].zotero-node-checkbox {
+        appearance: checkbox;
+        -webkit-appearance: checkbox;
+        opacity: 1;
+        position: static;
+        width: 1.15rem;
+        height: 1.15rem;
+        min-width: 1.15rem;
+        margin: 0.35rem 0 0;
+        accent-color: #795a42;
+        cursor: pointer;
+        box-sizing: border-box;
+        pointer-events: auto;
+    }
+
+    .zotero-item-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        min-width: 2rem;
+        border-radius: 10px;
+        border: 1px solid var(--zotero-border);
+        background: var(--zotero-accent-soft);
+        color: var(--zotero-link);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .zotero-item-icon svg {
+        width: 1.2rem;
+        height: 1.2rem;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .zotero-item-icon.item-legal svg,
+    .zotero-item-icon.item-broadcast svg,
+    .zotero-item-icon.item-communication svg,
+    .zotero-item-icon.item-document svg,
+    .zotero-item-icon.item-presentation svg,
+    .zotero-item-icon.item-webpage svg {
+        width: 1.1rem;
+        height: 1.1rem;
+    }
+
+    .zotero-item-icon.item-book,
+    .zotero-item-icon.item-booksection,
+    .zotero-item-icon.item-reference {
+        background: rgba(67, 98, 127, 0.14);
+    }
+
+    .zotero-item-icon.item-journalarticle,
+    .zotero-item-icon.item-magazinearticle,
+    .zotero-item-icon.item-newspaperarticle,
+    .zotero-item-icon.item-preprint {
+        background: rgba(49, 115, 96, 0.14);
+    }
+
+    .zotero-item-icon.item-manuscript,
+    .zotero-item-icon.item-thesis,
+    .zotero-item-icon.item-report,
+    .zotero-item-icon.item-presentation {
+        background: rgba(123, 88, 49, 0.16);
+    }
+
+    .zotero-item-icon.item-webpage,
+    .zotero-item-icon.item-document,
+    .zotero-item-icon.item-communication,
+    .zotero-item-icon.item-legal,
+    .zotero-item-icon.item-broadcast,
+    .zotero-item-icon.item-media,
+    .zotero-item-icon.item-artwork,
+    .zotero-item-icon.item-code {
+        background: rgba(86, 86, 118, 0.16);
+    }
+
+    .zotero-primary-action {
+        margin-top: 1rem;
+        width: 100%;
+        min-height: 44px;
+        border-radius: 10px;
+        border: 1px solid var(--zotero-border);
+        background: var(--button-bg, var(--zotero-accent));
+        color: var(--button-fg, #fff);
+        font-weight: 600;
+    }
+
+    .zotero-primary-action:hover,
+    .zotero-primary-action:focus {
+        background: var(--button-hover-bg, #684834);
+        color: var(--button-fg, #fff);
+    }
+
+    .zotero-primary-action[disabled] {
+        opacity: 0.65;
+        cursor: wait;
+    }
+
+    .zotero-collection-checkbox[disabled] {
+        cursor: wait;
+    }
+
+    .zotero-tree-toggle {
+        min-width: 2rem;
+        height: 2rem;
+        border: 1px solid var(--zotero-border);
+        border-radius: 999px;
+        background: var(--zotero-card-bg);
+        color: var(--zotero-link);
+        cursor: pointer;
+    }
+
+    .zotero-tree-toggle[disabled] {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+    .zotero-tree-meta {
+        font-size: 0.84rem;
+        color: var(--zotero-muted);
+    }
+
+    .zotero-loading,
+    .zotero-inline-spinner {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--zotero-muted);
+    }
+
+    .zotero-inline-spinner::before,
+    .zotero-main-spinner::before {
+        content: '';
+        width: 0.95rem;
+        height: 0.95rem;
+        border-radius: 999px;
+        border: 2px solid var(--zotero-border);
+        border-top-color: var(--zotero-accent);
+        animation: zotero-spin 0.8s linear infinite;
+    }
+
+    .zotero-main-spinner {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+
+    .zotero-feedback {
+        min-height: 1.5rem;
+        padding: 0.85rem 1rem;
+        border-radius: 12px;
+        margin-top: 1rem;
+    }
+
+    .zotero-feedback.info {
+        background: var(--zotero-accent-soft);
+        border: 1px solid var(--zotero-border);
+    }
+
+    .zotero-feedback.success {
+        background: var(--zotero-success-soft);
+        border: 1px solid var(--zotero-border);
+    }
+
+    .zotero-feedback.error {
+        background: var(--zotero-error-soft);
+        border: 1px solid var(--zotero-border);
+    }
+
+    .zotero-selected-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.75rem;
+    }
+
+    .zotero-selected-list li {
+        padding: 0.75rem;
+        border: 1px solid var(--zotero-border);
+        border-radius: 10px;
+        background: var(--zotero-card-bg);
+    }
+
+    .zotero-config-badge {
+        display: inline-block;
+        padding: 0.25rem 0.65rem;
+        border-radius: 999px;
+        background: var(--zotero-accent-soft);
+        color: var(--zotero-text);
+        font-size: 0.84rem;
+        font-weight: 600;
+        border: 1px solid var(--zotero-border);
+    }
+
+    .zotero-select2-wrapper {
+        margin-top: 0.65rem;
+    }
+
+    .zotero-select2-wrapper .select2-container {
+        width: 100% !important;
+    }
+
+    .zotero-select2-wrapper .select2-container--default .select2-selection--single {
+        min-height: 46px;
+        border: 1px solid var(--zotero-border);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        padding-left: 0.35rem;
+        background: var(--zotero-card-bg);
+    }
+
+    .zotero-select2-wrapper .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 1.4;
+        padding-left: 0.5rem;
+        padding-right: 2rem;
+        color: var(--zotero-text);
+    }
+
+    .zotero-select2-wrapper .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 44px;
+        right: 8px;
+    }
+
+    .select2-dropdown {
+        border-color: var(--hairline-color, var(--border-color, #decdbf));
+        background: var(--body-bg, #fff);
+        color: var(--body-fg, #203040);
+        opacity: 1;
+        box-shadow: 0 12px 24px rgba(61, 75, 92, 0.12);
+    }
+
+    .select2-container--open .select2-dropdown,
+    .select2-container--open .select2-search--dropdown,
+    .select2-container--open .select2-search__field,
+    .select2-container--open .select2-results,
+    .select2-container--open .select2-results__options {
+        background: var(--body-bg, #fff);
+        color: var(--body-fg, #203040);
+        opacity: 1;
+    }
+
+    .select2-search__field {
+        min-height: 36px;
+        background: var(--body-bg, #fff);
+        color: var(--body-fg, #203040);
+        border-color: var(--hairline-color, var(--border-color, #decdbf));
+    }
+
+    .select2-container--default .select2-results__option {
+        background: var(--body-bg, #fff);
+        color: var(--body-fg, #203040);
+    }
+
+    .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        background: var(--selected-row, rgba(121, 90, 66, 0.12));
+        color: var(--body-fg, #203040);
+    }
+
+    .select2-container--default .select2-results__option[aria-selected=true] {
+        background: var(--selected-row, rgba(121, 90, 66, 0.12));
+        color: var(--body-fg, #203040);
+    }
+
+    .select2-container--default .select2-results > .select2-results__options {
+        max-height: 320px;
+    }
+
+    @keyframes zotero-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @media (max-width: 960px) {
+        .zotero-panels {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:indexerapp_bibliography_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Zotero importer
+</div>
+{% endblock %}
+
+{% block content %}
+<div
+    class="zotero-importer-shell"
+    id="zotero-importer-shell"
+    data-tree-url="{{ zotero_tree_url }}"
+    data-import-url="{{ zotero_import_url }}"
+    data-collection-items-url="{{ zotero_collection_items_url }}"
+    data-csrf-token="{{ csrf_token }}"
+    data-config-ready="{% if config_ready %}true{% else %}false{% endif %}"
+>
+    <div class="zotero-toolbar">
+        <section class="zotero-panel">
+            <h1>{{ title }}</h1>
+            <p>{{ subtitle }}</p>
+            {% if config_ready %}
+                <p>
+                    <span class="zotero-config-badge">{{ zotero_config.library_type }} {{ zotero_config.library_id }}</span>
+                </p>
+            {% else %}
+                <div class="zotero-feedback error">{{ config_error }}</div>
+            {% endif %}
+        </section>
+        <section class="zotero-panel">
+            <label for="zotero-manuscript-select"><strong>Target manuscript</strong></label>
+            <div class="zotero-select2-wrapper">
+            <select id="zotero-manuscript-select" data-autocomplete-url="{% url 'manuscripts-autocomplete-main' %}" style="width: 100%;">
+                <option value="">Select manuscript</option>
+            </select>
+            </div>
+            <p class="zotero-tree-meta" style="margin-top: 0.75rem;">The importer creates missing bibliography rows, enriches empty fields on existing ones, and only adds manuscript relations that do not exist yet.</p>
+        </section>
+    </div>
+
+    <div class="zotero-panels">
+        <section class="zotero-panel">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <h2 style="margin: 0;">Zotero tree</h2>
+                    <p class="zotero-tree-meta" style="margin: 0.35rem 0 0;">Collections are loaded only when you expand them. Items can be selected at any depth.</p>
+                </div>
+                <button type="button" class="button" id="zotero-reload-tree">Reload tree</button>
+            </div>
+
+            <div id="zotero-tree-status" class="zotero-loading"></div>
+            <div id="zotero-tree-root"></div>
+        </section>
+
+        <section class="zotero-panel">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                    <h2 style="margin: 0;">Selected items</h2>
+                    <p class="zotero-tree-meta" style="margin: 0.35rem 0 0;">Review the queue before import.</p>
+                </div>
+                <button type="button" class="button" id="zotero-clear-selection">Clear selection</button>
+            </div>
+            <ul id="zotero-selected-items" class="zotero-selected-list"></ul>
+            <button type="button" class="button zotero-primary-action" id="zotero-import-selected">Import selected items</button>
+            <div id="zotero-feedback" class="zotero-feedback info" style="display: none;"></div>
+        </section>
+    </div>
+</div>
+{% endblock %}

@@ -17,6 +17,7 @@ from etlapp.model_categories import get_sync_model_names
 from indexerapp.ai_tools import get_all_manuscript_names
 from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Watermarks, Week, Colours
 from indexerapp.signals import ensure_env_superuser
+from indexerapp.zotero_service import import_zotero_items, list_zotero_collection_items
 from indexerapp.views import get_obj_dictionary
 
 
@@ -231,6 +232,159 @@ class MainInfoAjaxViewTests(TestCase):
 		self.assertIn('is_staff', data)
 		self.assertIn('import_permissions', data)
 		self.assertIn('edit_mode', data)
+
+
+class ZoteroImportServiceTests(TestCase):
+	def setUp(self):
+		self.manuscript = Manuscripts.objects.create(name='Zotero import manuscript', display_as_main=True)
+
+	@patch('indexerapp.zotero_service.get_zotero_client')
+	def test_import_zotero_items_creates_bibliography_and_relation_once(self, get_zotero_client_mock):
+		class FakeZoteroClient:
+			def item(self, key):
+				return {
+					'data': {
+						'key': key,
+						'itemType': 'book',
+						'title': 'Graduale testowe',
+						'shortTitle': 'Grad',
+						'date': '2024',
+						'creators': [
+							{'firstName': 'Jan', 'lastName': 'Kowalski'},
+						],
+					},
+				}
+
+		get_zotero_client_mock.return_value = FakeZoteroClient()
+
+		first_summary = import_zotero_items(
+			str(self.manuscript.uuid),
+			[{'key': 'ABCD1234', 'hierarchy': 3}],
+		)
+		second_summary = import_zotero_items(
+			str(self.manuscript.uuid),
+			[{'key': 'ABCD1234', 'hierarchy': 3}],
+		)
+
+		self.assertEqual(first_summary['bibliography_created'], 1)
+		self.assertEqual(first_summary['links_created'], 1)
+		self.assertEqual(second_summary['bibliography_created'], 0)
+		self.assertEqual(second_summary['links_created'], 0)
+		self.assertEqual(second_summary['links_existing'], 1)
+		self.assertEqual(Bibliography.objects.count(), 1)
+		self.assertEqual(ManuscriptBibliography.objects.count(), 1)
+
+		bibliography = Bibliography.objects.get()
+		self.assertEqual(bibliography.zotero_id, 'ABCD1234')
+		self.assertEqual(bibliography.shortname, 'Grad')
+		self.assertEqual(bibliography.hierarchy, 3)
+
+	@patch('indexerapp.zotero_service.get_zotero_client')
+	def test_list_zotero_collection_items_flattens_nested_subcollections(self, get_zotero_client_mock):
+		class FakeZoteroClient:
+			def everything(self, payload):
+				return payload
+
+			def collection_items_top(self, key):
+				mapping = {
+					'ROOTCOLL': [
+						{'data': {'key': 'ITEM0001', 'itemType': 'book', 'title': 'Root item', 'creators': [], 'date': '2021'}},
+					],
+					'SUBCOLL': [
+						{'data': {'key': 'ITEM0002', 'itemType': 'journalArticle', 'title': 'Nested item', 'creators': [], 'date': '2022'}},
+					],
+				}
+				return mapping.get(key, [])
+
+			def collections_sub(self, key):
+				if key == 'ROOTCOLL':
+					return [{'data': {'key': 'SUBCOLL'}}]
+				return []
+
+		get_zotero_client_mock.return_value = FakeZoteroClient()
+
+		items = list_zotero_collection_items('ROOTCOLL', current_hierarchy=1)
+
+		self.assertEqual(len(items), 2)
+		self.assertEqual({item['key'] for item in items}, {'ITEM0001', 'ITEM0002'})
+
+
+class AdminZoteroImporterTests(TestCase):
+	def setUp(self):
+		self.user = get_user_model().objects.create_superuser(
+			username='zotero-admin',
+			email='zotero-admin@example.com',
+			password='Secret123!pass',
+		)
+		self.client.force_login(self.user)
+
+	def test_admin_index_contains_zotero_importer_link(self):
+		response = self.client.get(reverse('admin:index'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, reverse('admin:indexerapp_bibliography_zotero_importer'))
+
+	@patch('indexerapp.admin.list_zotero_nodes')
+	def test_zotero_tree_endpoint_returns_nodes(self, list_zotero_nodes_mock):
+		list_zotero_nodes_mock.return_value = [
+			{
+				'node_type': 'collection',
+				'key': 'COLL1234',
+				'label': 'Top collection',
+				'hierarchy': 1,
+				'has_children': True,
+			}
+		]
+
+		response = self.client.get(reverse('admin:indexerapp_bibliography_zotero_importer_tree'))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['nodes'][0]['key'], 'COLL1234')
+
+	@patch('indexerapp.admin.import_zotero_items')
+	def test_zotero_import_endpoint_returns_summary(self, import_zotero_items_mock):
+		manuscript = Manuscripts.objects.create(name='Admin Zotero manuscript', display_as_main=True)
+		import_zotero_items_mock.return_value = {
+			'bibliography_created': 1,
+			'bibliography_updated': 0,
+			'links_created': 1,
+			'links_existing': 0,
+			'items': [],
+		}
+
+		response = self.client.post(
+			reverse('admin:indexerapp_bibliography_zotero_importer_import'),
+			data=json.dumps(
+				{
+					'manuscript_uuid': str(manuscript.uuid),
+					'selected_items': [{'key': 'ABCD1234', 'hierarchy': 2}],
+				}
+			),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['links_created'], 1)
+
+	@patch('indexerapp.admin.list_zotero_collection_items')
+	def test_zotero_collection_items_endpoint_returns_flattened_items(self, list_zotero_collection_items_mock):
+		list_zotero_collection_items_mock.return_value = [
+			{
+				'node_type': 'item',
+				'key': 'ITEM1234',
+				'label': 'Flattened nested item',
+				'hierarchy': 2,
+				'item_type': 'book',
+			}
+		]
+
+		response = self.client.get(
+			reverse('admin:indexerapp_bibliography_zotero_importer_collection_items'),
+			{'collection_key': 'COLL1234', 'hierarchy': 1},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['items'][0]['key'], 'ITEM1234')
 
 
 class ContentCSVExportViewTests(TestCase):

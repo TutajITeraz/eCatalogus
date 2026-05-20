@@ -61,6 +61,7 @@ Secrets and runtime `.env`
  - The installer and deploy scripts will source a per-instance secrets file at `APPDIR/.env` (for example `/home/ispan/domains/example.com/ecatalogus/.env`) if present. This file should NOT be committed to git and should contain runtime secrets such as `SECRET_KEY`, DB overrides, and tokens expected by your Django settings.
  - The installer can offer to create this `.env` interactively and will set secure permissions (owner `DEPLOY_USER`, mode `600`).
  - Keep non-secret configuration in `scripts/config/<domain>.env` (this file is stored in the repo). The installer writes back the effective configuration for later updates.
+ - Zotero bibliography browsing/import in admin also reads runtime secrets from this file: `ZOTERO_LIBRARY_TYPE`, `ZOTERO_LIBRARY_ID`, `ZOTERO_API_KEY`, and optionally `ZOTERO_BIBLIOGRAPHY_STYLE`.
 
 Where to put the runtime `.env`
 - Create the runtime secrets file at `APPDIR/.env` (for example `/home/ispan/domains/example.com/ecatalogus/.env`).

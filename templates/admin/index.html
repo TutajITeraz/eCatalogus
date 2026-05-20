@@ -1,6 +1,38 @@
 {% extends 'admin/index.html' %}
 
 {% block content %}
+<style>
+    .app-etl-tools table {
+        width: 100%;
+        table-layout: auto;
+    }
+
+    .app-etl-tools th[scope="row"] {
+        width: 18rem;
+        min-width: 18rem;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: normal;
+    }
+
+    .app-etl-tools td,
+    .app-etl-tools th {
+        word-break: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .app-etl-tools td:last-child {
+        min-width: 22rem;
+    }
+    
+    @media (max-width: 960px) {
+        .app-etl-tools th[scope="row"],
+        .app-etl-tools td:last-child {
+            min-width: 0;
+            width: auto;
+        }
+    }
+</style>
 <div class="app-etl-tools module">
     <table>
         <caption>
@@ -17,6 +49,11 @@
             <th scope="row" id="etl-sync-tool">ETL sync</th>
             <td><a href="{% url 'admin-etl-sync' %}" class="viewlink" aria-describedby="etl-sync-tool">Open</a></td>
             <td>Pull dictionaries and manuscript packages, then resolve shared conflicts in one place.</td>
+        </tr>
+        <tr class="model-zotero-importer">
+            <th scope="row" id="zotero-importer-tool">Zotero bibliography importer</th>
+            <td><a href="{% url 'admin:indexerapp_bibliography_zotero_importer' %}" class="viewlink" aria-describedby="zotero-importer-tool">Open</a></td>
+            <td>Browse Zotero collections lazily, select items with checkboxes and attach them to a manuscript.</td>
         </tr>
     </table>
 </div>

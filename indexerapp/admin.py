@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.contrib.admin.options import BaseModelAdmin
+import json
+
 from .models import *
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 
@@ -27,7 +29,9 @@ class UUIDAutocompleteResultMixin:
             return str(item_uuid)
         return str(getattr(item, 'pk', item))
 from django.contrib.admin.views.main import ChangeList
-from django.urls import reverse
+from django.http import JsonResponse
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils.html import format_html
 from django.templatetags.static import static
 
@@ -44,6 +48,14 @@ from django.db.models import Q
 
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
+
+from .zotero_service import (
+    ZoteroConfigurationError,
+    get_zotero_config,
+    import_zotero_items,
+    list_zotero_collection_items,
+    list_zotero_nodes,
+)
 
 
 UUID_LOOKUP_EXEMPT_MODELS = set()
@@ -905,6 +917,127 @@ class BibliographyAdmin(ImportExportDebateableAdmin):
                              ]
 
     search_fields = ['title__icontains', 'author__icontains', 'shortname__icontains']
+
+    def get_urls(self):
+        opts = self.model._meta
+        custom_urls = [
+            path(
+                'zotero-importer/',
+                self.admin_site.admin_view(self.zotero_importer_view),
+                name=f'{opts.app_label}_{opts.model_name}_zotero_importer',
+            ),
+            path(
+                'zotero-importer/tree/',
+                self.admin_site.admin_view(self.zotero_tree_view),
+                name=f'{opts.app_label}_{opts.model_name}_zotero_importer_tree',
+            ),
+            path(
+                'zotero-importer/import/',
+                self.admin_site.admin_view(self.zotero_import_view),
+                name=f'{opts.app_label}_{opts.model_name}_zotero_importer_import',
+            ),
+            path(
+                'zotero-importer/collection-items/',
+                self.admin_site.admin_view(self.zotero_collection_items_view),
+                name=f'{opts.app_label}_{opts.model_name}_zotero_importer_collection_items',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def zotero_importer_view(self, request):
+        opts = self.model._meta
+        config_ready = True
+        config = None
+        config_error = None
+
+        try:
+            config = get_zotero_config()
+        except ZoteroConfigurationError as exc:
+            config_ready = False
+            config_error = str(exc)
+
+        context = {
+            **self.admin_site.each_context(request),
+            'opts': opts,
+            'title': 'Zotero bibliography importer',
+            'subtitle': 'Browse configured Zotero collections and import selected items into bibliography.',
+            'zotero_importer_url': self._get_zotero_importer_url(),
+            'zotero_tree_url': self._get_zotero_importer_url('tree'),
+            'zotero_import_url': self._get_zotero_importer_url('import'),
+            'zotero_collection_items_url': self._get_zotero_importer_url('collection_items'),
+            'config_ready': config_ready,
+            'config_error': config_error,
+            'zotero_config': config,
+            'manuscripts': Manuscripts.objects.filter(display_as_main=True).order_by('name'),
+        }
+        return TemplateResponse(request, 'admin/indexerapp/bibliography/zotero_importer.html', context)
+
+    def zotero_tree_view(self, request):
+        parent_collection_key = (request.GET.get('parent') or '').strip() or None
+        hierarchy = request.GET.get('hierarchy')
+
+        try:
+            nodes = list_zotero_nodes(
+                parent_collection_key=parent_collection_key,
+                current_hierarchy=int(hierarchy or 0),
+            )
+        except ValueError:
+            return JsonResponse({'error': 'Invalid collection hierarchy.'}, status=400)
+        except ZoteroConfigurationError as exc:
+            return JsonResponse({'error': str(exc)}, status=503)
+        except Exception as exc:
+            return JsonResponse({'error': f'Failed to load Zotero nodes: {exc}'}, status=502)
+
+        return JsonResponse({'nodes': nodes})
+
+    def zotero_collection_items_view(self, request):
+        collection_key = (request.GET.get('collection_key') or '').strip()
+        hierarchy = request.GET.get('hierarchy')
+        if not collection_key:
+            return JsonResponse({'error': 'collection_key is required.'}, status=400)
+
+        try:
+            nodes = list_zotero_collection_items(
+                collection_key,
+                current_hierarchy=int(hierarchy or 0),
+            )
+        except ValueError:
+            return JsonResponse({'error': 'Invalid collection hierarchy.'}, status=400)
+        except ZoteroConfigurationError as exc:
+            return JsonResponse({'error': str(exc)}, status=503)
+        except Exception as exc:
+            return JsonResponse({'error': f'Failed to load collection items: {exc}'}, status=502)
+
+        return JsonResponse({'items': nodes})
+
+    def zotero_import_view(self, request):
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST is required.'}, status=405)
+
+        try:
+            payload = json.loads(request.body.decode('utf-8'))
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+        manuscript_selector = payload.get('manuscript_uuid')
+        selected_items = payload.get('selected_items', [])
+        try:
+            summary = import_zotero_items(manuscript_selector, selected_items)
+        except ValueError as exc:
+            return JsonResponse({'error': str(exc)}, status=400)
+        except ZoteroConfigurationError as exc:
+            return JsonResponse({'error': str(exc)}, status=503)
+        except Exception as exc:
+            return JsonResponse({'error': f'Import failed: {exc}'}, status=502)
+
+        return JsonResponse(summary)
+
+    def _get_zotero_importer_url(self, suffix=None):
+        opts = self.model._meta
+        url_name = f'admin:{opts.app_label}_{opts.model_name}_zotero_importer'
+        if suffix:
+            url_name += f'_{suffix}'
+        return reverse(url_name)
 
 
 class AttributeDebateForm(forms.ModelForm):

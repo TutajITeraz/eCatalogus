@@ -24,8 +24,6 @@ from .serializers import *
 
 from dal import autocomplete
 
-from pyzotero import zotero
-
 from django.http import JsonResponse
 from rest_framework import viewsets
 
@@ -107,6 +105,8 @@ from captcha.helpers import captcha_image_url
 
 #For traditions assignment:
 from django.db import transaction
+
+from .zotero_service import ZoteroConfigurationError, get_zotero_config, render_bibliography_entries
 
 
 def _get_first_present(mapping, *keys):
@@ -235,14 +235,6 @@ def _resolve_manuscript_list(raw_value, separator=';'):
     ]
 
 
-
-ZOTERO_library_type = 'group'
-#ZOTERO_api_key = 'HhPM6AN8emREftJShQBRITeI' #'5hnxe02vaDuZJ8O4qkUAT6Ty'
-#ZOTERO_library_id = 5244710
-
-ZOTERO_api_key = '5hnxe02vaDuZJ8O4qkUAT6Ty'
-#ZOTERO_library_id = 12744975
-ZOTERO_library_id = 5244710 #group id
 
 class Login(View):
     template = 'login.html'
@@ -1861,17 +1853,16 @@ class BibliographyExportView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
 
-        #Zotero:
         bibliography = ms_instance.ms_bibliography.all()
 
-        zot = zotero.Zotero(ZOTERO_library_id, ZOTERO_library_type, ZOTERO_api_key)
-        zot.add_parameters(format='bibtex')
-        #allItems = zot.items()
+        try:
+            rendered_entries = render_bibliography_entries(bibliography, content='bibtex')
+        except ZoteroConfigurationError as exc:
+            return HttpResponse(str(exc), status=503, content_type='text/plain; charset=utf-8')
 
-        info_str = ""
-        for b in bibliography:
-            item = zot.item(b.bibliography.zotero_id, limit=50, content='bibtex')
-            info_str += item[0] + "\n\n"
+        info_str = "\n\n".join(rendered_entries)
+        if info_str:
+            info_str += "\n\n"
 
         response = HttpResponse(info_str, content_type='application/x-bibtex charset=utf-8')
         return response
@@ -1880,17 +1871,21 @@ class BibliographyPrintView(View):
     def get(self, request, *args, **kwargs):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
 
-        #Zotero:
         bibliography = ms_instance.ms_bibliography.all()
 
-        zot = zotero.Zotero(ZOTERO_library_id, ZOTERO_library_type, ZOTERO_api_key)
-        zot.add_parameters(format='bib')
-        #allItems = zot.items()
+        try:
+            format_name = get_zotero_config()['bibliography_style']
+            rendered_entries = render_bibliography_entries(
+                bibliography,
+                content='bib,html',
+                format_name=format_name,
+            )
+        except ZoteroConfigurationError as exc:
+            return JsonResponse({'error': str(exc)}, status=503)
 
-        info_str = ""
-        for b in bibliography:
-            item = zot.item(b.bibliography.zotero_id, limit=50, content='bib,html', format='https://www.zotero.org/styles/pontifical-biblical-institute')
-            info_str += item[0] + "\n\n"
+        info_str = "\n\n".join(rendered_entries)
+        if info_str:
+            info_str += "\n\n"
 
         # Create the response dictionary
         data = {
@@ -3891,20 +3886,6 @@ class ManuscriptDetail(LoginRequiredMixin, View):
 
         #Content
         #content = instance.ms_content.all()
-
-
-        #Zotero:
-        #zotCollection = instance.zoteroCollection
-        #if zotCollection is not None:
-        #bibliography = instance.ms_bibliography.all()
-
-        #zot = zotero.Zotero(ZOTERO_library_id, ZOTERO_library_type, ZOTERO_api_key)
-
-        #print(zot.key_info())
-
-        #allItems = zot.items()
-
-        #print(allItems)
 
         #zotItems = []
         #for b in bibliography:
