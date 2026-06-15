@@ -4347,19 +4347,22 @@ class ManuscriptTEIView(View):
         title_element.text = "Title of the manuscript"
 
         # Add more elements from the Manuscripts and Codicology models
-        if manuscript.dating:
-            dating_element = SubElement(ms_desc, "origin")
-            orig_date_element = SubElement(dating_element, "origDate")
+        origin_element = None
+        if manuscript.dating_uuid:
+            origin_element = SubElement(ms_desc, "origin")
+            orig_date_element = SubElement(origin_element, "origDate")
             orig_date_element.set("calendar", "Gregorian")
-            orig_date_element.set("notBefore", str(manuscript.dating.year_from))
-            orig_date_element.set("notAfter", str(manuscript.dating.year_to))
-            orig_date_element.text = manuscript.dating.time_description
+            orig_date_element.set("notBefore", str(manuscript.dating_uuid.year_from))
+            orig_date_element.set("notAfter", str(manuscript.dating_uuid.year_to))
+            orig_date_element.text = manuscript.dating_uuid.time_description
 
-        if manuscript.place_of_origin:
-            orig_place_element = SubElement(dating_element, "origPlace")
+        if manuscript.place_of_origin_uuid:
+            if origin_element is None:
+                origin_element = SubElement(ms_desc, "origin")
+            orig_place_element = SubElement(origin_element, "origPlace")
             country_element = SubElement(orig_place_element, "country")
-            country_element.set("key", "place_" + str(manuscript.place_of_origin.id))
-            country_element.text = str(manuscript.place_of_origin)
+            country_element.set("key", "place_" + str(manuscript.place_of_origin_uuid.id))
+            country_element.text = str(manuscript.place_of_origin_uuid)
 
 
         if codicology:
