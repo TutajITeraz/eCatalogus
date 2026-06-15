@@ -79,7 +79,15 @@ function getAdminObjectReference(row, fallbackValue) {
 }
 
 function shouldShowEditableSection(hasData) {
-  return Boolean(DISPLAY_EDIT_OPTIONS || hasData);
+  if (DISPLAY_EDIT_OPTIONS) {
+    return true;
+  }
+
+  if (Array.isArray(hasData)) {
+    return hasData.length > 0;
+  }
+
+  return Boolean(hasData);
 }
 
 window.shouldShowEditableSection = shouldShowEditableSection;

@@ -423,7 +423,7 @@
                                 </div>
                             </div>
 
-                            <template x-if="shouldShowEditableSection((await getMusicNotationInfo()).data)">
+                            <template x-if="shouldShowEditableSection((await getMusicNotationInfo()).data?.length)">
                                 <div data-ui-scope="manuscriptSections" data-ui-key="musicNotation" class="openbox open-lvl-1" x-data="{ open2: false }">
                                     <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2">
                                         <span class="printIt title">Music Notation</span></button>
