@@ -104,9 +104,9 @@ class ProvenanceSerializer(serializers.ModelSerializer):
         return f"{place_rep['name']} ({date_from} - {date_to})"
 
 class ManuscriptsSerializer(serializers.ModelSerializer):
-    dating = TimeReferenceSerializer()
-    main_script = ScriptNamesSerializer()
-    binding_date = TimeReferenceSerializer()
+    dating = serializers.SerializerMethodField()
+    main_script = serializers.SerializerMethodField()
+    binding_date = serializers.SerializerMethodField()
     contemporary_repository_place_name = serializers.SerializerMethodField()
     contemporary_repository_place_latitude = serializers.FloatField(source='contemporary_repository_place_uuid.latitude', allow_null=True, read_only=True)
     contemporary_repository_place_longitude = serializers.FloatField(source='contemporary_repository_place_uuid.longitude', allow_null=True, read_only=True)
@@ -129,21 +129,30 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
             return obj.image.url
         return None
 
+    def get_dating(self, obj):
+        return TimeReferenceSerializer(obj.dating_uuid).data if obj.dating_uuid else None
+
+    def get_main_script(self, obj):
+        return ScriptNamesSerializer(obj.main_script_uuid).data if obj.main_script_uuid else None
+
+    def get_binding_date(self, obj):
+        return TimeReferenceSerializer(obj.binding_date_uuid).data if obj.binding_date_uuid else None
+
     def get_contemporary_repository_place_name(self, obj):
-        return str(obj.contemporary_repository_place) if obj.contemporary_repository_place else ''
+        return str(obj.contemporary_repository_place_uuid) if obj.contemporary_repository_place_uuid else ''
 
     def get_place_of_origin_name(self, obj):
-        return str(obj.place_of_origin) if obj.place_of_origin else ''
+        return str(obj.place_of_origin_uuid) if obj.place_of_origin_uuid else ''
 
     def get_binding_place_name(self, obj):
-        return str(obj.binding_place) if obj.binding_place else ''
+        return str(obj.binding_place_uuid) if obj.binding_place_uuid else ''
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation.pop('id', None)
-        representation['dating'] = str(instance.dating)
-        representation['main_script'] = str(instance.main_script)
-        representation['binding_date'] = str(instance.binding_date)
+        representation['dating'] = str(instance.dating_uuid) if instance.dating_uuid else ''
+        representation['main_script'] = str(instance.main_script_uuid) if instance.main_script_uuid else ''
+        representation['binding_date'] = str(instance.binding_date_uuid) if instance.binding_date_uuid else ''
 
         source_project_link = instance.ms_projects.select_related('project_uuid').order_by('id').first()
         source_project = source_project_link.project_uuid if source_project_link else None
@@ -153,8 +162,8 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
         representation['source_project_uuid'] = str(source_project.uuid) if source_project and source_project.uuid else ''
 
         representation['dating_year'] = 9999
-        if instance.dating:
-            representation['dating_year'] = str(instance.dating.year_from)
+        if instance.dating_uuid:
+            representation['dating_year'] = str(instance.dating_uuid.year_from)
 
         provenances = instance.ms_provenance.all().order_by('timeline_sequence')
         representation['ms_provenance'] = ''

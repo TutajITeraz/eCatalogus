@@ -633,6 +633,20 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
 
         return queryset
 
+class ManuscriptsGlobalFilter(DatatablesFilterSet):
+    dating = filters.CharFilter(field_name='dating_uuid', lookup_expr='exact')
+    binding_date = filters.CharFilter(field_name='binding_date_uuid', lookup_expr='exact')
+    contemporary_repository_place = filters.CharFilter(field_name='contemporary_repository_place_uuid', lookup_expr='exact')
+    place_of_origin = filters.CharFilter(field_name='place_of_origin_uuid', lookup_expr='exact')
+    main_script = filters.CharFilter(field_name='main_script_uuid', lookup_expr='exact')
+    binding_place = filters.CharFilter(field_name='binding_place_uuid', lookup_expr='exact')
+    data_contributor = filters.CharFilter(field_name='data_contributor_uuid', lookup_expr='exact')
+
+    class Meta:
+        model = Manuscripts
+        fields = ['dating', 'binding_date', 'contemporary_repository_place', 'place_of_origin', 'main_script', 'binding_place', 'data_contributor']
+
+
 class ContentGlobalFilter(DatatablesFilterSet):
     """Filter name, artist and genre by name with icontains"""
 
@@ -708,7 +722,8 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
     queryset = Manuscripts.objects.all().order_by('name')
     serializer_class = ManuscriptsSerializer
 
-    filter_backends = [DatatablesFilterBackend]
+    filter_backends = [CustomDatatablesFilterBackend]
+    filterset_class = ManuscriptsGlobalFilter
 
 
     def get_queryset(self):
@@ -859,14 +874,14 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(shelf_mark__in=shelfmark_ids)
         if dating:
             dating_ids = dating.split(';')
-            queryset = queryset.filter(dating__in=dating_ids)
+            queryset = queryset.filter(dating_uuid__in=dating_ids)
         if place_of_origin:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'place_of_origin', place_of_origin)
         if main_script:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'main_script', main_script)
         if binding_date:
             binding_date_ids = binding_date.split(';')
-            queryset = queryset.filter(binding_date__in=binding_date_ids)
+            queryset = queryset.filter(binding_date_uuid__in=binding_date_ids)
         if how_many_columns:
             how_many_columns_ids = how_many_columns.split(';')
             queryset = queryset.filter(how_many_columns_mostly__in=how_many_columns_ids)
@@ -890,28 +905,28 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(how_many_quires__lte=int(how_many_quires_max))
 
         if binding_date_min and binding_date_min.isdigit():
-            queryset = queryset.filter(Q(binding_date__century_from__gte=int(binding_date_min)) | Q(binding_date__century_to__gte=int(binding_date_min)))
+            queryset = queryset.filter(Q(binding_date_uuid__century_from__gte=int(binding_date_min)) | Q(binding_date_uuid__century_to__gte=int(binding_date_min)))
 
         if binding_date_max and binding_date_max.isdigit():
-            queryset = queryset.filter(Q(binding_date__century_from__lte=int(binding_date_max)) | Q(binding_date__century_to__lte=int(binding_date_max)))
+            queryset = queryset.filter(Q(binding_date_uuid__century_from__lte=int(binding_date_max)) | Q(binding_date_uuid__century_to__lte=int(binding_date_max)))
         
         if binding_date_years_min and binding_date_years_min.isdigit():
-            queryset = queryset.filter(Q(binding_date__year_from__gte=int(binding_date_years_min)) | Q(binding_date__year_to__gte=int(binding_date_years_min)))
+            queryset = queryset.filter(Q(binding_date_uuid__year_from__gte=int(binding_date_years_min)) | Q(binding_date_uuid__year_to__gte=int(binding_date_years_min)))
 
         if binding_date_years_max and binding_date_years_max.isdigit():
-            queryset = queryset.filter(Q(binding_date__year_from__lte=int(binding_date_years_max)) | Q(binding_date__year_to__lte=int(binding_date_years_max)))
+            queryset = queryset.filter(Q(binding_date_uuid__year_from__lte=int(binding_date_years_max)) | Q(binding_date_uuid__year_to__lte=int(binding_date_years_max)))
 
         if dating_min and dating_min.isdigit():
-            queryset = queryset.filter(Q(dating__century_from__gte=int(dating_min)) | Q(dating__century_to__gte=int(dating_min)))
+            queryset = queryset.filter(Q(dating_uuid__century_from__gte=int(dating_min)) | Q(dating_uuid__century_to__gte=int(dating_min)))
 
         if dating_max and dating_max.isdigit():
-            queryset = queryset.filter(Q(dating__century_from__lte=int(dating_max)) | Q(dating__century_to__lte=int(dating_max)))
+            queryset = queryset.filter(Q(dating_uuid__century_from__lte=int(dating_max)) | Q(dating_uuid__century_to__lte=int(dating_max)))
 
         if dating_years_min and dating_years_min.isdigit():
-            queryset = queryset.filter(Q(dating__year_from__gte=int(dating_years_min)) | Q(dating__year_to__gte=int(dating_years_min)))
+            queryset = queryset.filter(Q(dating_uuid__year_from__gte=int(dating_years_min)) | Q(dating_uuid__year_to__gte=int(dating_years_min)))
 
         if dating_years_max and dating_years_max.isdigit():
-            queryset = queryset.filter(Q(dating__year_from__lte=int(dating_years_max)) | Q(dating__year_to__lte=int(dating_years_max)))
+            queryset = queryset.filter(Q(dating_uuid__year_from__lte=int(dating_years_max)) | Q(dating_uuid__year_to__lte=int(dating_years_max)))
 
 
 

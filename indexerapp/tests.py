@@ -446,6 +446,25 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		row = next(item for item in payload['data'] if item['uuid'] == str(manuscript.uuid))
 		self.assertNotIn('id', row)
 
+	def test_manuscripts_datatable_accepts_legacy_column_names(self):
+		Manuscripts.objects.create(name='Legacy column manuscript', display_as_main=True)
+
+		response = self.client.get(
+			reverse('manuscripts-list'),
+			{
+				'format': 'datatables',
+				'length': 10,
+				'columns[0][data]': 'dating',
+				'columns[1][data]': 'name',
+				'order[0][column]': '0',
+				'order[0][dir]': 'asc',
+			},
+		)
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertGreaterEqual(payload['recordsTotal'], 1)
+
 	def test_manuscripts_datatable_exposes_source_project_metadata(self):
 		manuscript = Manuscripts.objects.create(name='Project metadata manuscript', display_as_main=True)
 		project = Projects.objects.create(
