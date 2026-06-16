@@ -9,8 +9,10 @@ https://docs.djangoproject.com/en/3.2/howto/deployment/wsgi/
 
 import os
 
+from ecatalogus.env_loader import load_runtime_env
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecatalogus.settings')
+settings_module = load_runtime_env()
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
 
 application = get_wsgi_application()

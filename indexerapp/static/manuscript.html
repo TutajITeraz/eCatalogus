@@ -1,6 +1,5 @@
 
 
-<script src="/static/js/manuscript.js"></script>
 <script src="/static/js/lib/lightgallery/js/lightgallery.min.js"></script>
 <script src="/static/js/lib/lightgallery/plugins/lg-thumbnail.min.js"></script>
 <script src="/static/js/lib/lightgallery/plugins/lg-zoom.min.js"></script>
@@ -349,7 +348,7 @@
                                         </span>
                                         <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#layouts').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
                                 
-                                    <table x-init="init_layouts_table" id="layouts" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                    <table x-init="init_layouts_table()" id="layouts" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                 </div>
                             </div>
 
@@ -416,7 +415,7 @@
                                             <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#additions_hands').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
 
                                             
-                                            <table x-init="init_additions_hands" id="additions_hands" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>   
+                                            <table x-init="init_additions_hands()" id="additions_hands" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>   
                                         </div>
                                     </div>
 
@@ -449,7 +448,7 @@
 
                                             <p class="m-3 indent-8" x-text="(await getMSInfo()).manuscript.music_notation_comments"></p>
 
-                                            <table x-init="init_music_table" id="music_notation" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                            <table x-init="init_music_table()" id="music_notation" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                 
                                         </div>
                                     </div>
@@ -597,7 +596,7 @@
             </span>
 
             
-            <template x-if="shouldShowEditableSection((await getDecorationInfo()).data?.length)">
+            <template x-if="shouldShowEditableSection((await getDecorationInfo()).data)">
                 <div data-ui-scope="manuscriptSections" data-ui-key="decoration" class="open-lvl-0" x-data="{ open: false }">
                     <button @click="open = ! open" class="w-full py-2 bg-[#795a42] hover:bg-[#997a62] toggle text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open"><img class="button-icon" src="/static/img/icons/decoration.svg"></img><span class="printIt title">Decoration</span></button>
                     
@@ -609,9 +608,10 @@
                             <p class="printIt indent-8 m-3" x-text="(await getMSInfo()).manuscript.decoration_comments"></p>
                     
                             <!--
-                            <table x-init="init_decoration_table" id="decoration" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                            <table x-init="init_decoration_table()" id="decoration" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             -->
 
+                            <template x-if="hasDecorationTypeRows((await getDecorationInfo()).data, 'initials')">
                             <div data-ui-scope="manuscriptSections" data-ui-key="initials" class="openbox open-lvl-1" x-data="{ open2: false }">
                                 <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Initials</span></button>
                                 
@@ -631,11 +631,13 @@
                                     </span>
                                     <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#initials').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
 
-                                    <table  x-init="init_initials_table" id="initials" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                    <table  x-init="init_initials_table()" id="initials" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                 </div>
                             </div>
+                            </template>
 
 
+                        <template x-if="hasDecorationTypeRows((await getDecorationInfo()).data, 'miniatures')">
                         <div data-ui-scope="manuscriptSections" data-ui-key="miniatures" class="openbox open-lvl-1" x-data="{ open2: false }">
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Miniatures</span></button>
                             
@@ -654,11 +656,13 @@
                             </span>
                             <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#miniatures').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
 
-                                <table  x-init="init_miniatures_table" id="miniatures" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                <table  x-init="init_miniatures_table()" id="miniatures" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             </div>
                         </div>
+                        </template>
 
 
+                        <template x-if="hasDecorationTypeRows((await getDecorationInfo()).data, 'borders / others')">
                         <div data-ui-scope="manuscriptSections" data-ui-key="bordersOthers" class="openbox open-lvl-1" x-data="{ open2: false }">
                             <button @click="open2 = ! open2" class="w-full py-2 bg-[#997a62] toggle hover:bg-[#b9987f] text-white rounded text-white rounded font-semibold drop-shadow mt-2" x-bind:opened="open2"><span class="printIt title">Borders / Others</span></button>
                             
@@ -680,9 +684,10 @@
                                 <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#borders_others').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
     
 
-                                <table  x-init="init_borders_others_table" id="borders_others" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                <table  x-init="init_borders_others_table()" id="borders_others" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             </div>
                         </div>
+                        </template>
 
 
                         </div>
@@ -833,7 +838,7 @@
     
                                 
                                 
-                                <table  x-init="init_origins_table" id="origins" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                <table  x-init="init_origins_table()" id="origins" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                             </div>
                         </div>
 
@@ -862,7 +867,7 @@
                                         <a x-show="DISPLAY_EDIT_OPTIONS" class="refresh_widget" title="Refresh" href="#" x-on:click="$('#provenance').DataTable().ajax.reload();" > <img src="/static/img/refresh.svg" alt="refresh" width="20" height="20" /></a>
             
 
-                                        <table x-init="init_provenance_table" id="provenance" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
+                                        <table x-init="init_provenance_table()" id="provenance" class="table printIt table-striped  table-bordered table-hover" style="width:100%"></table>
                                         <!--
                                         <table id="provenance" class="table printIt table-striped  table-bordered table-hover" style="width:100%">
                                             <thead>
@@ -946,7 +951,7 @@
 
 
                         <div>
-                            <table  x-init="init_bibliography_table" id="bibliography" class="table table-striped  table-bordered table-hover" style="width:100%"></table>
+                            <table  x-init="init_bibliography_table()" id="bibliography" class="table table-striped  table-bordered table-hover" style="width:100%"></table>
                             <a class="py-2 px-1 sm:py-4 sm:px-6 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded drop-shadow text-base mt-5" x-bind:href="'/bibliography_export/?manuscript_uuid='+(await getMSInfo()).manuscript.uuid" x-bind:download="(await getMSInfo()).manuscript.name+' bibliography.bib'">Save all to Zotero compatible BibTeX .bib file</a>
                         
                         </div>

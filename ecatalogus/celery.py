@@ -1,8 +1,11 @@
 import os
 from celery import Celery
 
+from ecatalogus.env_loader import load_runtime_env
+
 # Set the default Django settings module for the 'celery' program.
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecatalogus.settings')
+settings_module = load_runtime_env()
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
 
 app = Celery('ecatalogus')
 

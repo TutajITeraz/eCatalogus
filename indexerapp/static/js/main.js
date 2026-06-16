@@ -239,10 +239,24 @@ var page = urlParams.get('p');
 if(!page)
     page = "about";
 
-(function() { // Scoping function to avoid globals
-    var src = page+".js"
-    //document.write('<script src="'+pageRoot+'/static/js/' + src + '"><\/script>');
-})();
+function loadPageScript(pageName) {
+    if (pageName !== 'manuscript') {
+        return;
+    }
+
+    const scriptId = `page-script-${pageName}`;
+    if (document.getElementById(scriptId)) {
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `${pageRoot}/static/js/${pageName}.js?v=20260616c`;
+    script.async = false;
+    document.head.appendChild(script);
+}
+
+loadPageScript(page);
 
 let main_info_lock = false; // Flag to check if the request is in progress
 let main_info = null; // Cached data
@@ -265,7 +279,13 @@ async function fetchOnce(url) {
       const response = await fetch(url, {
         credentials: 'include'
       });
+      if (!response.ok) {
+        throw new Error(`fetchOnce failed: ${response.status} ${response.statusText}`);
+      }
       fetchOnceData[url] = await response.json();
+      if (url.startsWith(pageRoot + "/main_info/")) {
+        DISPLAY_EDIT_OPTIONS = Boolean(fetchOnceData[url]?.edit_mode);
+      }
     } finally {
       // Release the lock
       fetchOnceLocks[url] = false;
@@ -454,12 +474,3 @@ function getCookie(name) {
 
 
 var DISPLAY_EDIT_OPTIONS = null;
-const request = new XMLHttpRequest();
-request.open("GET", pageRoot+`/main_info/`, false); // `false` makes the request synchronous
-request.send(null);
-
-if (request.status === 200) {
-  console.log(request.responseText);
-  DISPLAY_EDIT_OPTIONS = JSON.parse(request.responseText).edit_mode;
-}
-console.log(DISPLAY_EDIT_OPTIONS);

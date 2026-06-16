@@ -42,6 +42,33 @@ function getManuscriptEndpoint(path) {
   return `${pageRoot}${normalizedPath}?${getCurrentManuscriptQuery()}`;
 }
 
+function cachedDataTableAjax(url, options = {}) {
+  const dataSrc = options.dataSrc || ((payload) => payload.data ?? payload);
+  const requestData = options.data || {};
+
+  return function (dtData, callback) {
+    const resolvedData = typeof requestData === "function" ? requestData(dtData) : requestData;
+    const params = new URLSearchParams(resolvedData || {}).toString();
+    const requestUrl = params ? `${url}${url.includes("?") ? "&" : "?"}${params}` : url;
+
+    fetchOnce(requestUrl)
+      .then((payload) => {
+        const rows = dataSrc(payload);
+        const normalizedRows = Array.isArray(rows) ? rows : [];
+        callback({
+          ...(payload && typeof payload === "object" ? payload : {}),
+          data: normalizedRows,
+          recordsTotal: normalizedRows.length,
+          recordsFiltered: normalizedRows.length,
+        });
+      })
+      .catch((error) => {
+        console.warn("DataTables cache fetch failed", error);
+        callback({ data: [], recordsTotal: 0, recordsFiltered: 0 });
+      });
+  };
+}
+
 function addCurrentManuscriptParam(payload) {
   if (manuscriptUuid) {
     payload.manuscript_uuid = manuscriptUuid;
@@ -78,19 +105,48 @@ function getAdminObjectReference(row, fallbackValue) {
   return encodeURIComponent(rawValue);
 }
 
+function hasDataRows(value) {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (typeof value === "number") {
+    return value > 0;
+  }
+
+  return Boolean(value);
+}
+
 function shouldShowEditableSection(hasData) {
   if (DISPLAY_EDIT_OPTIONS) {
     return true;
   }
 
-  if (Array.isArray(hasData)) {
-    return hasData.length > 0;
+  return hasDataRows(hasData);
+}
+
+function hasDecorationTypeRows(rows, decorationType) {
+  if (DISPLAY_EDIT_OPTIONS) {
+    return true;
   }
 
-  return Boolean(hasData);
+  if (!Array.isArray(rows)) {
+    return false;
+  }
+
+  if (!decorationType) {
+    return rows.length > 0;
+  }
+
+  const normalizedType = String(decorationType).trim().toLowerCase();
+  return rows.some((row) => {
+    const rowType = String(row?.decoration_type || "").trim().toLowerCase();
+    return rowType === normalizedType;
+  });
 }
 
 window.shouldShowEditableSection = shouldShowEditableSection;
+window.hasDecorationTypeRows = hasDecorationTypeRows;
 
 function renderAdminPopupActions(
   modelName,
@@ -416,10 +472,9 @@ async function getBibliographyPrintableInfo() {
 var layouts_table;
 function init_layouts_table() {
   layouts_table = $("#layouts").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("layouts_info/"),
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("layouts_info/"), {
       dataSrc: (data) => data.data,
-    },
+    }),
     processing: false,
     serverSide: false,
     lengthMenu: [
@@ -573,10 +628,9 @@ function displayUniqueLayouts(dataTable, targetSelector) {
 var music_table;
 function init_music_table() {
   music_table = $("#music_notation").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("music_notation_info/"),
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("music_notation_info/"), {
       dataSrc: (data) => data.data,
-    },
+    }),
     bAutoWidth: false,
     columns: [
       {
@@ -1209,15 +1263,12 @@ function init_miniatures_table() {
 function init_decoration_table(table_info) {
   var decoration_groupColumn = 2;
   table_info.table = $(table_info.tableSelector).DataTable({
-    ajax: {
-      url:
-        getManuscriptEndpoint("decoration_info/") +
+    ajax: cachedDataTableAjax(
+      getManuscriptEndpoint("decoration_info/") +
         "&decoration_type=" +
         encodeURIComponent(table_info.typeQuery),
-      dataSrc: function (data) {
-        return data.data;
-      },
-    },
+      { dataSrc: (data) => data.data }
+    ),
     bAutoWidth: false,
     columns: [
       { data: "uuid", title: "uuid", visible: false },
@@ -1586,12 +1637,9 @@ var origins_table;
 
 function init_origins_table() {
   origins_table = $("#origins").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("origins_info/"),
-      dataSrc: function (data) {
-        return data.data;
-      },
-    },
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("origins_info/"), {
+      dataSrc: (data) => data.data,
+    }),
     bAutoWidth: false,
     columns: [
       { data: "uuid", title: "uuid", visible: false },
@@ -1653,12 +1701,9 @@ var music_table = $('#binding').DataTable({
 var binding_materials_table;
 function init_binding_materials_table() {
   binding_materials_table = $("#binding_materials").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("binding_materials_info/"),
-      dataSrc: function (data) {
-        return data.data;
-      },
-    },
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("binding_materials_info/"), {
+      dataSrc: (data) => data.data,
+    }),
     columns: [{ data: "material", title: "material" }],
   });
 }
@@ -1667,9 +1712,7 @@ function init_binding_materials_table() {
 var main_hands;
 function init_main_hands() {
   main_hands = $("#main_hands").DataTable({
-    ajax: {
-      url: pageRoot + "/hands_info/",
-      type: "GET",
+    ajax: cachedDataTableAjax(pageRoot + "/hands_info/", {
       data: (d) => addCurrentManuscriptParam({ is_main_text: true }),
       dataSrc: (data) => {
         const processedData = [];
@@ -1681,7 +1724,7 @@ function init_main_hands() {
         }
         return processedData;
       },
-    },
+    }),
     processing: false,
     serverSide: false,
     lengthMenu: [
@@ -1775,9 +1818,7 @@ function init_main_hands() {
 var additions_hands;
 function init_additions_hands() {
   additions_hands = $("#additions_hands").DataTable({
-    ajax: {
-      url: pageRoot + "/hands_info/",
-      type: "GET",
+    ajax: cachedDataTableAjax(pageRoot + "/hands_info/", {
       data: (d) => addCurrentManuscriptParam({ is_main_text: false }),
       dataSrc: (data) => {
         const processedData = [];
@@ -1789,7 +1830,7 @@ function init_additions_hands() {
         }
         return processedData;
       },
-    },
+    }),
     processing: false,
     serverSide: false,
     lengthMenu: [
@@ -1884,10 +1925,9 @@ function init_additions_hands() {
 var watermarks_table;
 function init_watermarks_table() {
   watermarks_table = $("#watermarks").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("watermarks_info/"),
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("watermarks_info/"), {
       dataSrc: (data) => data.data,
-    },
+    }),
     bAutoWidth: false,
     columns: [
       { data: "name", title: "name", width: "20%" },
@@ -1931,12 +1971,9 @@ var provenance_table;
 
 function init_provenance_table() {
   provenance_table = $("#provenance").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("provenance_info/"),
-      dataSrc: function (data) {
-        return data.data;
-      },
-    },
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("provenance_info/"), {
+      dataSrc: (data) => data.data,
+    }),
     bAutoWidth: false,
     columns: [
       { data: "uuid", title: "uuid", visible: false },
@@ -1990,12 +2027,9 @@ var bibliography_table;
 
 function init_bibliography_table() {
   bibliography_table = $("#bibliography").DataTable({
-    ajax: {
-      url: getManuscriptEndpoint("bibliography_info/"),
-      dataSrc: function (data) {
-        return data.data;
-      },
-    },
+    ajax: cachedDataTableAjax(getManuscriptEndpoint("bibliography_info/"), {
+      dataSrc: (data) => data.data,
+    }),
     processing: false,
     serverSide: false,
     lengthMenu: [
@@ -2030,8 +2064,8 @@ function init_bibliography_table() {
 }
 
 function displayDebate(dataTable, divToAppend) {
-  var all_data = dataTable.ajax.json();
-  var debates = all_data.debate;
+  var all_data = dataTable.ajax.json() || {};
+  var debates = Array.isArray(all_data.debate) ? all_data.debate : [];
 
   if (debates.length < 1) return 0;
 
@@ -2786,8 +2820,15 @@ manuscript_init = function () {
         return window.allCanvasesWithLabels;
 
       const state = miradorInstance.store.getState();
-      const windowId = Object.keys(state.windows)[0]; // Pobierz pierwszy identyfikator okna
+      const windowId = Object.keys(state.windows || {})[0]; // Pobierz pierwszy identyfikator okna
+      if (!windowId || !state.windows[windowId]) {
+        return [];
+      }
+
       const manifestId = state.windows[windowId].manifestId;
+      if (!manifestId) {
+        return [];
+      }
 
       // Sprawdź, czy manifest jest już załadowany
       if (state.manifests[manifestId]) {
@@ -2812,18 +2853,12 @@ manuscript_init = function () {
 
           return canvasList;
         } else {
-          console.error("Manifest does not contain items");
           return [];
         }
       } else {
-        console.error("Manifest not loaded yet");
         return [];
       }
     }
-
-    // Przykład użycia
-    const canvasList = getAllCanvasesWithLabels();
-    console.log(canvasList);
 
     window.getAllCanvasesWithLabels = getAllCanvasesWithLabels;
 

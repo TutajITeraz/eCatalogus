@@ -3,10 +3,13 @@
 import os
 import sys
 
+from ecatalogus.env_loader import load_runtime_env
+
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecatalogus.settings')
+    settings_module = load_runtime_env()
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

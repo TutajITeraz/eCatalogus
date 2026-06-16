@@ -1656,7 +1656,6 @@ class ConditionAjaxView(View):
         ms_instance = _resolve_manuscript(self.request.GET, 'manuscript_uuid', 'ms_uuid')
         skip_fields = [
             'id',
-            'uuid',
             'manuscript',
             'manuscript_uuid',
             'conservation_date_uuid',

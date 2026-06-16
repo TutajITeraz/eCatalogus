@@ -859,6 +859,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_ms_gallery_delete_accepts_image_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Delete gallery manuscript')
 		image = Image.objects.create(manuscript_uuid=manuscript, name='Delete image')
+		user = get_user_model().objects.create_superuser(
+			username='gallery-delete-admin',
+			email='gallery-delete-admin@example.com',
+			password='Secret123!pass',
+		)
+		self.client.force_login(user)
 
 		response = self.client.delete(
 			reverse('ms_gallery'),
