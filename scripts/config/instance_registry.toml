@@ -1,5 +1,41 @@
 version = 1
 
+[instances.canon-missae]
+slug = "canon-missae"
+site_name = "Canon Missae"
+domain = "canon-missae.ispan.pl"
+public_url = "https://canon-missae.ispan.pl"
+settings_module = "ecatalogus.settings_canon-missae"
+overlay_dir = "static_canon-missae"
+role = "slave"
+peer_id = "canon-missae"
+canonical_master = false
+default_parent_peer = "ecatalogus"
+source_peers = ["ecatalogus"]
+project_id = 4
+foreign_id_name = "foreign id"
+local_port = 8083
+database_name = "canon-missae"
+database_user = "ecatalogus_user"
+
+[instances.corpus-liturgicum]
+slug = "corpus-liturgicum"
+site_name = "Corpus Liturgicum"
+domain = "corpus-liturgicum.org"
+public_url = "https://corpus-liturgicum.org"
+settings_module = "ecatalogus.settings_corpus-liturgicum"
+overlay_dir = "static_corpus-liturgicum"
+role = "slave"
+peer_id = "corpus-liturgicum"
+canonical_master = false
+default_parent_peer = "ecatalogus"
+source_peers = ["ecatalogus"]
+project_id = 5
+foreign_id_name = "foreign id"
+local_port = 8082
+database_name = "corpus-liturgicum"
+database_user = "ecatalogus_user"
+
 [instances.ecatalogus]
 slug = "ecatalogus"
 site_name = "eCatalogus"
