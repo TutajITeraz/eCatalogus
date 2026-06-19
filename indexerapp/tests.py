@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.apps import apps
 from django.db import models
 from django.contrib import admin
+from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.contenttypes.models import ContentType
@@ -12,6 +13,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory
 from django.test import SimpleTestCase, TestCase
 from django.urls import NoReverseMatch, reverse
+from dal import autocomplete
 
 from etlapp.model_categories import get_sync_model_names
 from indexerapp.ai_tools import get_all_manuscript_names
@@ -106,6 +108,38 @@ class AdminUUIDVisibilityTests(TestCase):
 		form_class = content_admin.get_form(request)
 
 		self.assertEqual(form_class.base_fields['formula_uuid'].to_field_name, 'uuid')
+
+	def test_content_admin_form_uses_select2_widget_for_function_fields(self):
+		request = RequestFactory().get('/admin/')
+		request.user = AnonymousUser()
+		content_admin = admin.site._registry[Content]
+		form_class = content_admin.get_form(request)
+
+		function_widget = form_class.base_fields['function_uuid'].widget
+		subfunction_widget = form_class.base_fields['subfunction_uuid'].widget
+
+		self.assertIsInstance(function_widget, RelatedFieldWidgetWrapper)
+		self.assertIsInstance(subfunction_widget, RelatedFieldWidgetWrapper)
+		self.assertIsInstance(function_widget.widget, autocomplete.ListSelect2)
+		self.assertIsInstance(subfunction_widget.widget, autocomplete.ListSelect2)
+		self.assertEqual(function_widget.widget.url, '/content-functions-autocomplete/')
+		self.assertEqual(subfunction_widget.widget.url, '/content-functions-autocomplete/')
+
+	def test_manuscripts_admin_form_uses_generic_time_reference_widget(self):
+		request = RequestFactory().get('/admin/')
+		request.user = AnonymousUser()
+		manuscripts_admin = admin.site._registry[Manuscripts]
+		form_class = manuscripts_admin.get_form(request)
+
+		dating_widget = form_class.base_fields['dating_uuid'].widget
+		binding_date_widget = form_class.base_fields['binding_date_uuid'].widget
+
+		self.assertIsInstance(dating_widget, RelatedFieldWidgetWrapper)
+		self.assertIsInstance(binding_date_widget, RelatedFieldWidgetWrapper)
+		self.assertIsInstance(dating_widget.widget, autocomplete.ListSelect2)
+		self.assertIsInstance(binding_date_widget.widget, autocomplete.ListSelect2)
+		self.assertEqual(dating_widget.widget.url, '/time-reference-autocomplete/')
+		self.assertEqual(binding_date_widget.widget.url, '/time-reference-autocomplete/')
 
 	def test_projects_admin_changelist_links_use_uuid(self):
 		project = Projects.objects.create(name='UUID admin project')
@@ -665,6 +699,59 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		payload = response.json()
 		self.assertEqual([item['text'] for item in payload['results']], ['SM-SELECTED'])
+
+	def test_ms_place_of_origins_autocomplete_uses_related_uuid_join(self):
+		place = Places.objects.create(city_today_eng='Origin autocomplete place')
+		Manuscripts.objects.create(
+			name='Origin autocomplete manuscript',
+			place_of_origin_uuid=place,
+			display_as_main=True,
+		)
+
+		response = self.client.get(reverse('ms-place-of-origins-autocomplete'), {'q': 'Origin'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual([item['id'] for item in payload['results']], [str(place.uuid)])
+
+	def test_ms_binding_date_autocomplete_uses_related_uuid_join(self):
+		dating = TimeReference.objects.create(
+			time_description='Binding autocomplete date',
+			century_from=12,
+			century_to=12,
+			year_from=1100,
+			year_to=1199,
+		)
+		Manuscripts.objects.create(
+			name='Binding autocomplete manuscript',
+			binding_date_uuid=dating,
+			display_as_main=True,
+		)
+
+		response = self.client.get(reverse('ms-binding-date-autocomplete'), {'q': 'Binding'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		self.assertEqual([item['id'] for item in payload['results']], [str(dating.uuid)])
+
+	def test_time_reference_autocomplete_returns_uuid(self):
+		user = get_user_model().objects.create_user('time-reference-autocomplete-user', 'time-auto@example.com', 'secret')
+		dating = TimeReference.objects.create(
+			time_description='Generic time autocomplete',
+			century_from=13,
+			century_to=13,
+			year_from=1200,
+			year_to=1299,
+		)
+		self.client.force_login(user)
+
+		response = self.client.get(reverse('time-reference-autocomplete'), {'q': 'Generic'})
+
+		self.assertEqual(response.status_code, 200)
+		payload = response.json()
+		result = next(item for item in payload['results'] if item['text'] == dating.time_description)
+		self.assertEqual(result['uuid'], str(dating.uuid))
+		self.assertEqual(str(result['id']), str(dating.uuid))
 
 	def test_get_all_manuscript_names_filters_by_legacy_project_id_after_uuid_fk_drop(self):
 		selected_project = Projects.objects.create(name='AI selected project')

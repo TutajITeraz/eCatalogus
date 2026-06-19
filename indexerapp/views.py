@@ -2031,6 +2031,33 @@ class FormulaAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2Query
 
         return qs
 
+
+class TimeReferenceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return TimeReference.objects.none()
+
+        qs = TimeReference.objects.all().order_by('time_description', 'pk')
+
+        if self.q:
+            qs = qs.filter(time_description__icontains=self.q)
+
+        return qs
+
+
+class ContentFunctionsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return ContentFunctions.objects.none()
+
+        qs = ContentFunctions.objects.all()
+
+        if self.q:
+            qs = qs.filter(name__icontains=self.q)
+
+        return qs
+
+
 class ContentAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
         # Don't forget to filter out results depending on the visitor !
@@ -2184,7 +2211,7 @@ class MSContemporaryRepositoryPlaceAutocomplete(UUIDAutocompleteResultMixin, aut
         qs = Places.objects.filter(
             manuscripts__contemporary_repository_place_uuid__isnull=False,
             manuscripts__display_as_main=True
-        ).distinct()
+        ).distinct().order_by('city_today_eng', 'repository_today_eng', 'pk')
 
         if self.q:
             filters = Q()
@@ -2202,11 +2229,10 @@ class MSContemporaryRepositoryPlaceAutocomplete(UUIDAutocompleteResultMixin, aut
 
 class MSDatingAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        qs = TimeReference.objects.exclude(
-            manuscripts_dating__dating=None
-        ).filter(
+        qs = TimeReference.objects.filter(
+            manuscripts_dating__isnull=False,
             manuscripts_dating__display_as_main=True
-        ).distinct()
+        ).distinct().order_by('time_description', 'pk')
 
         if self.q:
             filters = Q(time_description__icontains=self.q)
@@ -2221,11 +2247,10 @@ class MSDatingAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2Quer
 
 class MSPlaceOfOriginsAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        qs = Places.objects.exclude(
-            manuscripts_origin__place_of_origin=None
-        ).filter(
+        qs = Places.objects.filter(
+            manuscripts_origin__isnull=False,
             manuscripts_origin__display_as_main=True
-        ).distinct()
+        ).distinct().order_by('city_today_eng', 'repository_today_eng', 'pk')
 
         if self.q:
             filters = Q()
@@ -2241,8 +2266,8 @@ class MSProvenanceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2
         # Pobieramy miejsca powiązane z Provenance, tylko te, które mają przypisany place
         qs = Places.objects.filter(
             provenance__manuscript_uuid__display_as_main=True,
-            provenance__place__isnull=False
-        ).distinct()
+            provenance__place_uuid__isnull=False
+        ).distinct().order_by('city_today_eng', 'repository_today_eng', 'pk')
 
         # Filtrowanie po polach tekstowych na podstawie zapytania użytkownika
         if self.q:
@@ -2279,11 +2304,10 @@ class MSProvenanceAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2
 
 class MSMainScriptAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        qs = ScriptNames.objects.exclude(
-            manuscripts__main_script_uuid=None
-        ).filter(
+        qs = ScriptNames.objects.filter(
+            manuscripts__main_script_uuid__isnull=False,
             manuscripts__display_as_main=True
-        ).distinct()
+        ).distinct().order_by('name', 'pk')
 
         if self.q:
             filters = Q(name__icontains=self.q)
@@ -2298,11 +2322,10 @@ class MSMainScriptAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2
 
 class MSBindingDateAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        qs = TimeReference.objects.exclude(
-            manuscripts_binding_date__binding_date=None
-        ).filter(
+        qs = TimeReference.objects.filter(
+            manuscripts_binding_date__isnull=False,
             manuscripts_binding_date__display_as_main=True
-        ).distinct()
+        ).distinct().order_by('time_description', 'pk')
 
         if self.q:
             filters = Q(time_description__icontains=self.q)

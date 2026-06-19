@@ -155,9 +155,161 @@ class ContentForm(forms.ModelForm):
         model = Content
         fields = ('__all__')
         widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
             'formula_uuid': autocomplete.ListSelect2(url='formula-autocomplete', attrs={'style': 'width: 400px;'}),
             'rite': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 400px;'}),
-            'genre_uuid': autocomplete.ListSelect2(url='genre-autocomplete', attrs={'style': 'width: 400px;'})
+            'genre_uuid': autocomplete.ListSelect2(url='genre-autocomplete', attrs={'style': 'width: 400px;'}),
+            'function_uuid': autocomplete.ListSelect2(url='content-functions-autocomplete', attrs={'style': 'width: 400px;'}),
+            'subfunction_uuid': autocomplete.ListSelect2(url='content-functions-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptsForm(forms.ModelForm):
+    class Meta:
+        model = Manuscripts
+        fields = ('__all__')
+        widgets = {
+            'contemporary_repository_place_uuid': autocomplete.ListSelect2(url='places-autocomplete', attrs={'style': 'width: 400px;'}),
+            'dating_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+            'place_of_origin_uuid': autocomplete.ListSelect2(url='places-autocomplete', attrs={'style': 'width: 400px;'}),
+            'main_script_uuid': autocomplete.ListSelect2(url='script-names-autocomplete', attrs={'style': 'width: 400px;'}),
+            'binding_date_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+            'binding_place_uuid': autocomplete.ListSelect2(url='places-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class OriginsForm(forms.ModelForm):
+    class Meta:
+        model = Origins
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'origins_date_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+            'origins_place_uuid': autocomplete.ListSelect2(url='places-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ProvenanceForm(forms.ModelForm):
+    class Meta:
+        model = Provenance
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'date_from_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+            'date_to_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+            'place_uuid': autocomplete.ListSelect2(url='places-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class BindingForm(forms.ModelForm):
+    class Meta:
+        model = Binding
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'date_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+            'place_of_origin_uuid': autocomplete.ListSelect2(url='places-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class CllaForm(forms.ModelForm):
+    class Meta:
+        model = Clla
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'dating_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ConditionForm(forms.ModelForm):
+    class Meta:
+        model = Condition
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'conservation_date_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class MSProjectsForm(forms.ModelForm):
+    class Meta:
+        model = MSProjects
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class CodicologyForm(forms.ModelForm):
+    class Meta:
+        model = Codicology
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptWatermarksForm(forms.ModelForm):
+    class Meta:
+        model = ManuscriptWatermarks
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptGenresForm(forms.ModelForm):
+    class Meta:
+        model = ManuscriptGenres
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptBindingMaterialsForm(forms.ModelForm):
+    class Meta:
+        model = ManuscriptBindingMaterials
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptBindingDecorationsForm(forms.ModelForm):
+    class Meta:
+        model = ManuscriptBindingDecorations
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptBindingComponentsForm(forms.ModelForm):
+    class Meta:
+        model = ManuscriptBindingComponents
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class ManuscriptBibliographyForm(forms.ModelForm):
+    class Meta:
+        model = ManuscriptBibliography
+        fields = ('__all__')
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
+
+
+class HandsForm(forms.ModelForm):
+    class Meta:
+        model = Hands
+        fields = ('__all__')
+        widgets = {
+            'dating_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
         }
 
 
@@ -199,7 +351,9 @@ class EditionContentForm(forms.ModelForm):
         model = EditionContent
         fields = ('__all__')
         widgets = {
-            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'}),
+            'function_uuid': autocomplete.ListSelect2(url='content-functions-autocomplete', attrs={'style': 'width: 200px;'}),
+            'subfunction_uuid': autocomplete.ListSelect2(url='content-functions-autocomplete', attrs={'style': 'width: 200px;'}),
         }
 
 
@@ -582,6 +736,7 @@ class ContentAdmin(ImportExportDebateableAdmin):
 
 class ManuscriptsAdmin(ImportExportDebateableAdmin):
     resource_class = ManuscriptsResource
+    form = ManuscriptsForm
 
     inlines = [ManuscriptBibliographyInline, OriginsInline, ProvenanceInline, ManuscriptBindingMaterialsInline, ManuscriptBindingComponentsInline, ManuscriptGenresInline ]
 
@@ -610,6 +765,7 @@ class ManuscriptsAdmin(ImportExportDebateableAdmin):
 
 class CllaAdmin(ImportExportDebateableAdmin):
     resource_class = CllaResource
+    form = CllaForm
     inlines = []
 
     list_display= [field.name for field in Clla._meta.fields
@@ -628,6 +784,7 @@ class ProjectsAdmin(ImportExportDebateableAdmin):
 
 class MSProjectsAdmin(ImportExportDebateableAdmin):
     resource_class = MSProjectsResource
+    form = MSProjectsForm
     inlines = []
 
     list_display= [field.name for field in MSProjects._meta.fields
@@ -691,6 +848,7 @@ class LiturgicalGenresNamesAdmin(ImportExportDebateableAdmin):
 
 
 class ManuscriptGenresAdmin(ImportExportDebateableAdmin):
+    form = ManuscriptGenresForm
     list_display=  ['id','manuscript_uuid','genre_uuid']
 
     list_filter = [ManuscriptsFilter]
@@ -698,6 +856,7 @@ class ManuscriptGenresAdmin(ImportExportDebateableAdmin):
 
 class CodicologyAdmin(ImportExportDebateableAdmin):
     resource_class = CodicologyResource
+    form = CodicologyForm
     list_display=  [field.name for field in Codicology._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -711,6 +870,9 @@ class QuiresForm(forms.ModelForm):
     class Meta:
         model = Quires
         fields = '__all__'
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
 
 
 class QuiresAdmin(ImportExportDebateableAdmin):
@@ -738,6 +900,7 @@ class WatermarksAdmin(ImportExportDebateableAdmin):
 
 class ManuscriptWatermarksAdmin(ImportExportDebateableAdmin):
     resource_class = ManuscriptWatermarksResource
+    form = ManuscriptWatermarksForm
     list_display=  ['id','manuscript','watermark','where_in_manuscript']
 
     list_filter = [ManuscriptsFilter]
@@ -757,6 +920,10 @@ class ManuscriptMusicNotationsForm(forms.ModelForm):
     class Meta:
         model = ManuscriptMusicNotations
         fields = '__all__'
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'dating_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
 
 class ManuscriptMusicNotationsAdmin(ImportExportDebateableAdmin):
     resource_class = ManuscriptMusicNotationsResource
@@ -781,9 +948,15 @@ class ManuscriptHandsForm(forms.ModelForm):
     class Meta:
         model = ManuscriptHands
         fields = '__all__'
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'script_name_uuid': autocomplete.ListSelect2(url='script-names-autocomplete', attrs={'style': 'width: 400px;'}),
+            'dating_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
 
 class ManuscriptHandsAdmin(ImportExportDebateableAdmin):
     resource_class = ManuscriptHandsResource
+    form = ManuscriptHandsForm
     list_display=  [field.name for field in ManuscriptHands._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -798,6 +971,7 @@ class ManuscriptHandsAdmin(ImportExportDebateableAdmin):
 
 class HandsAdmin(ImportExportDebateableAdmin):
     resource_class = HandsResource
+    form = HandsForm
     list_display=  [field.name for field in Hands._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -826,11 +1000,13 @@ class ContributorsAdmin(ImportExportDebateableAdmin):
 # NEW
 #Origins
 class OriginsAdmin(ImportExportDebateableAdmin):
+    form = OriginsForm
     list_display=  ['manuscript','origins_date','origins_place', 'data_contributor']
 
     list_filter = [ManuscriptsFilter]
 
 class ProvenanceAdmin(ImportExportDebateableAdmin):
+    form = ProvenanceForm
     list_display=  ['manuscript','date_from','date_to','place','timeline_sequence','data_contributor']
 
     list_filter = [ManuscriptsFilter]
@@ -856,6 +1032,7 @@ class BindingMaterialsAdmin(ImportExportDebateableAdmin):
 
 #ManuscriptBindingMaterials
 class ManuscriptBindingMaterialsAdmin(ImportExportDebateableAdmin):
+    form = ManuscriptBindingMaterialsForm
     list_display=  ['id','manuscript','material']
 
     list_filter = [ManuscriptsFilter]
@@ -869,6 +1046,7 @@ class BindingComponentsAdmin(ImportExportDebateableAdmin):
 
 #ManuscriptBindingComponents
 class ManuscriptBindingComponentsAdmin(ImportExportDebateableAdmin):
+    form = ManuscriptBindingComponentsForm
     list_display=  [field.name for field in ManuscriptBindingComponents._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -883,12 +1061,14 @@ class BindingDecorationTypesAdmin(ImportExportDebateableAdmin):
 
 #ManuscriptBindingDecorations
 class ManuscriptBindingDecorationsAdmin(ImportExportDebateableAdmin):
+    form = ManuscriptBindingDecorationsForm
     list_display=  ['id','manuscript','decoration']
 
     list_filter = [ManuscriptsFilter]
 
 #Binding
 class BindingAdmin((CustomDebateableAdmin)):
+    form = BindingForm
     list_display=  [field.name for field in Binding._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -904,6 +1084,7 @@ class RiteNamesAdmin(ImportExportDebateableAdmin):
 
 
 class ConditionAdmin(ImportExportDebateableAdmin):
+    form = ConditionForm
     list_display=  ['manuscript']+[field.name for field in Condition._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
@@ -1137,6 +1318,9 @@ class LayoutsForm(forms.ModelForm):
     class Meta:
         model = Layouts
         fields = '__all__'
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
 
 class LayoutsAdmin(ImportExportDebateableAdmin):
     form = LayoutsForm
@@ -1159,12 +1343,14 @@ class CalendarForm(forms.ModelForm):
     #where_in_ms_to = FolioPaginationField()
 
     class Meta:
-        model = Decoration
+        model = Calendar
         fields = ('__all__')
         widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 200px;'}),
 
             'content_uuid': autocomplete.ListSelect2(url='content-autocomplete', attrs={'style': 'width: 200px;'}),
-            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'})
+            'rubric_name_standarized_uuid': autocomplete.ListSelect2(url='rites-autocomplete', attrs={'style': 'width: 200px;'}),
+            'date_of_the_addition_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 200px;'}),
         }
 
 class CalendarAdmin(ImportExportDebateableAdmin):
@@ -1224,6 +1410,10 @@ class DecorationForm(forms.ModelForm):
     class Meta:
         model = Decoration
         fields = '__all__'
+        widgets = {
+            'manuscript_uuid': autocomplete.ListSelect2(url='manuscripts-autocomplete', attrs={'style': 'width: 400px;'}),
+            'date_of_the_addition_uuid': autocomplete.ListSelect2(url='time-reference-autocomplete', attrs={'style': 'width: 400px;'}),
+        }
 
 
 class DecorationAdmin(ImportExportDebateableAdmin):
@@ -1265,6 +1455,7 @@ class DecorationCharacteristicsAdmin(ImportExportDebateableAdmin):
                              ]
                              
 class ManuscriptBibliographyAdmin(ImportExportDebateableAdmin):
+    form = ManuscriptBibliographyForm
     list_display=  [field.name for field in ManuscriptBibliography._meta.fields
                              #if not isinstance(field, models.ForeignKey)
                              ]
