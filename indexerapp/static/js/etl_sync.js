@@ -376,7 +376,7 @@ async function handleCategoryPullResponse(category, payload) {
             `Pulling ${category} data from peer...`,
             [28, 52, 76, 90]
         );
-        logCategoryPullSummary(category, taskPayload.result || {});
+        logCategoryPullSummary(category, normalizeETLPullResult(taskPayload.result || {}));
         return;
     }
 
@@ -384,7 +384,7 @@ async function handleCategoryPullResponse(category, payload) {
         appendETLLog(`Async queue unavailable, switched to direct execution: ${payload.async_error}`);
     }
 
-    logCategoryPullSummary(category, payload.result || {});
+    logCategoryPullSummary(category, normalizeETLPullResult(payload.result || {}));
 }
 
 async function handleManuscriptPullResponse(manuscriptUuid, payload) {
@@ -407,22 +407,40 @@ async function handleManuscriptPullResponse(manuscriptUuid, payload) {
 }
 
 function logCategoryPullSummary(category, result) {
-    const importSummary = result.import_summary || {};
-    const deleteSummary = result.delete_summary || {};
+    const summary = result && result.status === 'success' && result.result ? result.result : result;
+    const sharedSummary = summary.shared_dependency_sync || null;
+    const importSummary = summary.import_summary || {};
+    const deleteSummary = summary.delete_summary || {};
     clearActiveConflict({ resetWorkflow: true });
     updateETLBusyProgress(100, `${capitalize(category)} pull completed.`);
+
+    if (sharedSummary) {
+        appendETLLog(
+            `shared dependency preload completed: created=${sharedSummary.export_record_count || 0}, deleted=${sharedSummary.deleted_count || 0}.`
+        );
+    }
+
     appendETLLog(
         `${category} pull completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, deleted=${deleteSummary.deleted || 0}, missing_deleted=${deleteSummary.missing || 0}.`
     );
 }
 
 function logManuscriptPullSummary(result) {
-    const importSummary = result.import_summary || {};
+    const summary = result && result.status === 'success' && result.result ? result.result : result;
+    const importSummary = summary.import_summary || {};
     const mediaSummary = importSummary.media_summary || {};
     updateETLBusyProgress(100, 'Manuscript package imported.');
     appendETLLog(
         `Manuscript import completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, media_created=${mediaSummary.created || 0}, media_updated=${mediaSummary.updated || 0}, media_skipped=${mediaSummary.skipped || 0}.`
     );
+}
+
+function normalizeETLPullResult(payload) {
+    if (payload && payload.status === 'success' && payload.result) {
+        return payload.result;
+    }
+
+    return payload || {};
 }
 
 async function pollETLTask(taskId, pendingMessage, progressSteps) {

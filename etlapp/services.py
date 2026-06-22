@@ -433,6 +433,10 @@ def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None
     if since:
         query['since'] = since
 
+    shared_dependency_summary = None
+    if category != 'shared':
+        shared_dependency_summary = _sync_shared_dependency_payload(peer_url)
+
     export_payload = fetch_remote_etl_json(
         peer_url,
         f'/api/etl/{category}/export/',
@@ -447,6 +451,10 @@ def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None
     )
 
     with transaction.atomic():
+        if shared_dependency_summary is not None:
+            import_delta_payload('shared', shared_dependency_summary['export_payload'])
+            apply_deleted_records_payload('shared', shared_dependency_summary['deleted_payload'])
+
         import_summary = import_delta_payload(
             category,
             export_payload,
@@ -459,8 +467,32 @@ def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None
         'peer_url': _normalize_peer_url(peer_url),
         'category': category,
         'since': since,
+        'shared_dependency_sync': shared_dependency_summary['summary'] if shared_dependency_summary is not None else None,
         'import_summary': import_summary,
         'delete_summary': delete_summary,
+    }
+
+
+def _sync_shared_dependency_payload(peer_url):
+    export_payload = fetch_remote_etl_json(
+        peer_url,
+        '/api/etl/shared/export/',
+        api_token=_get_peer_api_token(peer_url),
+    )
+    deleted_payload = fetch_remote_etl_json(
+        peer_url,
+        '/api/etl/shared/deleted/',
+        api_token=_get_peer_api_token(peer_url),
+    )
+
+    return {
+        'export_payload': export_payload,
+        'deleted_payload': deleted_payload,
+        'summary': {
+            'category': 'shared',
+            'export_record_count': export_payload.get('record_count', 0) if isinstance(export_payload, dict) else 0,
+            'deleted_count': deleted_payload.get('count', 0) if isinstance(deleted_payload, dict) else 0,
+        },
     }
 
 

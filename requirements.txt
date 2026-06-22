@@ -73,3 +73,4 @@ gunicorn==25.3.0
 celery==5.3.4
 redis==5.0.1
 django-import-export==4.4.1
+tomli
