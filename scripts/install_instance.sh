@@ -1196,18 +1196,12 @@ render_service() {
     return 0
   fi
   mkdir -p "${SCRIPT_DIR}/../deploy"
-  # choose gunicorn binary: prefer venv, fall back to system gunicorn
   local chosen_gunicorn path_val
   if [[ -x "${VENV_PATH}/bin/gunicorn" ]]; then
     chosen_gunicorn="${VENV_PATH}/bin/gunicorn"
     path_val="${VENV_PATH}/bin"
   else
-    if command -v gunicorn >/dev/null 2>&1; then
-      chosen_gunicorn=$(command -v gunicorn)
-      path_val=$(dirname "$chosen_gunicorn")
-    else
-      die "No gunicorn binary found in ${VENV_PATH}/bin and no system gunicorn available. Install gunicorn or create virtualenv."
-    fi
+    die "Gunicorn binary not found in ${VENV_PATH}/bin. Run install_dependencies first or install gunicorn into the virtualenv."
   fi
   # compute PYTHONPATH: always include APPDIR; if venv exists, add its site-packages
   local py_path
@@ -1252,13 +1246,8 @@ render_celery_service() {
   if [[ -x "${VENV_PATH}/bin/celery" ]]; then
     chosen_celery="${VENV_PATH}/bin/celery"
     path_val="${VENV_PATH}/bin"
-  elif command -v celery >/dev/null 2>&1; then
-    chosen_celery=$(command -v celery)
-    path_val=$(dirname "$chosen_celery")
   else
-    chosen_celery="${VENV_PATH}/bin/celery"
-    path_val="${VENV_PATH}/bin"
-    warn "Celery binary not found yet; rendering service to expected venv path ${chosen_celery}"
+    die "Celery binary not found in ${VENV_PATH}/bin. Run install_dependencies first or install celery into the virtualenv."
   fi
 
   local py_path
@@ -1456,20 +1445,20 @@ run_action_full() {
   update_gauge 45 "Rendering instance settings"
   render_instance_settings_files
   load_runtime_env
-  update_gauge 48 "Rendering deploy files"
   save_effective_config
-  render_service
-  render_celery_service
   render_nginx_snippet
   update_gauge 50 "Installing dependencies"
   install_dependencies
-  update_gauge 55 "Fetching frontend libraries"
+  update_gauge 55 "Rendering deploy files"
+  render_service
+  render_celery_service
+  update_gauge 60 "Fetching frontend libraries"
   run_download_libs
-  update_gauge 60 "Enforcing database charset"
+  update_gauge 65 "Enforcing database charset"
   ensure_database_charset
-  update_gauge 65 "Validating settings"
+  update_gauge 70 "Validating settings"
   validate_settings_module
-  update_gauge 75 "Running Django checks"
+  update_gauge 80 "Running Django checks"
   run_manage check
   update_gauge 85 "Applying migrations"
   run_manage migrate --noinput

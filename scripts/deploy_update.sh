@@ -566,14 +566,7 @@ render_service() {
     chosen_gunicorn="${VENV_PATH}/bin/gunicorn"
     path_val="${VENV_PATH}/bin"
   else
-    if command -v gunicorn >/dev/null 2>&1; then
-      chosen_gunicorn=$(command -v gunicorn)
-      path_val=$(dirname "$chosen_gunicorn")
-    else
-      chosen_gunicorn="${VENV_PATH}/bin/gunicorn"
-      path_val="${VENV_PATH}/bin"
-      warn "Gunicorn binary not found yet; rendering service to expected venv path ${chosen_gunicorn}"
-    fi
+    die "Gunicorn binary not found in ${VENV_PATH}/bin. Install dependencies into the virtualenv before rendering the service."
   fi
 
   local py_path
@@ -618,13 +611,8 @@ render_celery_service() {
   if [[ -x "${VENV_PATH}/bin/celery" ]]; then
     chosen_celery="${VENV_PATH}/bin/celery"
     path_val="${VENV_PATH}/bin"
-  elif command -v celery >/dev/null 2>&1; then
-    chosen_celery=$(command -v celery)
-    path_val=$(dirname "$chosen_celery")
   else
-    chosen_celery="${VENV_PATH}/bin/celery"
-    path_val="${VENV_PATH}/bin"
-    warn "Celery binary not found yet; rendering service to expected venv path ${chosen_celery}"
+    die "Celery binary not found in ${VENV_PATH}/bin. Install dependencies into the virtualenv before rendering the service."
   fi
 
   local py_path
