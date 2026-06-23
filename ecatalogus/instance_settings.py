@@ -165,6 +165,10 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         f'{env_prefix}_ETL_API_TOKEN',
         os.getenv('ETL_API_TOKEN', f'{instance_slug}-token-change-me'),
     )
+    celery_task_default_queue = os.getenv(
+        f'{env_prefix}_CELERY_TASK_DEFAULT_QUEUE',
+        os.getenv('CELERY_TASK_DEFAULT_QUEUE', f'etl_{instance_slug}'),
+    )
     etl_peer_tokens = build_registry_peer_token_map(
         env_prefix=env_prefix,
         registry=registry,
@@ -229,6 +233,7 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         'ETL_SELF_PEER_ID': os.getenv(f'{env_prefix}_ETL_SELF_PEER_ID', os.getenv('ETL_SELF_PEER_ID', default_peer_id)),
         'ETL_SOURCE_PEERS': configured_source_peers,
         'ETL_DEFAULT_PARENT_PEER': configured_default_parent_peer,
+        'CELERY_TASK_DEFAULT_QUEUE': celery_task_default_queue,
         'ETL_CANONICAL_MASTER_ID': os.getenv(
             f'{env_prefix}_ETL_CANONICAL_MASTER_ID',
             os.getenv('ETL_CANONICAL_MASTER_ID', default_canonical_master_id),

@@ -651,6 +651,7 @@ render_service() {
 render_celery_service() {
   local service_out="${SCRIPT_DIR}/../deploy/celery_${SERVICE_SHORTNAME}.service"
   local template="${SCRIPT_DIR}/../deploy/celery.service.template"
+  local celery_queue="etl_${SERVICE_SHORTNAME}"
   [[ -f "$template" ]] || die "Service template not found: ${template}"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would render Celery systemd unit to ${service_out}"
@@ -681,6 +682,7 @@ render_celery_service() {
       -e "s|{DJANGO_SETTINGS_MODULE}|${DJANGO_SETTINGS_MODULE}|g" \
       -e "s|{ENV_FILE}|${ENV_FILE}|g" \
       -e "s|{DEPLOY_USER}|${DEPLOY_USER}|g" \
+      -e "s|{CELERY_QUEUE}|${celery_queue}|g" \
       -e "s|{CELERY_BIN}|${chosen_celery}|g" \
       -e "s|{PATH}|${path_val}|g" \
       -e "s|{PYTHONPATH}|${py_path}|g" \

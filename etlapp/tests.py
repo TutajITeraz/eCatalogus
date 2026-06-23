@@ -19,7 +19,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from etlapp.views import ETLAdminSyncView
+from etlapp.views import ETLAdminSyncView, ETLUIPullCategoryView, ETLUIPullManuscriptView
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_manuscript_payload
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
@@ -104,6 +104,62 @@ class RuntimeInstanceResolutionTests(SimpleTestCase):
             clear=False,
         ):
             self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), '')
+
+
+@override_settings(CELERY_TASK_DEFAULT_QUEUE='etl_corpus-liturgicum')
+class ETLTaskQueueRoutingTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    @patch('etlapp.views.pull_category_task.apply_async')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_pull_category_queues_to_current_instance_queue(self, resolve_etl_peer_mock, apply_async_mock, user_can_manage_etl_mock):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        apply_async_mock.return_value.id = 'task-123'
+        request = self.factory.post(
+            reverse('etl:etl-ui-pull-category'),
+            data=json.dumps({'peer': 'peer-1', 'category': 'main'}),
+            content_type='application/json',
+        )
+        request.user = DummyAdminUser()
+
+        response = ETLUIPullCategoryView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        apply_async_mock.assert_called_once_with(
+            ('http://peer', 'main'),
+            {
+                'since': None,
+                'force_remote_uuids': [],
+                'keep_local_uuids': [],
+            },
+            queue='etl_corpus-liturgicum',
+        )
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    @patch('etlapp.views.pull_manuscript_task.apply_async')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_pull_manuscript_queues_to_current_instance_queue(self, resolve_etl_peer_mock, apply_async_mock, user_can_manage_etl_mock):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        manuscript_uuid = str(uuid4())
+        apply_async_mock.return_value.id = 'task-456'
+        request = self.factory.post(
+            reverse('etl:etl-ui-pull-manuscript'),
+            data=json.dumps({'peer': 'peer-1', 'manuscript_uuid': manuscript_uuid}),
+            content_type='application/json',
+        )
+        request.user = DummyAdminUser()
+
+        response = ETLUIPullManuscriptView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        apply_async_mock.assert_called_once_with(
+            ('http://peer', manuscript_uuid),
+            queue='etl_corpus-liturgicum',
+        )
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
 
 
 class ETLAdminSyncViewTests(SimpleTestCase):
@@ -381,35 +437,38 @@ class ETLDeletedRecordsViewTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
-class ETLUIAsyncFallbackTests(TestCase, ETLUIEditorMixin):
+class ETLUIAsyncFallbackTests(SimpleTestCase):
     def setUp(self):
-        self.user = self.create_editor_user()
-        self.client.force_login(self.user)
+        self.factory = RequestFactory()
 
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
     @patch('etlapp.views.pull_remote_category')
-    @patch('etlapp.views.pull_category_task.delay')
+    @patch('etlapp.views.pull_category_task.apply_async')
     @patch('etlapp.views.resolve_etl_peer')
     def test_pull_category_falls_back_to_sync_when_queue_is_unavailable(
         self,
         resolve_etl_peer_mock,
-        delay_mock,
+        apply_async_mock,
         pull_remote_category_mock,
+        user_can_manage_etl_mock,
     ):
         resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
-        delay_mock.side_effect = RuntimeError('Error 111 connecting to redis')
+        apply_async_mock.side_effect = RuntimeError('Error 111 connecting to redis')
         pull_remote_category_mock.return_value = {
             'import_summary': {'created': 1, 'updated': 2, 'skipped': 3},
             'delete_summary': {'deleted': 4, 'missing': 5},
         }
-
-        response = self.client.post(
+        request = self.factory.post(
             reverse('etl:etl-ui-pull-category'),
             data=json.dumps({'peer': 'peer-1', 'category': 'main'}),
             content_type='application/json',
         )
+        request.user = DummyAdminUser()
+
+        response = ETLUIPullCategoryView.as_view()(request)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = json.loads(response.content.decode('utf-8'))
         self.assertTrue(payload['async_fallback'])
         self.assertIn('redis', payload['async_error'].lower())
         self.assertEqual(payload['result']['import_summary']['created'], 1)
@@ -420,33 +479,39 @@ class ETLUIAsyncFallbackTests(TestCase, ETLUIEditorMixin):
             force_remote_uuids=[],
             keep_local_uuids=[],
         )
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
 
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
     @patch('etlapp.views.pull_remote_manuscript')
-    @patch('etlapp.views.pull_manuscript_task.delay')
+    @patch('etlapp.views.pull_manuscript_task.apply_async')
     @patch('etlapp.views.resolve_etl_peer')
     def test_pull_manuscript_falls_back_to_sync_when_queue_is_unavailable(
         self,
         resolve_etl_peer_mock,
-        delay_mock,
+        apply_async_mock,
         pull_remote_manuscript_mock,
+        user_can_manage_etl_mock,
     ):
         resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
-        delay_mock.side_effect = RuntimeError('Error 111 connecting to redis')
+        apply_async_mock.side_effect = RuntimeError('Error 111 connecting to redis')
         pull_remote_manuscript_mock.return_value = {
             'import_summary': {'created': 2, 'updated': 1, 'skipped': 0, 'media_summary': {'created': 1}},
         }
-
-        response = self.client.post(
+        request = self.factory.post(
             reverse('etl:etl-ui-pull-manuscript'),
             data=json.dumps({'peer': 'peer-1', 'manuscript_uuid': str(uuid4())}),
             content_type='application/json',
         )
+        request.user = DummyAdminUser()
+
+        response = ETLUIPullManuscriptView.as_view()(request)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()
+        payload = json.loads(response.content.decode('utf-8'))
         self.assertTrue(payload['async_fallback'])
         self.assertIn('redis', payload['async_error'].lower())
         self.assertEqual(payload['result']['import_summary']['created'], 2)
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
 
 
 @override_settings(

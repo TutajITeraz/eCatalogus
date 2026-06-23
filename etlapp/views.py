@@ -347,14 +347,18 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
         except ValueError as exc:
             return JsonResponse({'detail': str(exc)}, status=400)
 
+        task_queue_name = getattr(settings, 'CELERY_TASK_DEFAULT_QUEUE', 'celery')
+
         if async_mode:
             try:
-                task = pull_category_task.delay(
-                    peer['url'],
-                    category,
-                    since=since,
-                    force_remote_uuids=force_remote_uuids,
-                    keep_local_uuids=keep_local_uuids,
+                task = pull_category_task.apply_async(
+                    (peer['url'], category),
+                    {
+                        'since': since,
+                        'force_remote_uuids': force_remote_uuids,
+                        'keep_local_uuids': keep_local_uuids,
+                    },
+                    queue=task_queue_name,
                 )
             except Exception as exc:
                 async_mode = False
@@ -418,9 +422,14 @@ class ETLUIPullManuscriptView(ETLUIAccessMixin, View):
         except ValueError as exc:
             return JsonResponse({'detail': str(exc)}, status=400)
 
+        task_queue_name = getattr(settings, 'CELERY_TASK_DEFAULT_QUEUE', 'celery')
+
         if async_mode:
             try:
-                task = pull_manuscript_task.delay(peer['url'], manuscript_uuid)
+                task = pull_manuscript_task.apply_async(
+                    (peer['url'], manuscript_uuid),
+                    queue=task_queue_name,
+                )
             except Exception as exc:
                 async_mode = False
                 async_error = str(exc)
