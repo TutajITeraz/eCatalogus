@@ -16,6 +16,7 @@ from rest_framework.renderers import BaseRenderer
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import connection
 
 from .authentication import ETLTokenAuthentication
 from .schema import (
@@ -284,13 +285,16 @@ class ETLUIOverviewView(ETLUIAccessMixin, View):
                 peer_info['error'] = str(exc)
             peers.append(peer_info)
 
+        local_payload = build_status_payload()
+        # Add current database name
+        local_payload['database_name'] = connection.settings_dict.get('NAME', 'unknown')
+
         return JsonResponse(
             {
-                'local': build_status_payload(),
+                'local': local_payload,
                 'peers': peers,
             }
         )
-
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ETLUIPeerManuscriptsView(ETLUIAccessMixin, View):

@@ -103,6 +103,7 @@ function renderLocalSummary() {
     const cards = [
         ['Site', local.site_name || 'Unknown'],
         ['Role', local.role || 'undefined'],
+        ['Database', local.database_name || 'unknown'],
         ['Peer count', String((etlOverview && etlOverview.peers ? etlOverview.peers.length : 0))],
         ['Categories', Object.entries(counts).map(([key, value]) => `${key}: ${value}`).join(', ') || 'No data'],
     ];
