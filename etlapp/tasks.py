@@ -1,7 +1,6 @@
 from celery import shared_task
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import connection
 from django.apps import apps
 
 from .services import (
@@ -16,7 +15,7 @@ from .services import (
 
 def get_database_stats():
     """Zwraca nazwę bazy danych oraz liczebność rekordów w głównych tabelach."""
-    db_name = connection.settings_dict.get('NAME', 'unknown')
+    db_name = settings.DATABASES.get('default', {}).get('NAME', 'unknown')
 
     # Zbieramy liczebność dla wszystkich modeli w aplikacji (lub wybranych)
     model_counts = {}

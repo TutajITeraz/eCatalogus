@@ -21,7 +21,9 @@ from rest_framework.test import APIClient
 
 from etlapp.views import ETLAdminSyncView
 from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_manuscript_payload
+from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
+from ecatalogus.env_loader import resolve_runtime_instance_slug
 from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
 
 
@@ -61,6 +63,22 @@ class DummyAdminUser:
 class DummyLogEntries(list):
     def filter(self, **kwargs):
         return self
+
+
+class GetDatabaseStatsTests(SimpleTestCase):
+    @override_settings(DATABASES={'default': {'NAME': 'expected_instance_db'}})
+    @patch('etlapp.tasks.apps.get_models', return_value=[])
+    def test_uses_configured_default_database_name(self, get_models_mock):
+        stats = get_database_stats()
+
+        self.assertEqual(stats['database_name'], 'expected_instance_db')
+        self.assertEqual(stats['total_records'], 0)
+
+
+class RuntimeInstanceResolutionTests(SimpleTestCase):
+    def test_generic_settings_module_uses_service_shortname(self):
+        with patch.dict(os.environ, {'DJANGO_SETTINGS_MODULE': 'ecatalogus.settings', 'SERVICE_SHORTNAME': 'corpus-liturgicum'}, clear=False):
+            self.assertEqual(resolve_runtime_instance_slug(), 'corpus-liturgicum')
 
 
 class ETLAdminSyncViewTests(SimpleTestCase):

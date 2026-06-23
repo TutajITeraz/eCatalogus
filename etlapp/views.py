@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
@@ -16,8 +17,6 @@ from rest_framework.renderers import BaseRenderer
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db import connection
-
 from .authentication import ETLTokenAuthentication
 from .schema import (
     ETL_MAIN_EXPORT_EXAMPLE,
@@ -286,8 +285,8 @@ class ETLUIOverviewView(ETLUIAccessMixin, View):
             peers.append(peer_info)
 
         local_payload = build_status_payload()
-        # Add current database name
-        local_payload['database_name'] = connection.settings_dict.get('NAME', 'unknown')
+        # Add current database name from the configured instance settings.
+        local_payload['database_name'] = settings.DATABASES.get('default', {}).get('NAME', 'unknown')
 
         return JsonResponse(
             {
