@@ -9,6 +9,7 @@ def resolve_runtime_instance_slug(settings_module=None):
     settings_module = settings_module or os.getenv('DJANGO_SETTINGS_MODULE', '')
 
     instance_slug = os.getenv('INSTANCE_SLUG', '').strip()
+    service_shortname = os.getenv('SERVICE_SHORTNAME', '').strip()
 
     module_name = settings_module.rsplit('.', 1)[-1]
     module_slug = ''
@@ -22,6 +23,9 @@ def resolve_runtime_instance_slug(settings_module=None):
 
     if instance_slug:
         return instance_slug
+
+    if service_shortname:
+        return service_shortname
 
     if module_slug:
         return module_slug

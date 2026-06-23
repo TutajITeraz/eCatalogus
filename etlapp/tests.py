@@ -80,6 +80,10 @@ class RuntimeInstanceResolutionTests(SimpleTestCase):
         with patch.dict(os.environ, {'INSTANCE_SLUG': 'corpus-liturgicum'}, clear=False):
             self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), 'corpus-liturgicum')
 
+    def test_service_shortname_fills_missing_instance_slug(self):
+        with patch.dict(os.environ, {'INSTANCE_SLUG': '', 'SERVICE_SHORTNAME': 'corpus-liturgicum'}, clear=False):
+            self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), 'corpus-liturgicum')
+
     def test_explicit_instance_settings_module_infers_slug(self):
         with patch.dict(os.environ, {'INSTANCE_SLUG': ''}, clear=False):
             self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings_corpus-liturgicum'), 'corpus-liturgicum')
@@ -94,7 +98,11 @@ class RuntimeInstanceResolutionTests(SimpleTestCase):
                 resolve_runtime_instance_slug()
 
     def test_generic_settings_module_does_not_guess_from_appdir(self):
-        with patch.dict(os.environ, {'INSTANCE_SLUG': '', 'APPDIR': '/home/deploy/domains/corpus-liturgicum.org/ecatalogus'}, clear=False):
+        with patch.dict(
+            os.environ,
+            {'INSTANCE_SLUG': '', 'SERVICE_SHORTNAME': '', 'APPDIR': '/home/deploy/domains/corpus-liturgicum.org/ecatalogus'},
+            clear=False,
+        ):
             self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), '')
 
 
