@@ -351,8 +351,15 @@ resolve_config() {
   STATIC_DIR=${STATIC_DIR:-${APPDIR}/static_assets}
   PUBLIC_HTML=${PUBLIC_HTML:-/home/${DEPLOY_USER}/domains/${DOMAIN}/public_html}
   LOG_DIR=${LOG_DIR:-${APPDIR}/logs}
-  DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ecatalogus.settings}
   MEDIA_DIR=${MEDIA_DIR:-}
+
+  if [[ -z "${DJANGO_SETTINGS_MODULE:-}" ]]; then
+    if [[ -n "$SERVICE_SHORTNAME" ]]; then
+      DJANGO_SETTINGS_MODULE="ecatalogus.settings_${SERVICE_SHORTNAME}"
+    else
+      DJANGO_SETTINGS_MODULE=""
+    fi
+  fi
 
   normalize_repo_url
 
@@ -743,6 +750,7 @@ PY
   mkdir -p "$APPDIR"
   cat > "$ENV_FILE" <<EOF
 DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+INSTANCE_SLUG=${SERVICE_SHORTNAME}
 SECRET_KEY='${secret_key}'
 ALLOWED_HOSTS='${allowed_hosts}'
 DATABASE_NAME='${db_name}'
@@ -879,6 +887,7 @@ load_runtime_env() {
   ENV_FILE="${APPDIR}/.env"
   [[ -f "$ENV_FILE" ]] || die "Runtime env file is missing: ${ENV_FILE}"
   local configured_settings_module="$DJANGO_SETTINGS_MODULE"
+  local configured_instance_slug="${INSTANCE_SLUG:-}"
   set -a
   # shellcheck source=/dev/null
   source "$ENV_FILE"
@@ -892,7 +901,18 @@ load_runtime_env() {
       chmod 600 "$ENV_FILE"
     fi
   fi
+  if [[ -z "${INSTANCE_SLUG:-}" && "$DJANGO_SETTINGS_MODULE" == ecatalogus.settings_* ]]; then
+    INSTANCE_SLUG="${DJANGO_SETTINGS_MODULE##*.settings_}"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      upsert_env_value "$ENV_FILE" "INSTANCE_SLUG" "${INSTANCE_SLUG}"
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+      chmod 600 "$ENV_FILE"
+    fi
+  elif [[ -n "$configured_instance_slug" ]]; then
+    INSTANCE_SLUG="$configured_instance_slug"
+  fi
   export DJANGO_SETTINGS_MODULE
+  export INSTANCE_SLUG
 }
 
 validate_settings_module() {
@@ -1166,6 +1186,7 @@ GIT_BRANCH=${GIT_BRANCH}
 APPDIR=${APPDIR}
 VENV_PATH=${VENV_PATH}
 SERVICE_SHORTNAME=${SERVICE_SHORTNAME}
+INSTANCE_SLUG=${SERVICE_SHORTNAME}
 USE_TCP=${USE_TCP}
 PORT=${PORT}
 SOCKET_PATH=${SOCKET_PATH}

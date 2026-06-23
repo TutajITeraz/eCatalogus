@@ -76,9 +76,26 @@ class GetDatabaseStatsTests(SimpleTestCase):
 
 
 class RuntimeInstanceResolutionTests(SimpleTestCase):
-    def test_generic_settings_module_uses_service_shortname(self):
-        with patch.dict(os.environ, {'DJANGO_SETTINGS_MODULE': 'ecatalogus.settings', 'SERVICE_SHORTNAME': 'corpus-liturgicum'}, clear=False):
-            self.assertEqual(resolve_runtime_instance_slug(), 'corpus-liturgicum')
+    def test_instance_slug_env_wins(self):
+        with patch.dict(os.environ, {'INSTANCE_SLUG': 'corpus-liturgicum'}, clear=False):
+            self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), 'corpus-liturgicum')
+
+    def test_explicit_instance_settings_module_infers_slug(self):
+        with patch.dict(os.environ, {'INSTANCE_SLUG': ''}, clear=False):
+            self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings_corpus-liturgicum'), 'corpus-liturgicum')
+
+    def test_mismatched_instance_slug_and_settings_module_fails(self):
+        env_updates = {
+            'INSTANCE_SLUG': 'mpl',
+            'DJANGO_SETTINGS_MODULE': 'ecatalogus.settings_corpus-liturgicum',
+        }
+        with patch.dict(os.environ, env_updates, clear=False):
+            with self.assertRaises(RuntimeError):
+                resolve_runtime_instance_slug()
+
+    def test_generic_settings_module_does_not_guess_from_appdir(self):
+        with patch.dict(os.environ, {'INSTANCE_SLUG': '', 'APPDIR': '/home/deploy/domains/corpus-liturgicum.org/ecatalogus'}, clear=False):
+            self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), '')
 
 
 class ETLAdminSyncViewTests(SimpleTestCase):
