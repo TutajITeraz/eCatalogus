@@ -150,6 +150,7 @@ resolve_config() {
   STATIC_DIR=${STATIC_DIR:-${APPDIR}/static_assets}
   LOG_DIR=${LOG_DIR:-${APPDIR}/logs}
   SERVICE_SHORTNAME=${SERVICE_SHORTNAME:-}
+  INSTANCE_SLUG=${INSTANCE_SLUG:-}
   PRESERVE_FILES=${PRESERVE_FILES:-}
   MEDIA_DIR=${MEDIA_DIR:-}
 
@@ -159,6 +160,14 @@ resolve_config() {
     else
       DJANGO_SETTINGS_MODULE=""
     fi
+  fi
+
+  if [[ -z "$INSTANCE_SLUG" && "$DJANGO_SETTINGS_MODULE" == ecatalogus.settings_* ]]; then
+    INSTANCE_SLUG="${DJANGO_SETTINGS_MODULE##*.settings_}"
+  fi
+
+  if [[ -z "$SERVICE_SHORTNAME" && -n "$INSTANCE_SLUG" ]]; then
+    SERVICE_SHORTNAME="$INSTANCE_SLUG"
   fi
 
   if [[ "$REPO_URL" =~ ^https://github.com/[^[:space:]]+$ && "$REPO_URL" != *.git ]]; then
@@ -332,10 +341,21 @@ load_runtime_env() {
   [[ -f "$ENV_FILE" ]] || die "Runtime env file is missing: ${ENV_FILE}"
   local configured_settings_module="$DJANGO_SETTINGS_MODULE"
   local configured_instance_slug="${INSTANCE_SLUG:-}"
+  local configured_service_shortname="${SERVICE_SHORTNAME:-}"
+  local expected_instance_slug="$configured_instance_slug"
+
+  if [[ -z "$expected_instance_slug" && "$configured_settings_module" == ecatalogus.settings_* ]]; then
+    expected_instance_slug="${configured_settings_module##*.settings_}"
+  fi
+  if [[ -z "$expected_instance_slug" && -n "$configured_service_shortname" ]]; then
+    expected_instance_slug="$configured_service_shortname"
+  fi
+
   set -a
   # shellcheck source=/dev/null
   source "$ENV_FILE"
   set +a
+
   if [[ "${DJANGO_SETTINGS_MODULE:-}" != "$configured_settings_module" ]]; then
     warn "Runtime env DJANGO_SETTINGS_MODULE (${DJANGO_SETTINGS_MODULE:-unset}) differs from deploy config (${configured_settings_module}); using deploy config."
     DJANGO_SETTINGS_MODULE="$configured_settings_module"
@@ -345,18 +365,30 @@ load_runtime_env() {
       chmod 600 "$ENV_FILE"
     fi
   fi
-  if [[ -z "${INSTANCE_SLUG:-}" && "$DJANGO_SETTINGS_MODULE" == ecatalogus.settings_* ]]; then
-    INSTANCE_SLUG="${DJANGO_SETTINGS_MODULE##*.settings_}"
+
+  if [[ -n "$configured_service_shortname" && "${SERVICE_SHORTNAME:-}" != "$configured_service_shortname" ]]; then
+    warn "Runtime env SERVICE_SHORTNAME (${SERVICE_SHORTNAME:-unset}) differs from deploy config (${configured_service_shortname}); using deploy config."
+    SERVICE_SHORTNAME="$configured_service_shortname"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      upsert_env_value "$ENV_FILE" "SERVICE_SHORTNAME" "${SERVICE_SHORTNAME}"
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+      chmod 600 "$ENV_FILE"
+    fi
+  fi
+
+  if [[ -n "$expected_instance_slug" && "${INSTANCE_SLUG:-}" != "$expected_instance_slug" ]]; then
+    warn "Runtime env INSTANCE_SLUG (${INSTANCE_SLUG:-unset}) differs from deploy config (${expected_instance_slug}); using deploy config."
+    INSTANCE_SLUG="$expected_instance_slug"
     if [[ "$DRY_RUN" -eq 0 ]]; then
       upsert_env_value "$ENV_FILE" "INSTANCE_SLUG" "${INSTANCE_SLUG}"
       chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
       chmod 600 "$ENV_FILE"
     fi
-  elif [[ -n "$configured_instance_slug" ]]; then
-    INSTANCE_SLUG="$configured_instance_slug"
   fi
+
   export DJANGO_SETTINGS_MODULE
   export INSTANCE_SLUG
+  export SERVICE_SHORTNAME
 }
 
 render_instance_settings_files() {
