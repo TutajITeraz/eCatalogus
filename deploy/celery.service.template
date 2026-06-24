@@ -10,7 +10,11 @@ EnvironmentFile={ENV_FILE}
 Environment="PATH={PATH}"
 Environment="PYTHONPATH={PYTHONPATH}"
 Environment="DJANGO_SETTINGS_MODULE={DJANGO_SETTINGS_MODULE}"
-ExecStart={CELERY_BIN} -A ecatalogus worker --loglevel=INFO --hostname={SERVICE_SHORTNAME}@%H --queues={CELERY_QUEUE}
+Environment="DJANGO_LOG_DIR={LOG_DIR}"
+Environment="DJANGO_ERROR_LOG={ERROR_LOG_FILE}"
+StandardOutput=append:{CELERY_LOG_FILE}
+StandardError=append:{ERROR_LOG_FILE}
+ExecStart={CELERY_BIN} -A ecatalogus worker --loglevel=INFO --hostname={SERVICE_SHORTNAME}@%H --queues={CELERY_QUEUE} --logfile={CELERY_LOG_FILE}
 
 Restart=on-failure
 RestartSec=5

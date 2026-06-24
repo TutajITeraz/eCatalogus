@@ -218,6 +218,19 @@ prepare_logging() {
   log "Using configuration from ${CONFIG_SOURCE}"
 }
 
+ensure_runtime_log_files() {
+  local log_dir="$LOG_DIR"
+  local django_error_log="${log_dir}/error.log"
+  local gunicorn_log="${log_dir}/gunicorn.log"
+  local celery_log="${log_dir}/celery.log"
+
+  mkdir -p "$log_dir"
+  touch "$django_error_log" "$gunicorn_log" "$celery_log"
+  chown "${DEPLOY_USER}:${DEPLOY_USER}" "$log_dir" "$django_error_log" "$gunicorn_log" "$celery_log" 2>/dev/null || true
+  chmod 755 "$log_dir" 2>/dev/null || true
+  chmod 640 "$django_error_log" "$gunicorn_log" "$celery_log" 2>/dev/null || true
+}
+
 build_preserve_paths() {
   PRESERVE_PATHS=()
   local item
@@ -600,6 +613,8 @@ render_service() {
   local service_out="${SCRIPT_DIR}/../deploy/gunicorn_${SERVICE_SHORTNAME}.service"
   local template="${SCRIPT_DIR}/../deploy/gunicorn.service.template"
   local bind_arg=""
+  local django_error_log="${LOG_DIR}/error.log"
+  local gunicorn_log="${LOG_DIR}/gunicorn.log"
   [[ -f "$template" ]] || die "Service template not found: ${template}"
   if [[ "$USE_TCP" -eq 1 ]]; then
     bind_arg="--bind ${TCP_BIND_HOST}:${PORT}"
@@ -611,6 +626,7 @@ render_service() {
     return 0
   fi
   mkdir -p "${SCRIPT_DIR}/../deploy"
+  ensure_runtime_log_files
 
   local chosen_gunicorn path_val
   if [[ -x "${VENV_PATH}/bin/gunicorn" ]]; then
@@ -643,6 +659,9 @@ render_service() {
       -e "s|{WSGI_MODULE}|ecatalogus.wsgi|g" \
       -e "s|{GUNICORN_BIN}|${chosen_gunicorn}|g" \
       -e "s|{PATH}|${path_val}|g" \
+      -e "s|{LOG_DIR}|${LOG_DIR}|g" \
+      -e "s|{ERROR_LOG_FILE}|${django_error_log}|g" \
+      -e "s|{GUNICORN_LOG_FILE}|${gunicorn_log}|g" \
       -e "s|{PYTHONPATH}|${py_path}|g" \
       "$template" > "$service_out"
   log "Rendered systemd unit to ${service_out}"
@@ -652,12 +671,15 @@ render_celery_service() {
   local service_out="${SCRIPT_DIR}/../deploy/celery_${SERVICE_SHORTNAME}.service"
   local template="${SCRIPT_DIR}/../deploy/celery.service.template"
   local celery_queue="etl_${SERVICE_SHORTNAME}"
+  local django_error_log="${LOG_DIR}/error.log"
+  local celery_log="${LOG_DIR}/celery.log"
   [[ -f "$template" ]] || die "Service template not found: ${template}"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would render Celery systemd unit to ${service_out}"
     return 0
   fi
   mkdir -p "${SCRIPT_DIR}/../deploy"
+  ensure_runtime_log_files
 
   local chosen_celery path_val
   if [[ -x "${VENV_PATH}/bin/celery" ]]; then
@@ -685,6 +707,9 @@ render_celery_service() {
       -e "s|{CELERY_QUEUE}|${celery_queue}|g" \
       -e "s|{CELERY_BIN}|${chosen_celery}|g" \
       -e "s|{PATH}|${path_val}|g" \
+      -e "s|{LOG_DIR}|${LOG_DIR}|g" \
+      -e "s|{ERROR_LOG_FILE}|${django_error_log}|g" \
+      -e "s|{CELERY_LOG_FILE}|${celery_log}|g" \
       -e "s|{PYTHONPATH}|${py_path}|g" \
       "$template" > "$service_out"
   log "Rendered Celery systemd unit to ${service_out}"

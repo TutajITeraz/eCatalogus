@@ -248,8 +248,68 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+LOG_DIR = Path(text_env('DJANGO_LOG_DIR', 'LOG_DIR', default=str(BASE_DIR / 'logs')))
+DJANGO_ERROR_LOG = Path(text_env('DJANGO_ERROR_LOG', 'ERROR_LOG_FILE', default=str(LOG_DIR / 'error.log')))
+
+try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass
+
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 MEDIA_URL = '/media/'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
+        },
+    },
+    'handlers': {
+        'django_error_file': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': str(DJANGO_ERROR_LOG),
+            'formatter': 'verbose',
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'django_error_file'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'django_error_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console', 'django_error_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.server': {
+            'handlers': ['console', 'django_error_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.security.DisallowedHost': {
+            'handlers': ['console', 'django_error_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console', 'django_error_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
 
 CACHES = {
     'default': {

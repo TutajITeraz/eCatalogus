@@ -10,11 +10,17 @@ EnvironmentFile={ENV_FILE}
 Environment="PATH={PATH}"
 Environment="PYTHONPATH={PYTHONPATH}"
 Environment="DJANGO_SETTINGS_MODULE={DJANGO_SETTINGS_MODULE}"
+Environment="DJANGO_LOG_DIR={LOG_DIR}"
+Environment="DJANGO_ERROR_LOG={ERROR_LOG_FILE}"
+StandardOutput=append:{GUNICORN_LOG_FILE}
+StandardError=append:{ERROR_LOG_FILE}
 ExecStart={GUNICORN_BIN} \
     --workers {WORKERS} \
     --timeout 300 \
     --limit-request-line 0 \
     --limit-request-fields 100 \
+    --capture-output \
+    --error-logfile {ERROR_LOG_FILE} \
     {BIND} \
     {WSGI_MODULE}:application
 
