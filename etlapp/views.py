@@ -246,6 +246,37 @@ class ETLUIAccessMixin:
         return super().dispatch(request, *args, **kwargs)
 
 
+def _queue_or_run_etl_task(*, async_requested, task_callable, task_args, task_kwargs=None, sync_callable, sync_kwargs=None):
+    task_kwargs = task_kwargs or {}
+    sync_kwargs = sync_kwargs or {}
+    use_celery = async_requested and getattr(settings, 'ETL_USE_CELERY', True)
+
+    if use_celery:
+        try:
+            task_queue_name = getattr(settings, 'CELERY_TASK_DEFAULT_QUEUE', 'celery')
+            if task_kwargs:
+                task = task_callable.apply_async(task_args, task_kwargs, queue=task_queue_name)
+            else:
+                task = task_callable.apply_async(task_args, queue=task_queue_name)
+        except Exception as exc:
+            async_error = str(exc)
+        else:
+            return {
+                'queued': True,
+                'task_id': task.id,
+            }
+    else:
+        async_error = None
+
+    result = sync_callable(*task_args, **sync_kwargs)
+    return {
+        'queued': False,
+        'result': result,
+        'async_fallback': async_error is not None,
+        'async_error': async_error,
+    }
+
+
 class ETLAdminSyncView(View):
     template_name = 'admin/etl_sync.html'
 
@@ -347,59 +378,51 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
         except ValueError as exc:
             return JsonResponse({'detail': str(exc)}, status=400)
 
-        task_queue_name = getattr(settings, 'CELERY_TASK_DEFAULT_QUEUE', 'celery')
-
-        if async_mode:
-            try:
-                task = pull_category_task.apply_async(
-                    (peer['url'], category),
-                    {
-                        'since': since,
-                        'force_remote_uuids': force_remote_uuids,
-                        'keep_local_uuids': keep_local_uuids,
-                    },
-                    queue=task_queue_name,
-                )
-            except Exception as exc:
-                async_mode = False
-                async_error = str(exc)
-            else:
-                return JsonResponse({
-                    'task_id': task.id,
-                    'status': 'queued',
-                    'peer': {
-                        'id': peer['id'],
-                        'label': peer['label'],
-                        'url': peer['url'],
-                    },
-                })
-
-        if not async_mode:
-            try:
-                result = pull_remote_category(
-                    peer['url'],
-                    category,
-                    since=since,
-                    force_remote_uuids=force_remote_uuids,
-                    keep_local_uuids=keep_local_uuids,
-                )
-            except ETLImportConflictError as exc:
-                return JsonResponse(exc.to_payload(), status=409)
-            except ValueError as exc:
-                return JsonResponse({'detail': str(exc)}, status=400)
-
-            return JsonResponse(
-                {
-                    'peer': {
-                        'id': peer['id'],
-                        'label': peer['label'],
-                        'url': peer['url'],
-                    },
-                    'async_fallback': True if 'async_error' in locals() else False,
-                    'async_error': async_error if 'async_error' in locals() else None,
-                    'result': result,
-                }
+        try:
+            task_result = _queue_or_run_etl_task(
+                async_requested=async_mode,
+                task_callable=pull_category_task,
+                task_args=(peer['url'], category),
+                task_kwargs={
+                    'since': since,
+                    'force_remote_uuids': force_remote_uuids,
+                    'keep_local_uuids': keep_local_uuids,
+                },
+                sync_callable=pull_remote_category,
+                sync_kwargs={
+                    'since': since,
+                    'force_remote_uuids': force_remote_uuids,
+                    'keep_local_uuids': keep_local_uuids,
+                },
             )
+        except ETLImportConflictError as exc:
+            return JsonResponse(exc.to_payload(), status=409)
+        except ValueError as exc:
+            return JsonResponse({'detail': str(exc)}, status=400)
+
+        if task_result['queued']:
+            return JsonResponse({
+                'task_id': task_result['task_id'],
+                'status': 'queued',
+                'peer': {
+                    'id': peer['id'],
+                    'label': peer['label'],
+                    'url': peer['url'],
+                },
+            })
+
+        return JsonResponse(
+            {
+                'peer': {
+                    'id': peer['id'],
+                    'label': peer['label'],
+                    'url': peer['url'],
+                },
+                'async_fallback': task_result['async_fallback'],
+                'async_error': task_result['async_error'],
+                'result': task_result['result'],
+            }
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -422,46 +445,39 @@ class ETLUIPullManuscriptView(ETLUIAccessMixin, View):
         except ValueError as exc:
             return JsonResponse({'detail': str(exc)}, status=400)
 
-        task_queue_name = getattr(settings, 'CELERY_TASK_DEFAULT_QUEUE', 'celery')
-
-        if async_mode:
-            try:
-                task = pull_manuscript_task.apply_async(
-                    (peer['url'], manuscript_uuid),
-                    queue=task_queue_name,
-                )
-            except Exception as exc:
-                async_mode = False
-                async_error = str(exc)
-            else:
-                return JsonResponse({
-                    'task_id': task.id,
-                    'status': 'queued',
-                    'peer': {
-                        'id': peer['id'],
-                        'label': peer['label'],
-                        'url': peer['url'],
-                    },
-                })
-
-        if not async_mode:
-            try:
-                result = pull_remote_manuscript(peer['url'], manuscript_uuid)
-            except ValueError as exc:
-                return JsonResponse({'detail': str(exc)}, status=400)
-
-            return JsonResponse(
-                {
-                    'peer': {
-                        'id': peer['id'],
-                        'label': peer['label'],
-                        'url': peer['url'],
-                    },
-                    'async_fallback': True if 'async_error' in locals() else False,
-                    'async_error': async_error if 'async_error' in locals() else None,
-                    'result': result,
-                }
+        try:
+            task_result = _queue_or_run_etl_task(
+                async_requested=async_mode,
+                task_callable=pull_manuscript_task,
+                task_args=(peer['url'], manuscript_uuid),
+                sync_callable=pull_remote_manuscript,
             )
+        except ValueError as exc:
+            return JsonResponse({'detail': str(exc)}, status=400)
+
+        if task_result['queued']:
+            return JsonResponse({
+                'task_id': task_result['task_id'],
+                'status': 'queued',
+                'peer': {
+                    'id': peer['id'],
+                    'label': peer['label'],
+                    'url': peer['url'],
+                },
+            })
+
+        return JsonResponse(
+            {
+                'peer': {
+                    'id': peer['id'],
+                    'label': peer['label'],
+                    'url': peer['url'],
+                },
+                'async_fallback': task_result['async_fallback'],
+                'async_error': task_result['async_error'],
+                'result': task_result['result'],
+            }
+        )
 
 
 @method_decorator(csrf_exempt, name='dispatch')

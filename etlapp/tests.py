@@ -106,7 +106,7 @@ class RuntimeInstanceResolutionTests(SimpleTestCase):
             self.assertEqual(resolve_runtime_instance_slug('ecatalogus.settings'), '')
 
 
-@override_settings(CELERY_TASK_DEFAULT_QUEUE='etl_corpus-liturgicum')
+@override_settings(CELERY_TASK_DEFAULT_QUEUE='etl_corpus-liturgicum', ETL_USE_CELERY=True)
 class ETLTaskQueueRoutingTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -511,6 +511,72 @@ class ETLUIAsyncFallbackTests(SimpleTestCase):
         self.assertTrue(payload['async_fallback'])
         self.assertIn('redis', payload['async_error'].lower())
         self.assertEqual(payload['result']['import_summary']['created'], 2)
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
+
+
+@override_settings(ETL_USE_CELERY=False)
+class ETLUISynchronousModeTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    @patch('etlapp.views.pull_remote_category')
+    @patch('etlapp.views.pull_category_task.apply_async')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_pull_category_runs_sync_when_celery_disabled(
+        self,
+        resolve_etl_peer_mock,
+        apply_async_mock,
+        pull_remote_category_mock,
+        user_can_manage_etl_mock,
+    ):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        pull_remote_category_mock.return_value = {'import_summary': {'created': 1}}
+        request = self.factory.post(
+            reverse('etl:etl-ui-pull-category'),
+            data=json.dumps({'peer': 'peer-1', 'category': 'main'}),
+            content_type='application/json',
+        )
+        request.user = DummyAdminUser()
+
+        response = ETLUIPullCategoryView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode('utf-8'))
+        self.assertFalse(payload['async_fallback'])
+        self.assertIsNone(payload['async_error'])
+        self.assertEqual(payload['result']['import_summary']['created'], 1)
+        apply_async_mock.assert_not_called()
+        user_can_manage_etl_mock.assert_called_once_with(request.user)
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    @patch('etlapp.views.pull_remote_manuscript')
+    @patch('etlapp.views.pull_manuscript_task.apply_async')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_pull_manuscript_runs_sync_when_celery_disabled(
+        self,
+        resolve_etl_peer_mock,
+        apply_async_mock,
+        pull_remote_manuscript_mock,
+        user_can_manage_etl_mock,
+    ):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        pull_remote_manuscript_mock.return_value = {'import_summary': {'created': 2}}
+        request = self.factory.post(
+            reverse('etl:etl-ui-pull-manuscript'),
+            data=json.dumps({'peer': 'peer-1', 'manuscript_uuid': str(uuid4())}),
+            content_type='application/json',
+        )
+        request.user = DummyAdminUser()
+
+        response = ETLUIPullManuscriptView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode('utf-8'))
+        self.assertFalse(payload['async_fallback'])
+        self.assertIsNone(payload['async_error'])
+        self.assertEqual(payload['result']['import_summary']['created'], 2)
+        apply_async_mock.assert_not_called()
         user_can_manage_etl_mock.assert_called_once_with(request.user)
 
 

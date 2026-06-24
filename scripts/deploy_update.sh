@@ -151,6 +151,7 @@ resolve_config() {
   LOG_DIR=${LOG_DIR:-${APPDIR}/logs}
   SERVICE_SHORTNAME=${SERVICE_SHORTNAME:-}
   INSTANCE_SLUG=${INSTANCE_SLUG:-}
+  ETL_USE_CELERY=${ETL_USE_CELERY:-1}
   PRESERVE_FILES=${PRESERVE_FILES:-}
   MEDIA_DIR=${MEDIA_DIR:-}
 
@@ -355,6 +356,7 @@ load_runtime_env() {
   local configured_settings_module="$DJANGO_SETTINGS_MODULE"
   local configured_instance_slug="${INSTANCE_SLUG:-}"
   local configured_service_shortname="${SERVICE_SHORTNAME:-}"
+  local configured_etl_use_celery="${ETL_USE_CELERY:-1}"
   local expected_instance_slug="$configured_instance_slug"
 
   if [[ -z "$expected_instance_slug" && "$configured_settings_module" == ecatalogus.settings_* ]]; then
@@ -399,9 +401,20 @@ load_runtime_env() {
     fi
   fi
 
+  if [[ "${ETL_USE_CELERY:-1}" != "$configured_etl_use_celery" ]]; then
+    warn "Runtime env ETL_USE_CELERY (${ETL_USE_CELERY:-unset}) differs from deploy config (${configured_etl_use_celery}); using deploy config."
+    ETL_USE_CELERY="$configured_etl_use_celery"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      upsert_env_value "$ENV_FILE" "ETL_USE_CELERY" "${ETL_USE_CELERY}"
+      chown "${DEPLOY_USER}:${DEPLOY_USER}" "$ENV_FILE" 2>/dev/null || true
+      chmod 600 "$ENV_FILE"
+    fi
+  fi
+
   export DJANGO_SETTINGS_MODULE
   export INSTANCE_SLUG
   export SERVICE_SHORTNAME
+  export ETL_USE_CELERY
 }
 
 render_instance_settings_files() {
