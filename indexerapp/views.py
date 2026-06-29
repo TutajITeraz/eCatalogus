@@ -1975,7 +1975,7 @@ class TraditionsAutocomplete(autocomplete.Select2QuerySetView):
 
         genre = self.request.GET.get('genre', None)
         if genre:
-            qs = qs.filter(genre__id=genre)
+            qs = qs.filter(genre_uuid=genre)
 
         if self.q:
             qs = qs.filter(name__icontains=self.q)
