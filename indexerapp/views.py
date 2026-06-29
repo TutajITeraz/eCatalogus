@@ -1360,7 +1360,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         if provenance_place_countries_select: 
             provenance_place_countries_select_ids = provenance_place_countries_select.split(';')
             for q in provenance_place_countries_select_ids:
-                queryset = queryset.filter(ms_provenance__place__country_today_eng=q)
+                queryset = queryset.filter(ms_provenance__place_uuid__country_today_eng=q)
         if form_of_an_item_select: 
             form_of_an_item_select_ids = form_of_an_item_select.split(';')
             queryset = queryset.filter(form_of_an_item__in=form_of_an_item_select_ids)
@@ -1370,7 +1370,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         if author_select: 
             author_select_ids = author_select.split(';')
             for q in author_select_ids:
-                queryset = queryset.filter(ms_bibliography__bibliography__author=q)
+                queryset = queryset.filter(ms_bibliography__bibliography_uuid__author=q)
 
         if clla_liturgical_genre_select: 
             clla_liturgical_genre_select_ids = clla_liturgical_genre_select.split(';')
