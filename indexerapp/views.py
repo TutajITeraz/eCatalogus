@@ -868,7 +868,7 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
         if liturgical_genre:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_genres__genre_uuid', liturgical_genre)
         if contemporary_repository_place:
-            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'contemporary_repository_place', contemporary_repository_place)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'contemporary_repository_place_uuid', contemporary_repository_place)
         if shelfmark:
             shelfmark_ids = shelfmark.split(';')
             queryset = queryset.filter(shelf_mark__in=shelfmark_ids)
@@ -876,9 +876,9 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             dating_ids = dating.split(';')
             queryset = queryset.filter(dating_uuid__in=dating_ids)
         if place_of_origin:
-            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'place_of_origin', place_of_origin)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'place_of_origin_uuid', place_of_origin)
         if main_script:
-            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'main_script', main_script)
+            queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'main_script_uuid', main_script)
         if binding_date:
             binding_date_ids = binding_date.split(';')
             queryset = queryset.filter(binding_date_uuid__in=binding_date_ids)
