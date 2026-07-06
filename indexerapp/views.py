@@ -1075,11 +1075,11 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.exclude(ms_hands__is_main_text=False)
 
         if is_hand_identified_false and not is_hand_identified_true:
-            queryset = queryset.annotate(has_identified_hands=Count('ms_hands', filter=Q(ms_hands__hand__is_identified=True))) \
+            queryset = queryset.annotate(has_identified_hands=Count('ms_hands', filter=Q(ms_hands__hand_uuid__is_identified=True))) \
                             .filter(has_identified_hands=0)  # Manuscripts with no identified hands
 
         if is_hand_identified_true and not is_hand_identified_false:
-            queryset = queryset.filter(ms_hands__hand__is_identified=True).distinct()  # Manuscripts with at least one identified hand
+            queryset = queryset.filter(ms_hands__hand_uuid__is_identified=True).distinct()  # Manuscripts with at least one identified hand
 
         if written_above_the_top_line_false and not written_above_the_top_line_true:
             queryset = queryset.filter(ms_layouts__written_above_the_top_line=False)
@@ -1259,14 +1259,14 @@ class ManuscriptsViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(ms_decorations__size_width_max__lte=int(decoration_size_width_max))
 
         if decoration_addition_date_min and decoration_addition_date_min.isdigit():
-            queryset = queryset.filter(ms_decorations__date_of_the_addition__century_from__gte=int(decoration_addition_date_min))
+            queryset = queryset.filter(ms_decorations__date_of_the_addition_uuid__century_from__gte=int(decoration_addition_date_min))
         if decoration_addition_date_max and decoration_addition_date_max.isdigit():
-            queryset = queryset.filter(ms_decorations__date_of_the_addition__century_from__lte=int(decoration_addition_date_max))
+            queryset = queryset.filter(ms_decorations__date_of_the_addition_uuid__century_from__lte=int(decoration_addition_date_max))
 
         if decoration_addition_date_years_min and decoration_addition_date_years_min.isdigit():
-            queryset = queryset.filter(ms_decorations__date_of_the_addition__year_from__gte=int(decoration_addition_date_years_min))
+            queryset = queryset.filter(ms_decorations__date_of_the_addition_uuid__year_from__gte=int(decoration_addition_date_years_min))
         if decoration_addition_date_years_max and decoration_addition_date_years_max.isdigit():
-            queryset = queryset.filter(ms_decorations__date_of_the_addition__year_to__lte=int(decoration_addition_date_years_max))
+            queryset = queryset.filter(ms_decorations__date_of_the_addition_uuid__year_to__lte=int(decoration_addition_date_years_max))
 
 
         if musicology_how_many_lines_min and musicology_how_many_lines_min.isdigit():
