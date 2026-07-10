@@ -1,8 +1,22 @@
 from rest_framework import serializers
 from decimal import Decimal
 from collections import OrderedDict
+from django.core.exceptions import ObjectDoesNotExist
 
 from .models import RiteNames, Provenance, Content, Manuscripts, Contributors, Quires, ManuscriptHands, Hands, ScriptNames, Places, TimeReference, Sections, ContentFunctions, ManuscriptMusicNotations, EditionContent, Formulas, Subjects
+
+
+def safe_related(instance, field_name):
+    """Return the related object for a (possibly dangling) FK, or None.
+
+    Several FKs use to_field='uuid' with db_constraint=False, so a stale
+    reference to a deleted row raises ObjectDoesNotExist on plain attribute
+    access instead of just returning None.
+    """
+    try:
+        return getattr(instance, field_name)
+    except ObjectDoesNotExist:
+        return None
 
 class RiteNamesSerializer(serializers.ModelSerializer):
     class Meta:
@@ -91,16 +105,19 @@ class QuiresSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ProvenanceSerializer(serializers.ModelSerializer):
-    place = PlacesSerializer()
+    place_uuid = PlacesSerializer()
 
     class Meta:
         model = Provenance
-        fields = ('date_from', 'date_to', 'place', 'timeline_sequence')
-    
+        fields = ('date_from_uuid', 'date_to_uuid', 'place_uuid', 'timeline_sequence')
+
     def to_representation(self, instance):
-        place_rep = self.fields['place'].to_representation(instance.place)
-        date_from = instance.date_from.time_description if instance.date_from else "?"
-        date_to = instance.date_to.time_description if instance.date_to else "?"
+        place = safe_related(instance, 'place_uuid')
+        place_rep = self.fields['place_uuid'].to_representation(place) if place else {'name': ''}
+        date_from = safe_related(instance, 'date_from_uuid')
+        date_to = safe_related(instance, 'date_to_uuid')
+        date_from = date_from.time_description if date_from else "?"
+        date_to = date_to.time_description if date_to else "?"
         return f"{place_rep['name']} ({date_from} - {date_to})"
 
 class ManuscriptsSerializer(serializers.ModelSerializer):
@@ -130,55 +147,66 @@ class ManuscriptsSerializer(serializers.ModelSerializer):
         return None
 
     def get_dating(self, obj):
-        return TimeReferenceSerializer(obj.dating_uuid).data if obj.dating_uuid else None
+        dating = safe_related(obj, 'dating_uuid')
+        return TimeReferenceSerializer(dating).data if dating else None
 
     def get_main_script(self, obj):
-        return ScriptNamesSerializer(obj.main_script_uuid).data if obj.main_script_uuid else None
+        main_script = safe_related(obj, 'main_script_uuid')
+        return ScriptNamesSerializer(main_script).data if main_script else None
 
     def get_binding_date(self, obj):
-        return TimeReferenceSerializer(obj.binding_date_uuid).data if obj.binding_date_uuid else None
+        binding_date = safe_related(obj, 'binding_date_uuid')
+        return TimeReferenceSerializer(binding_date).data if binding_date else None
 
     def get_contemporary_repository_place_name(self, obj):
-        return str(obj.contemporary_repository_place_uuid) if obj.contemporary_repository_place_uuid else ''
+        place = safe_related(obj, 'contemporary_repository_place_uuid')
+        return str(place) if place else ''
 
     def get_place_of_origin_name(self, obj):
-        return str(obj.place_of_origin_uuid) if obj.place_of_origin_uuid else ''
+        place = safe_related(obj, 'place_of_origin_uuid')
+        return str(place) if place else ''
 
     def get_binding_place_name(self, obj):
-        return str(obj.binding_place_uuid) if obj.binding_place_uuid else ''
+        place = safe_related(obj, 'binding_place_uuid')
+        return str(place) if place else ''
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation.pop('id', None)
-        representation['dating'] = str(instance.dating_uuid) if instance.dating_uuid else ''
-        representation['main_script'] = str(instance.main_script_uuid) if instance.main_script_uuid else ''
-        representation['binding_date'] = str(instance.binding_date_uuid) if instance.binding_date_uuid else ''
+        dating = safe_related(instance, 'dating_uuid')
+        main_script = safe_related(instance, 'main_script_uuid')
+        binding_date = safe_related(instance, 'binding_date_uuid')
+        representation['dating'] = str(dating) if dating else ''
+        representation['main_script'] = str(main_script) if main_script else ''
+        representation['binding_date'] = str(binding_date) if binding_date else ''
 
         source_project_link = instance.ms_projects.select_related('project_uuid').order_by('id').first()
-        source_project = source_project_link.project_uuid if source_project_link else None
+        source_project = safe_related(source_project_link, 'project_uuid') if source_project_link else None
         representation['source_project_name'] = source_project.name if source_project else ''
         representation['source_project_icon'] = source_project.icon if source_project else ''
         representation['source_project_url'] = source_project.project_url if source_project else ''
         representation['source_project_uuid'] = str(source_project.uuid) if source_project and source_project.uuid else ''
 
         representation['dating_year'] = 9999
-        if instance.dating_uuid:
-            representation['dating_year'] = str(instance.dating_uuid.year_from)
+        if dating:
+            representation['dating_year'] = str(dating.year_from)
 
         provenances = instance.ms_provenance.all().order_by('timeline_sequence')
         representation['ms_provenance'] = ''
         if len(provenances) > 0:
             ms_provenance = OrderedDict()
             for p in provenances:
-                if p.date_from and p.date_from.year_to <= 1501 and p.place:
-                    if p.place.repository_today_eng:
-                        ms_provenance[p.place.repository_today_eng] = None
-                    elif p.place.city_today_eng:
-                        ms_provenance[p.place.city_today_eng] = None
-                    elif p.place.region_today_eng:
-                        ms_provenance[p.place.region_today_eng] = None
-                    elif p.place.country_historic_eng:
-                        ms_provenance[p.place.country_historic_eng] = None
+                date_from = safe_related(p, 'date_from_uuid')
+                place = safe_related(p, 'place_uuid')
+                if date_from and date_from.year_to <= 1501 and place:
+                    if place.repository_today_eng:
+                        ms_provenance[place.repository_today_eng] = None
+                    elif place.city_today_eng:
+                        ms_provenance[place.city_today_eng] = None
+                    elif place.region_today_eng:
+                        ms_provenance[place.region_today_eng] = None
+                    elif place.country_historic_eng:
+                        ms_provenance[place.country_historic_eng] = None
             representation['ms_provenance'] = ' - '.join(ms_provenance.keys())
 
         representation['page_size_max_h'] = '-'

@@ -12,6 +12,7 @@ from .models import Manuscripts, AttributeDebate, Decoration, Content, Formulas,
 from django.http import JsonResponse
 from django.http import Http404
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
 
 from django.forms.models import model_to_dict
 
@@ -1922,15 +1923,19 @@ class ProvenanceAjaxView(View):
         markers = []
         for p in info_queryset:
             name = '-'
-            if p.place:
-                name = p.place.repository_today_eng
+            try:
+                place = p.place_uuid
+            except ObjectDoesNotExist:
+                place = None
+            if place:
+                name = place.repository_today_eng
                 if not name or len(name) < 3:
-                    name = p.place.repository_today_local_language
+                    name = place.repository_today_local_language
 
                 markers.append({
                     'name': name,
-                    'lon': p.place.longitude,
-                    'lat': p.place.latitude,
+                    'lon': place.longitude,
+                    'lat': place.latitude,
                 })
 
         # Handle debates
