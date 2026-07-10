@@ -143,7 +143,7 @@ class Calendar(models.Model):
     #pagination_from = models.IntegerField( null=True, blank=True)
     #pagination_to = models.IntegerField(null=True, blank=True)
 
-    rubric_name_standarized_uuid = models.ForeignKey('RiteNames', models.SET_NULL, to_field='uuid', db_column='rubric_name_standarized_uuid', null=True, blank=True)
+    rubric_name_standarized_uuid = models.ForeignKey('RiteNames', models.PROTECT, to_field='uuid', db_column='rubric_name_standarized_uuid', null=True, blank=True)
     content_uuid = models.ForeignKey('Content', models.SET_NULL, to_field='uuid', db_column='content_uuid', related_name='calendar_content', null=True, blank=True)
 
     month = models.IntegerField( null=True, blank=True)
@@ -151,7 +151,7 @@ class Calendar(models.Model):
     latin_name = models.CharField(max_length=128,verbose_name="Latin name of the date from ms")
     feast_name = models.CharField(max_length=128,verbose_name="feast name")
 
-    feast_rank_uuid = models.ForeignKey('FeastRanks', models.SET_NULL, to_field='uuid', db_column='feast_rank_uuid', related_name='calendar_feast', null=True, blank=True)
+    feast_rank_uuid = models.ForeignKey('FeastRanks', models.PROTECT, to_field='uuid', db_column='feast_rank_uuid', related_name='calendar_feast', null=True, blank=True)
 
     rubricated = models.BooleanField(null=True, blank=True)
     littera_dominicalis = models.CharField(max_length=2)
@@ -163,13 +163,13 @@ class Calendar(models.Model):
     other_remarks = models.CharField(max_length=128,verbose_name="other remarks from ms", null=True, blank=True)
     original = models.BooleanField(null=True, blank=True)
 
-    date_of_the_addition_uuid = models.ForeignKey('TimeReference', models.SET_NULL, to_field='uuid', db_column='date_of_the_addition_uuid', related_name='calendar_addition_dating', blank=True, null=True)
+    date_of_the_addition_uuid = models.ForeignKey('TimeReference', models.PROTECT, to_field='uuid', db_column='date_of_the_addition_uuid', related_name='calendar_addition_dating', blank=True, null=True)
 
     comments = models.TextField(blank=True, null=True)
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     def save(self, *args, **kwargs):
         # Update the aureus_numerus_roman field before saving
@@ -189,7 +189,7 @@ class Calendar(models.Model):
 class DecorationSubjects(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     decoration_uuid = models.ForeignKey('Decoration', models.SET_NULL, to_field='uuid', db_column='decoration_uuid', related_name='decoration_subjects', null=True, blank=True)
-    subject_uuid = models.ForeignKey('Subjects', models.SET_NULL, to_field='uuid', db_column='subject_uuid', related_name='decoration_subject', null=True, blank=True)
+    subject_uuid = models.ForeignKey('Subjects', models.PROTECT, to_field='uuid', db_column='subject_uuid', related_name='decoration_subject', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -204,7 +204,7 @@ class DecorationSubjects(models.Model):
 class DecorationColours(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     decoration_uuid = models.ForeignKey('Decoration', models.SET_NULL, to_field='uuid', db_column='decoration_uuid', related_name='decoration_colours', null=True, blank=True)
-    colour_uuid = models.ForeignKey('Colours', models.SET_NULL, to_field='uuid', db_column='colour_uuid', related_name='decoration_colour', null=True, blank=True)
+    colour_uuid = models.ForeignKey('Colours', models.PROTECT, to_field='uuid', db_column='colour_uuid', related_name='decoration_colour', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -218,7 +218,7 @@ class DecorationColours(models.Model):
 class DecorationCharacteristics(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     decoration_uuid = models.ForeignKey('Decoration', models.SET_NULL, to_field='uuid', db_column='decoration_uuid', related_name='decoration_characteristics', null=True, blank=True)
-    characteristics_uuid = models.ForeignKey('Characteristics', models.SET_NULL, to_field='uuid', db_column='characteristics_uuid', related_name='decoration_characteristics', null=True, blank=True)
+    characteristics_uuid = models.ForeignKey('Characteristics', models.PROTECT, to_field='uuid', db_column='characteristics_uuid', related_name='decoration_characteristics', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -233,7 +233,7 @@ class Decoration(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey('Manuscripts', models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_decorations', null=True, blank=True)
     original_or_added = models.CharField(max_length=10,choices=[("ORIGINAL", "original"),("ADDED", "added")], blank=True, null=True)
-    date_of_the_addition_uuid = models.ForeignKey('TimeReference', models.SET_NULL, to_field='uuid', db_column='date_of_the_addition_uuid', related_name='decoration_dating', blank=True, null=True)
+    date_of_the_addition_uuid = models.ForeignKey('TimeReference', models.PROTECT, to_field='uuid', db_column='date_of_the_addition_uuid', related_name='decoration_dating', blank=True, null=True)
 
     content_uuid = models.ForeignKey('Content', models.SET_NULL, to_field='uuid', db_column='content_uuid', related_name='content_decoration', blank=True, null=True)
     calendar_uuid = models.ForeignKey('Calendar', models.SET_NULL, to_field='uuid', db_column='calendar_uuid', related_name='calendar_decoration', blank=True, null=True)
@@ -244,8 +244,8 @@ class Decoration(models.Model):
     
     location_on_the_page = models.CharField(max_length=10,choices=[("WITHIN", "within the column"),("MARGIN", "on the margin"),("IN_TEXT", "in the text line")], blank=True, null=True)
 
-    decoration_type_uuid = models.ForeignKey('DecorationTypes', models.SET_NULL, to_field='uuid', db_column='decoration_type_uuid', related_name='decoration_type', null=True, blank=True)
-    decoration_subtype_uuid = models.ForeignKey('DecorationTypes', models.SET_NULL, to_field='uuid', db_column='decoration_subtype_uuid', related_name='decoration_subtype', null=True, blank=True)
+    decoration_type_uuid = models.ForeignKey('DecorationTypes', models.PROTECT, to_field='uuid', db_column='decoration_type_uuid', related_name='decoration_type', null=True, blank=True)
+    decoration_subtype_uuid = models.ForeignKey('DecorationTypes', models.PROTECT, to_field='uuid', db_column='decoration_subtype_uuid', related_name='decoration_subtype', null=True, blank=True)
 
     size_characteristic = models.CharField(max_length=10,choices=[("SMALL", "small"),("1LINE", "1-line"),("2LINES", "2-lines"),("3LINES", "3-lines"),("1SYSTEM", "1-system"),("2SYSTEMS", "2-systems"),("LARGE", "large"),("FULL", "full page")], blank=True, null=True)
     size_height_min = models.PositiveIntegerField(blank=True, null=True)
@@ -259,18 +259,18 @@ class Decoration(models.Model):
     monochrome_or_colour = models.CharField(max_length=2,choices=[("M", "monochromatic"),("B", "bicolored"),("C", "multicolored")], blank=True, null=True)
 
     #characteristic = models.ForeignKey('Characteristics', models.DO_NOTHING, related_name='decoration_characteristic', blank=True, null=True)
-    technique_uuid = models.ForeignKey('DecorationTechniques', models.SET_NULL, to_field='uuid', db_column='technique_uuid', related_name='decoration_technique', null=True, blank=True)
+    technique_uuid = models.ForeignKey('DecorationTechniques', models.PROTECT, to_field='uuid', db_column='technique_uuid', related_name='decoration_technique', null=True, blank=True)
 
     #subject = models.ForeignKey('Subjects', models.DO_NOTHING, related_name='decoration_subject')
     ornamented_text = models.CharField(max_length=128, blank=True, null=True)
 
-    rubric_name_standarized_uuid = models.ForeignKey('RiteNames', models.SET_NULL, to_field='uuid', db_column='rubric_name_standarized_uuid', null=True, blank=True)
+    rubric_name_standarized_uuid = models.ForeignKey('RiteNames', models.PROTECT, to_field='uuid', db_column='rubric_name_standarized_uuid', null=True, blank=True)
 
     comments = models.TextField(blank=True, null=True)
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
 
     class Meta:
@@ -287,7 +287,7 @@ class Decoration(models.Model):
 
 class ManuscriptBibliography(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    bibliography_uuid = models.ForeignKey('Bibliography', models.SET_NULL, to_field='uuid', db_column='bibliography_uuid', null=True, blank=True)
+    bibliography_uuid = models.ForeignKey('Bibliography', models.PROTECT, to_field='uuid', db_column='bibliography_uuid', null=True, blank=True)
     manuscript_uuid = models.ForeignKey('Manuscripts', models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_bibliography', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
@@ -398,7 +398,7 @@ class Condition(models.Model):
     copper_corrosion = models.BooleanField(null=True)
     powdering_or_cracking_paint_layer = models.BooleanField(null=True)
     conservation = models.BooleanField(null=True)
-    conservation_date_uuid = models.ForeignKey('TimeReference', models.SET_NULL, to_field='uuid', db_column='conservation_date_uuid', related_name='%(class)s_conservation_dating', null=True, blank=True)
+    conservation_date_uuid = models.ForeignKey('TimeReference', models.PROTECT, to_field='uuid', db_column='conservation_date_uuid', related_name='%(class)s_conservation_dating', null=True, blank=True)
     darkening = models.BooleanField(null=True)
     water_staining = models.BooleanField(null=True)
     historic_repairs = models.BooleanField(null=True)
@@ -407,7 +407,7 @@ class Condition(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -419,18 +419,18 @@ class Condition(models.Model):
 
 class EditionContent(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
-    bibliography_uuid = models.ForeignKey('Bibliography', models.SET_NULL, to_field='uuid', db_column='bibliography_uuid', null=True, blank=True)
-    formula_uuid = models.ForeignKey('Formulas', models.SET_NULL, to_field='uuid', db_column='formula_uuid', null=True, blank=True)
-    rubric_name_standarized_uuid = models.ForeignKey('RiteNames', models.SET_NULL, to_field='uuid', db_column='rubric_name_standarized_uuid', null=True, blank=True)
+    bibliography_uuid = models.ForeignKey('Bibliography', models.PROTECT, to_field='uuid', db_column='bibliography_uuid', null=True, blank=True)
+    formula_uuid = models.ForeignKey('Formulas', models.PROTECT, to_field='uuid', db_column='formula_uuid', null=True, blank=True)
+    rubric_name_standarized_uuid = models.ForeignKey('RiteNames', models.PROTECT, to_field='uuid', db_column='rubric_name_standarized_uuid', null=True, blank=True)
     feast_rubric_sequence = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     subsequence = models.PositiveIntegerField( null=True, blank=True)
     page = models.PositiveIntegerField( null=True, blank=True)
-    function_uuid = models.ForeignKey('ContentFunctions', models.SET_NULL, to_field='uuid', db_column='function_uuid', related_name='%(class)s_main_function', null=True, blank=True)
-    subfunction_uuid = models.ForeignKey('ContentFunctions', models.SET_NULL, to_field='uuid', db_column='subfunction_uuid', related_name='%(class)s_sub_function', null=True, blank=True)
+    function_uuid = models.ForeignKey('ContentFunctions', models.PROTECT, to_field='uuid', db_column='function_uuid', related_name='%(class)s_main_function', null=True, blank=True)
+    subfunction_uuid = models.ForeignKey('ContentFunctions', models.PROTECT, to_field='uuid', db_column='subfunction_uuid', related_name='%(class)s_sub_function', null=True, blank=True)
     
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     #filled_automatically:
     #formula_text_standarized
@@ -543,8 +543,8 @@ class Content(models.Model):
             return 1  # Jeśli nie ma rekordów, zwróć 1 jako wartość domyślną
 
     manuscript_uuid = models.ForeignKey('Manuscripts', models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_content', null=True, blank=True)
-    formula_uuid = models.ForeignKey('Formulas', models.SET_NULL, to_field='uuid', db_column='formula_uuid', null=True, blank=True)
-    rubric_uuid = models.ForeignKey('RiteNames', models.SET_NULL, to_field='uuid', db_column='rubric_uuid', null=True, blank=True)
+    formula_uuid = models.ForeignKey('Formulas', models.PROTECT, to_field='uuid', db_column='formula_uuid', null=True, blank=True)
+    rubric_uuid = models.ForeignKey('RiteNames', models.PROTECT, to_field='uuid', db_column='rubric_uuid', null=True, blank=True)
     rubric_name_from_ms = models.CharField(max_length=1024, null=True, blank=True)
     subrubric_name_from_ms = models.TextField(null=True, blank=True)
     rubric_sequence = models.PositiveIntegerField(null=True, blank=True, default=calc_last_sequence)
@@ -561,13 +561,13 @@ class Content(models.Model):
 
     original_or_added = models.CharField(max_length=10,choices=[("ORIGINAL", "original"),("ADDED", "added")], blank=True, null=True)
     
-    liturgical_genre_uuid = models.ForeignKey('LiturgicalGenres', models.SET_NULL, to_field='uuid', db_column='liturgical_genre_uuid', related_name='content_genres', null=True, blank=True)
+    liturgical_genre_uuid = models.ForeignKey('LiturgicalGenres', models.PROTECT, to_field='uuid', db_column='liturgical_genre_uuid', related_name='content_genres', null=True, blank=True)
     quire_uuid = models.ForeignKey('Quires', models.SET_NULL, to_field='uuid', db_column='quire_uuid', null=True, blank=True)
-    section_uuid = models.ForeignKey('Sections', models.SET_NULL, to_field='uuid', db_column='section_uuid', related_name='%(class)s_main_section', null=True, blank=True)
-    subsection_uuid = models.ForeignKey('Sections', models.SET_NULL, to_field='uuid', db_column='subsection_uuid', related_name='%(class)s_sub_section', null=True, blank=True)
+    section_uuid = models.ForeignKey('Sections', models.PROTECT, to_field='uuid', db_column='section_uuid', related_name='%(class)s_main_section', null=True, blank=True)
+    subsection_uuid = models.ForeignKey('Sections', models.PROTECT, to_field='uuid', db_column='subsection_uuid', related_name='%(class)s_sub_section', null=True, blank=True)
     music_notation_uuid = models.ForeignKey('ManuscriptMusicNotations', models.SET_NULL, to_field='uuid', db_column='music_notation_uuid', null=True, blank=True)
-    function_uuid = models.ForeignKey('ContentFunctions', models.SET_NULL, to_field='uuid', db_column='function_uuid', related_name='%(class)s_main_function', null=True, blank=True)
-    subfunction_uuid = models.ForeignKey('ContentFunctions', models.SET_NULL, to_field='uuid', db_column='subfunction_uuid', related_name='%(class)s_sub_function', null=True, blank=True)
+    function_uuid = models.ForeignKey('ContentFunctions', models.PROTECT, to_field='uuid', db_column='function_uuid', related_name='%(class)s_main_function', null=True, blank=True)
+    subfunction_uuid = models.ForeignKey('ContentFunctions', models.PROTECT, to_field='uuid', db_column='subfunction_uuid', related_name='%(class)s_sub_function', null=True, blank=True)
     biblical_reference = models.CharField(max_length=31, null=True, blank=True)
     reference_to_other_items = models.CharField(max_length=127, null=True, blank=True)
     similarity_by_user = models.CharField(max_length=4,choices=[("0", "the formula not in the editions"),("0.5", "paraphrase"),("1", "exact match")], blank=True, null=True)
@@ -579,25 +579,25 @@ class Content(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     #filled_automatically:
     #formula_text_standarized
 
-    edition_index_uuid = models.ForeignKey('EditionContent', models.SET_NULL, to_field='uuid', db_column='edition_index_uuid', related_name='%(class)s_edition_index', null=True, blank=True)
+    edition_index_uuid = models.ForeignKey('EditionContent', models.PROTECT, to_field='uuid', db_column='edition_index_uuid', related_name='%(class)s_edition_index', null=True, blank=True)
     edition_subindex = models.CharField(max_length=1024, null=True, blank=True)
     
     comments = models.TextField(blank=True, null=True)
 
     #New columns inspired by USUARIUM project:
-    text_standarization_uuid = models.ForeignKey('TextStandarization', models.SET_NULL, to_field='uuid', db_column='text_standarization_uuid', blank=True, null=True)
-    layer_uuid = models.ForeignKey('Layer', models.SET_NULL, to_field='uuid', db_column='layer_uuid', blank=True, null=True)
+    text_standarization_uuid = models.ForeignKey('TextStandarization', models.PROTECT, to_field='uuid', db_column='text_standarization_uuid', blank=True, null=True)
+    layer_uuid = models.ForeignKey('Layer', models.PROTECT, to_field='uuid', db_column='layer_uuid', blank=True, null=True)
 
-    mass_hour_uuid = models.ForeignKey('MassHour', models.SET_NULL, to_field='uuid', db_column='mass_hour_uuid', related_name='%(class)s_mass_hour', blank=True, null=True)
-    genre_uuid = models.ForeignKey('Genre', models.SET_NULL, to_field='uuid', db_column='genre_uuid', related_name='%(class)s_genre', blank=True, null=True)
-    season_month_uuid = models.ForeignKey('SeasonMonth', models.SET_NULL, to_field='uuid', db_column='season_month_uuid', related_name='%(class)s_season_month', blank=True, null=True)
-    week_uuid = models.ForeignKey('Week', models.SET_NULL, to_field='uuid', db_column='week_uuid', related_name='%(class)s_week', blank=True, null=True)
-    day_uuid = models.ForeignKey('Day', models.SET_NULL, to_field='uuid', db_column='day_uuid', related_name='%(class)s_day', blank=True, null=True)
+    mass_hour_uuid = models.ForeignKey('MassHour', models.PROTECT, to_field='uuid', db_column='mass_hour_uuid', related_name='%(class)s_mass_hour', blank=True, null=True)
+    genre_uuid = models.ForeignKey('Genre', models.PROTECT, to_field='uuid', db_column='genre_uuid', related_name='%(class)s_genre', blank=True, null=True)
+    season_month_uuid = models.ForeignKey('SeasonMonth', models.PROTECT, to_field='uuid', db_column='season_month_uuid', related_name='%(class)s_season_month', blank=True, null=True)
+    week_uuid = models.ForeignKey('Week', models.PROTECT, to_field='uuid', db_column='week_uuid', related_name='%(class)s_week', blank=True, null=True)
+    day_uuid = models.ForeignKey('Day', models.PROTECT, to_field='uuid', db_column='day_uuid', related_name='%(class)s_day', blank=True, null=True)
 
 
     def calculate_and_save_similarity(self):
@@ -695,7 +695,7 @@ class LiturgicalGenres(models.Model):
 #it is like alternative names for genres
 class LiturgicalGenresNames(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
-    genre_uuid = models.ForeignKey(LiturgicalGenres, models.SET_NULL, to_field='uuid', db_column='genre_uuid', null=True, blank=True)
+    genre_uuid = models.ForeignKey(LiturgicalGenres, models.PROTECT, to_field='uuid', db_column='genre_uuid', null=True, blank=True)
     title = models.CharField(max_length=128)
     entry_date = models.DateTimeField(auto_now=True)
 
@@ -836,21 +836,21 @@ class Manuscripts(models.Model):
     name = models.CharField(max_length=255)
     rism_id = models.CharField(max_length=255, blank=True, null=True)
     foreign_id = models.CharField(max_length=255, blank=True, null=True)
-    contemporary_repository_place_uuid = models.ForeignKey(Places, models.SET_NULL, to_field='uuid', db_column='contemporary_repository_place_uuid', blank=True, null=True)
+    contemporary_repository_place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='contemporary_repository_place_uuid', blank=True, null=True)
     shelf_mark = models.CharField(max_length=255, blank=True, null=True)
     usuarium_shelfmark = models.CharField(max_length=255, blank=True, null=True)
     liturgical_genre_comment = models.TextField(blank=True, null=True)
     common_name = models.CharField(max_length=255, blank=True, null=True)
-    dating_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='dating_uuid', related_name='%(class)s_dating', blank=True, null=True)
+    dating_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='dating_uuid', related_name='%(class)s_dating', blank=True, null=True)
     dating_comment = models.TextField(blank=True, null=True)
-    place_of_origin_uuid = models.ForeignKey(Places, models.SET_NULL, to_field='uuid', db_column='place_of_origin_uuid', related_name='%(class)s_origin', blank=True, null=True)
+    place_of_origin_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='place_of_origin_uuid', related_name='%(class)s_origin', blank=True, null=True)
     place_of_origin_comment = models.TextField(blank=True, null=True)
     #number_of_parchment_folios = models.IntegerField(blank=True, null=True)
     #number_of_paper_leaves = models.IntegerField(blank=True, null=True)
     #page_size_max_height = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     #page_size_max_width = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     #parchment_thickness = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
-    main_script_uuid = models.ForeignKey(ScriptNames, models.SET_NULL, to_field='uuid', db_column='main_script_uuid', blank=True, null=True)
+    main_script_uuid = models.ForeignKey(ScriptNames, models.PROTECT, to_field='uuid', db_column='main_script_uuid', blank=True, null=True)
     how_many_columns_mostly = models.PositiveIntegerField(blank=True, null=True)
     lines_per_page_usually = models.PositiveIntegerField(blank=True, null=True)
     how_many_quires = models.PositiveIntegerField(blank=True, null=True)
@@ -860,8 +860,8 @@ class Manuscripts(models.Model):
     decoration_comments = models.TextField(blank=True, null=True)
     music_notation = models.BooleanField(null=True)
     music_notation_comments = models.TextField(blank=True, null=True)
-    binding_date_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='binding_date_uuid', related_name='%(class)s_binding_date', blank=True, null=True)
-    binding_place_uuid = models.ForeignKey(Places, models.SET_NULL, to_field='uuid', db_column='binding_place_uuid', related_name='%(class)s_binding_place', blank=True, null=True)
+    binding_date_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='binding_date_uuid', related_name='%(class)s_binding_date', blank=True, null=True)
+    binding_place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='binding_place_uuid', related_name='%(class)s_binding_place', blank=True, null=True)
     links = models.CharField(max_length=1024, blank=True, null=True)
 
     additional_url = models.CharField(max_length=1024, null=True, blank=True)
@@ -883,7 +883,7 @@ class Manuscripts(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     #rites = models.OneToOneField('Rites', on_delete=models.CASCADE)
     #rites = models.ForeignKey('Rites', models.DO_NOTHING, related_name='+')
@@ -1011,7 +1011,7 @@ class Projects(models.Model):
 class MSProjects(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_projects', null=True, blank=True)
-    project_uuid = models.ForeignKey(Projects, models.SET_NULL, to_field='uuid', db_column='project_uuid', null=True, blank=True)
+    project_uuid = models.ForeignKey(Projects, models.PROTECT, to_field='uuid', db_column='project_uuid', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1111,7 +1111,7 @@ class Clla(models.Model):
 
     clla_no = models.CharField(max_length=255, blank=True, null=True)
     liturgical_genre = models.CharField(max_length=512, blank=True, null=True)
-    dating_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='dating_uuid', related_name='%(class)s_dating', blank=True, null=True)
+    dating_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='dating_uuid', related_name='%(class)s_dating', blank=True, null=True)
     dating_comment = models.TextField(blank=True, null=True)
     #provenance = models.ForeignKey(Places, models.DO_NOTHING, related_name='%(class)s_provenance', blank=True, null=True)
     provenance = models.CharField(max_length=512, blank=True, null=True)
@@ -1162,7 +1162,7 @@ class Layouts(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1191,7 +1191,7 @@ class Codicology(models.Model):
     parchment_thickness_max = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
 
     #based on https://scribes.lochac.sca.org/articles/parchment.htm
-    parchment_colour_uuid = models.ForeignKey('Colours', models.SET_NULL, to_field='uuid', db_column='parchment_colour_uuid', related_name='parchment_colour', blank=True, null=True)
+    parchment_colour_uuid = models.ForeignKey('Colours', models.PROTECT, to_field='uuid', db_column='parchment_colour_uuid', related_name='parchment_colour', blank=True, null=True)
 
     #models.CharField(max_length=12,choices=[("white", "white"),("purple", "purple"),("indigo", "indigo"),("green", "green"),("red", "red"),("peach", "peach")], blank=True, null=True)
     parchment_comment = models.TextField(blank=True, null=True)
@@ -1204,7 +1204,7 @@ class Codicology(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
 
     class Meta:
@@ -1240,7 +1240,7 @@ class Quires(models.Model):
     
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1267,7 +1267,7 @@ class Watermarks(models.Model):
     entry_date = models.DateTimeField(auto_now=True)
     version = models.PositiveIntegerField(default=1)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1306,13 +1306,13 @@ class ManuscriptMusicNotations(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_music_notation', null=True, blank=True)
 
-    music_notation_name_uuid = models.ForeignKey(MusicNotationNames, models.SET_NULL, to_field='uuid', db_column='music_notation_name_uuid', null=True, blank=True)
+    music_notation_name_uuid = models.ForeignKey(MusicNotationNames, models.PROTECT, to_field='uuid', db_column='music_notation_name_uuid', null=True, blank=True)
     sequence_in_ms = models.PositiveIntegerField()
     where_in_ms_from = models.CharField(max_length=32, default="")
     where_in_ms_to = models.CharField(max_length=32, null=True, blank=True, default="")
     digital_page_number = models.PositiveIntegerField(null=True, blank=True)
 
-    dating_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='dating_uuid', blank=True, null=True)
+    dating_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='dating_uuid', blank=True, null=True)
     original = models.BooleanField(null=True)
     on_lines = models.BooleanField(null=True)
     music_custos = models.BooleanField(null=True)
@@ -1321,7 +1321,7 @@ class ManuscriptMusicNotations(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1342,14 +1342,14 @@ class Origins(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_origins', null=True, blank=True)
 
-    origins_date_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='origins_date_uuid', blank=True, null=True)
-    origins_place_uuid = models.ForeignKey(Places, models.SET_NULL, to_field='uuid', db_column='origins_place_uuid', null=True, blank=True)
+    origins_date_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='origins_date_uuid', blank=True, null=True)
+    origins_place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='origins_place_uuid', null=True, blank=True)
     origins_comment = models.TextField(blank=True, null=True)
     provenance_comments = models.TextField(blank=True, null=True)
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1366,10 +1366,10 @@ class Provenance(models.Model):
     #MANUSCRIPT ID	DATE FROM	DATE TO	PLACE	TIMELINE SEQUENCE	COMMENTS
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_provenance', null=True, blank=True)
 
-    date_from_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='date_from_uuid', related_name='provenance_from', blank=True, null=True)
-    date_to_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='date_to_uuid', related_name='provenance_to', blank=True, null=True)
+    date_from_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='date_from_uuid', related_name='provenance_from', blank=True, null=True)
+    date_to_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='date_to_uuid', related_name='provenance_to', blank=True, null=True)
     
-    place_uuid = models.ForeignKey(Places, models.SET_NULL, to_field='uuid', db_column='place_uuid', null=True, blank=True)
+    place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='place_uuid', null=True, blank=True)
 
     timeline_sequence = models.PositiveIntegerField()
 
@@ -1377,7 +1377,7 @@ class Provenance(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1496,10 +1496,10 @@ class Binding(models.Model):
     max_height = models.PositiveIntegerField(blank=True, null=True)
     max_width = models.PositiveIntegerField(blank=True, null=True)
     block_max = models.PositiveIntegerField(blank=True, null=True)
-    date_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='date_uuid', blank=True, null=True)
-    place_of_origin_uuid = models.ForeignKey(Places, models.SET_NULL, to_field='uuid', db_column='place_of_origin_uuid', blank=True, null=True)
-    type_of_binding_uuid = models.ForeignKey(BindingTypes, models.SET_NULL, to_field='uuid', db_column='type_of_binding_uuid', null=True, blank=True)
-    style_of_binding_uuid = models.ForeignKey(BindingStyles, models.SET_NULL, to_field='uuid', db_column='style_of_binding_uuid', null=True, blank=True)
+    date_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='date_uuid', blank=True, null=True)
+    place_of_origin_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='place_of_origin_uuid', blank=True, null=True)
+    type_of_binding_uuid = models.ForeignKey(BindingTypes, models.PROTECT, to_field='uuid', db_column='type_of_binding_uuid', null=True, blank=True)
+    style_of_binding_uuid = models.ForeignKey(BindingStyles, models.PROTECT, to_field='uuid', db_column='style_of_binding_uuid', null=True, blank=True)
     category = models.CharField(max_length=12,choices=[("original", "original"),("early", "early modern"),("historical", "historical rebinding"),("conservation", "conservation binding"),("restored", "restored binding")], blank=True, null=True)
 
     #materials #many-to-one
@@ -1513,7 +1513,7 @@ class Binding(models.Model):
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         #managed = False
@@ -1528,7 +1528,7 @@ class Binding(models.Model):
 class Hands(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     rism = models.CharField(max_length=50,blank=True, null=True)
-    dating_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='dating_uuid', blank=True, null=True)
+    dating_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='dating_uuid', blank=True, null=True)
     name = models.CharField(max_length=64,blank=True, null=True)
     is_identified = models.BooleanField(null=True)
     version = models.PositiveIntegerField(default=1)
@@ -1552,8 +1552,8 @@ class ManuscriptHands(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_hands', null=True, blank=True)
 
-    hand_uuid = models.ForeignKey(Hands, models.SET_NULL, to_field='uuid', db_column='hand_uuid', null=True, blank=True)
-    script_name_uuid = models.ForeignKey(ScriptNames, models.SET_NULL, to_field='uuid', db_column='script_name_uuid', null=True, blank=True)
+    hand_uuid = models.ForeignKey(Hands, models.PROTECT, to_field='uuid', db_column='hand_uuid', null=True, blank=True)
+    script_name_uuid = models.ForeignKey(ScriptNames, models.PROTECT, to_field='uuid', db_column='script_name_uuid', null=True, blank=True)
     hand_name_in_ms = models.CharField(max_length=255, blank=True, null=True)
     sequence_in_ms = models.PositiveIntegerField()
     where_in_ms_from = models.CharField(max_length=32, default="")
@@ -1563,13 +1563,13 @@ class ManuscriptHands(models.Model):
     is_range_interrupted = models.BooleanField(default=False)
     is_medieval = models.BooleanField(null=True)
     is_main_text = models.BooleanField(null=True)
-    dating_uuid = models.ForeignKey(TimeReference, models.SET_NULL, to_field='uuid', db_column='dating_uuid', blank=True, null=True)
+    dating_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='dating_uuid', blank=True, null=True)
 
     comment = models.TextField(blank=True, null=True)
 
     entry_date = models.DateTimeField(auto_now=True)
     authors = models.ManyToManyField('Contributors', related_name='%(class)s_authors', blank=True)
-    data_contributor_uuid = models.ForeignKey('Contributors', models.SET_NULL, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
+    data_contributor_uuid = models.ForeignKey('Contributors', models.PROTECT, to_field='uuid', db_column='data_contributor_uuid', related_name='%(class)s_contributors', null=True, blank=True)
 
     class Meta:
         db_table = 'manuscript_hands'
@@ -1588,7 +1588,7 @@ class ManuscriptWatermarks(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_watermarks', null=True, blank=True)
 
-    watermark_uuid = models.ForeignKey(Watermarks, models.SET_NULL, to_field='uuid', db_column='watermark_uuid', null=True, blank=True)
+    watermark_uuid = models.ForeignKey(Watermarks, models.PROTECT, to_field='uuid', db_column='watermark_uuid', null=True, blank=True)
     where_in_manuscript = models.CharField(max_length=255)
     entry_date = models.DateTimeField(auto_now=True)
 
@@ -1611,7 +1611,7 @@ class Traditions(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     name = models.CharField(max_length=100)
     color_rgb = models.CharField(max_length=8, blank=True, null=True)
-    genre_uuid = models.ForeignKey(LiturgicalGenres, models.SET_NULL, to_field='uuid', db_column='genre_uuid', null=True, blank=True)
+    genre_uuid = models.ForeignKey(LiturgicalGenres, models.PROTECT, to_field='uuid', db_column='genre_uuid', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1650,7 +1650,7 @@ class ManuscriptGenres(models.Model):
     uuid = models.UUIDField(db_index=True, null=True, blank=True)
     manuscript_uuid = models.ForeignKey(Manuscripts, models.SET_NULL, to_field='uuid', db_column='manuscript_uuid', related_name='ms_genres', null=True, blank=True)
 
-    genre_uuid = models.ForeignKey(LiturgicalGenres, models.SET_NULL, to_field='uuid', db_column='genre_uuid', related_name='+', null=True, blank=True)
+    genre_uuid = models.ForeignKey(LiturgicalGenres, models.PROTECT, to_field='uuid', db_column='genre_uuid', related_name='+', null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1672,9 +1672,9 @@ class RiteNames(models.Model):
 
     name = models.CharField(max_length=128, unique=True)
     english_translation = models.CharField(max_length=128,  blank=True, null=True)
-    section_uuid = models.ForeignKey('Sections', models.SET_NULL, to_field='uuid', db_column='section_uuid', blank=True, null=True)
+    section_uuid = models.ForeignKey('Sections', models.PROTECT, to_field='uuid', db_column='section_uuid', blank=True, null=True)
     votive = models.BooleanField(null=True)
-    ceremony_uuid = models.ForeignKey('Ceremony', models.SET_NULL, to_field='uuid', db_column='ceremony_uuid', blank=True, null=True)
+    ceremony_uuid = models.ForeignKey('Ceremony', models.PROTECT, to_field='uuid', db_column='ceremony_uuid', blank=True, null=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1803,7 +1803,7 @@ class MassHour(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
     name = models.CharField(max_length=80, unique=True)#max 65
-    type_uuid = models.ForeignKey('Type', models.SET_NULL, to_field='uuid', db_column='type_uuid', blank=True, null=True)
+    type_uuid = models.ForeignKey('Type', models.PROTECT, to_field='uuid', db_column='type_uuid', blank=True, null=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -1850,7 +1850,7 @@ class Genre(models.Model):
 class Topic(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     name = models.CharField(max_length=64, blank=True, null=True)
-    section_uuid = models.ForeignKey('Sections', models.SET_NULL, to_field='uuid', db_column='section_uuid', blank=True, null=True)
+    section_uuid = models.ForeignKey('Sections', models.PROTECT, to_field='uuid', db_column='section_uuid', blank=True, null=True)
     votive = models.BooleanField(null=True)
     parent_uuid = models.ForeignKey('self', models.CASCADE, to_field='uuid', db_column='parent_uuid', blank=True, null=True)
     entry_date = models.DateTimeField(auto_now=True)
@@ -1900,7 +1900,7 @@ class TextStandarization(models.Model):
     usu_id = models.CharField(max_length=10, blank=True, null=True)
     cantus_id = models.CharField(max_length=10, blank=True, null=True)
     co_no = models.CharField(max_length=10, blank=True, null=True)
-    formula_uuid = models.ForeignKey(Formulas, models.SET_NULL, to_field='uuid', db_column='formula_uuid', blank=True, null=True)
+    formula_uuid = models.ForeignKey(Formulas, models.PROTECT, to_field='uuid', db_column='formula_uuid', blank=True, null=True)
 
     standard_incipit = models.CharField(max_length=64, blank=True, null=True)
     standard_full_text = models.TextField(blank=True, null=True)

@@ -12,6 +12,7 @@ from django.apps import apps
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError, RestrictedError
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
@@ -280,6 +281,7 @@ def apply_deleted_records_payload(category, payload):
         'deleted': 0,
         'missing': 0,
         'skipped': 0,
+        'protected': 0,
     }
 
     for record in results:
@@ -302,7 +304,17 @@ def apply_deleted_records_payload(category, payload):
             summary['missing'] += 1
             continue
 
-        instance.delete()
+        try:
+            with transaction.atomic():
+                instance.delete()
+        except (ProtectedError, RestrictedError):
+            # Deleted on the source peer, but still referenced locally (on_delete=PROTECT).
+            # Skip it rather than aborting the whole deletion batch; the source-of-truth
+            # deletion record stays available for a later retry once the local references
+            # are cleared.
+            summary['protected'] += 1
+            continue
+
         summary['deleted'] += 1
 
     return summary
@@ -713,8 +725,8 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 continue
 
             if category == 'shared' and existing is not None:
-                for attname in self_referential_attnames:
-                    attrs[attname] = existing.pk
+                for attname, target_attname in self_referential_attnames:
+                    attrs[attname] = getattr(existing, target_attname)
                 _check_shared_conflict(
                     existing,
                     attrs,
@@ -725,8 +737,8 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
 
             if existing is None:
                 instance = model.objects.create(**_get_create_values(model, attrs))
-                for attname in self_referential_attnames:
-                    attrs[attname] = instance.pk
+                for attname, target_attname in self_referential_attnames:
+                    attrs[attname] = getattr(instance, target_attname)
                 if attrs:
                     model.objects.filter(pk=instance.pk).update(**attrs)
                 instance.refresh_from_db()
@@ -735,8 +747,8 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 progress_made = True
                 continue
 
-            for attname in self_referential_attnames:
-                attrs[attname] = existing.pk
+            for attname, target_attname in self_referential_attnames:
+                attrs[attname] = getattr(existing, target_attname)
 
             if _is_noop(existing, attrs, m2m_values):
                 model_summary['skipped'] += 1
@@ -771,12 +783,15 @@ def _prepare_import_values(model, record):
             continue
 
         if field.is_relation and field.many_to_one:
-            uuid_key = f'{field.name}_uuid'
+            # Modern FK fields are already named e.g. "parent_colour_uuid", matching
+            # _serialize_instance's payload key directly. Older-style fields (bare
+            # "parent_colour") get the uuid under a separate "<name>_uuid" key instead.
+            uuid_key = field.name if field.name.endswith('_uuid') else f'{field.name}_uuid'
             if uuid_key in record and record[uuid_key] is not None:
                 related_object = field.related_model.objects.filter(uuid=record[uuid_key]).first()
                 if related_object is None:
                     if field.related_model == model and record[uuid_key] == record_uuid:
-                        self_referential_attnames.append(field.attname)
+                        self_referential_attnames.append((field.attname, field.target_field.attname))
                         continue
                     raise ValueError(
                         f'Missing related object for {model._meta.label}.{field.name} with uuid={record[uuid_key]}'

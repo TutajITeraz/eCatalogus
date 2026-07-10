@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
@@ -12,6 +13,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.contrib.auth.models import Permission, User
 from django.core.exceptions import PermissionDenied
+from django.db import connection
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.test.client import RequestFactory
@@ -25,6 +27,21 @@ from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
 from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+
+
+@contextmanager
+def _fk_checks_disabled():
+    """Lets a test force a stale/dangling FK value that on_delete=PROTECT and the real
+    DB constraint would otherwise reject, to simulate data that predates the constraint
+    (or arrived via a raw import) for the validators/exporters that are meant to catch it.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute('SET FOREIGN_KEY_CHECKS=0')
+    try:
+        yield
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute('SET FOREIGN_KEY_CHECKS=1')
 
 
 ETL_UI_PERMISSION_CODENAMES = [
@@ -1163,7 +1180,8 @@ class ExportModelCategoriesCommandTests(TestCase):
         tradition = Traditions.objects.create(name='Roman', genre=genre)
 
         stale_shadow_uuid = uuid4()
-        Traditions.objects.filter(pk=tradition.pk).update(genre_uuid=stale_shadow_uuid)
+        with _fk_checks_disabled():
+            Traditions.objects.filter(pk=tradition.pk).update(genre_uuid=stale_shadow_uuid)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / 'main_bundle.json'
@@ -1564,7 +1582,8 @@ class SyncMetadataTests(TestCase):
     def test_validate_uuid_shadow_fks_can_fail_on_mismatch(self):
         type_one = Type.objects.create(short_name='TPD', name='Type D')
         mass_hour = MassHour.objects.create(short_name='MHD', name='Mass Hour D', type=type_one)
-        MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=uuid4())
+        with _fk_checks_disabled():
+            MassHour.objects.filter(pk=mass_hour.pk).update(type_uuid=uuid4())
 
         with self.assertRaises(CommandError):
             call_command('validate_uuid_shadow_fks', '--model', 'MassHour', '--fail-on-issues')
@@ -1597,7 +1616,8 @@ class SyncMetadataTests(TestCase):
         contributor = Contributors.objects.create(initials='EF', first_name='Evan', last_name='Fox')
         watermark = Watermarks.objects.create(name='Broken watermark', data_contributor=contributor)
         watermark.authors.add(contributor)
-        Contributors.objects.filter(pk=contributor.pk).update(uuid=None)
+        with _fk_checks_disabled():
+            Contributors.objects.filter(pk=contributor.pk).update(uuid=None)
 
         with self.assertRaises(CommandError):
             call_command('validate_uuid_m2m', '--model', 'Watermarks', '--fail-on-issues')
@@ -1616,7 +1636,8 @@ class SyncMetadataTests(TestCase):
     def test_validate_uuid_transition_readiness_can_fail_on_missing_related_uuid(self):
         type_one = Type.objects.create(short_name='TPF', name='Type F')
         mass_hour = MassHour.objects.create(short_name='MHF', name='Mass Hour F', type=type_one)
-        Type.objects.filter(pk=type_one.pk).update(uuid=None)
+        with _fk_checks_disabled():
+            Type.objects.filter(pk=type_one.pk).update(uuid=None)
 
         with self.assertRaises(CommandError):
             call_command('validate_uuid_transition_readiness', '--model', 'MassHour', '--fail-on-issues')
