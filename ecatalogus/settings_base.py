@@ -336,6 +336,22 @@ ZOTERO_BIBLIOGRAPHY_STYLE = text_env(
     'https://www.zotero.org/styles/pontifical-biblical-institute',
 )
 
+# AI assistant (indexerapp/ai_tools.py)
+# 'ollama' runs the local model on this server: free, no API key, data stays
+# on the machine. 'openai' is the older paid backend and needs a per-user key.
+AI_ASSISTANT_BACKEND = text_env('AI_ASSISTANT_BACKEND', default='ollama')
+AI_ASSISTANT_TIMEOUT = int(text_env('AI_ASSISTANT_TIMEOUT', default='900'))
+AI_ASSISTANT_MAX_ITERATIONS = int(text_env('AI_ASSISTANT_MAX_ITERATIONS', default='15'))
+
+# Keep OLLAMA_MODEL identical to the OCR autofix tool on this server so Ollama
+# holds a single copy of the weights in memory for both applications.
+OLLAMA_HOST = text_env('OLLAMA_HOST', default='http://127.0.0.1:11434')
+OLLAMA_MODEL = text_env('OLLAMA_MODEL', default='gemma4:12b-it-qat')
+OLLAMA_REQUEST_TIMEOUT = int(text_env('OLLAMA_REQUEST_TIMEOUT', default='300'))
+OLLAMA_TEMPERATURE = float(text_env('OLLAMA_TEMPERATURE', default='0.05'))
+
+OPENAI_MODEL = text_env('OPENAI_MODEL', default='gpt-4o')
+
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
