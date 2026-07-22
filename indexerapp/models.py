@@ -844,6 +844,7 @@ class Manuscripts(models.Model):
     dating_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='dating_uuid', related_name='%(class)s_dating', blank=True, null=True)
     dating_comment = models.TextField(blank=True, null=True)
     place_of_origin_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='place_of_origin_uuid', related_name='%(class)s_origin', blank=True, null=True)
+    place_of_origin_unsure = models.BooleanField(null=True)
     place_of_origin_comment = models.TextField(blank=True, null=True)
     #number_of_parchment_folios = models.IntegerField(blank=True, null=True)
     #number_of_paper_leaves = models.IntegerField(blank=True, null=True)
@@ -862,6 +863,7 @@ class Manuscripts(models.Model):
     music_notation_comments = models.TextField(blank=True, null=True)
     binding_date_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='binding_date_uuid', related_name='%(class)s_binding_date', blank=True, null=True)
     binding_place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='binding_place_uuid', related_name='%(class)s_binding_place', blank=True, null=True)
+    binding_place_unsure = models.BooleanField(null=True)
     links = models.CharField(max_length=1024, blank=True, null=True)
 
     additional_url = models.CharField(max_length=1024, null=True, blank=True)
@@ -1344,6 +1346,7 @@ class Origins(models.Model):
 
     origins_date_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='origins_date_uuid', blank=True, null=True)
     origins_place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='origins_place_uuid', null=True, blank=True)
+    unsure = models.BooleanField(null=True)
     origins_comment = models.TextField(blank=True, null=True)
     provenance_comments = models.TextField(blank=True, null=True)
 
@@ -1370,6 +1373,7 @@ class Provenance(models.Model):
     date_to_uuid = models.ForeignKey(TimeReference, models.PROTECT, to_field='uuid', db_column='date_to_uuid', related_name='provenance_to', blank=True, null=True)
     
     place_uuid = models.ForeignKey(Places, models.PROTECT, to_field='uuid', db_column='place_uuid', null=True, blank=True)
+    unsure = models.BooleanField(null=True)
 
     timeline_sequence = models.PositiveIntegerField()
 

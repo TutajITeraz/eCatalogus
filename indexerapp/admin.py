@@ -1003,13 +1003,13 @@ class ContributorsAdmin(ImportExportDebateableAdmin):
 #Origins
 class OriginsAdmin(ImportExportDebateableAdmin):
     form = OriginsForm
-    list_display=  ['manuscript','origins_date','origins_place', 'data_contributor']
+    list_display=  ['manuscript','origins_date','origins_place', 'unsure', 'data_contributor']
 
     list_filter = [ManuscriptsFilter]
 
 class ProvenanceAdmin(ImportExportDebateableAdmin):
     form = ProvenanceForm
-    list_display=  ['manuscript','date_from','date_to','place','timeline_sequence','data_contributor']
+    list_display=  ['manuscript','date_from','date_to','place','unsure','timeline_sequence','data_contributor']
 
     list_filter = [ManuscriptsFilter]
 

@@ -427,6 +427,16 @@ function getPrintableValues(fname, fvalue) {
         value: value_prefix+ fvalue + value_suffix,
     }
 }
+function isUnsureFlag(value) {
+    return value === true || value === 'Yes' || value === 'yes';
+}
+
+function renderUnsurePlace(placeText, row) {
+    if (!row || !isUnsureFlag(row.unsure))
+        return placeText;
+    return (placeText == null ? '' : placeText) + ' <a class="unsure-marker" title="unsure">(?)</a>';
+}
+
 function getPrintableValueFromDict(dict,fname)
 {
     if(dict === 'undefined' || dict === null )

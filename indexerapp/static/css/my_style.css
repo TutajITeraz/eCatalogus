@@ -417,6 +417,13 @@ a.debate-link {
     color: blue; /* Sets the text color to white */
 }
 
+a.unsure-marker {
+    text-decoration: none;
+    color: #c32f27;
+    font-weight: bold;
+    cursor: help;
+}
+
 div {
     transition: background-color 0.5s; /* Add transition for background-color */
     background-color: transparent; /* Initial background color */

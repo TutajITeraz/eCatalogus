@@ -331,7 +331,7 @@ async function getMSInfoFiltered() {
       liturgical_genre_comment: info.liturgical_genre_comment,
       dating: info.dating,
       dating_comment: info.dating_comment,
-      place_of_origin: info.place_of_origin,
+      place_of_origin: renderUnsurePlace(info.place_of_origin, { unsure: info.place_of_origin_unsure }),
       place_of_origin_comment: info.place_of_origin_comment,
       decorated: info.decorated,
       music_notation: info.music_notation,
@@ -1644,7 +1644,14 @@ function init_origins_table() {
     columns: [
       { data: "uuid", title: "uuid", visible: false },
       { data: "origins_date", title: "origins date", width: "10%" },
-      { data: "origins_place", title: "origins place", width: "30%" },
+      {
+        data: "origins_place",
+        title: "origins place",
+        width: "30%",
+        render: (data, type, row) =>
+          type === "display" ? renderUnsurePlace(data, row) : data,
+      },
+      { data: "unsure", title: "unsure", visible: false },
       { data: "origins_comment", title: "origins comment", width: "50%" },
       {
         data: "provenance_comments",
@@ -1989,7 +1996,14 @@ function init_provenance_table() {
         },
         width: "10%",
       },
-      { data: "place", title: "place", width: "30%" },
+      {
+        data: "place",
+        title: "place",
+        width: "30%",
+        render: (data, type, row) =>
+          type === "display" ? renderUnsurePlace(data, row) : data,
+      },
+      { data: "unsure", title: "unsure", visible: false },
       { data: "timeline_sequence", title: "timeline_sequence", visible: false },
       { data: "comment", title: "comment", width: "50%" },
       { data: "authors", title: "authors", visible: false },
@@ -2999,7 +3013,7 @@ async function map_init() {
 
     var marker = L.marker([markers[m].lat, markers[m].lon], {
       icon: L.divIcon({
-        html: `<img src="/static/img/icons/marker_number.svg"><div class="number">${Number(m) + 1}</div>`,
+        html: `<img src="/static/img/icons/marker_number.svg"><div class="number">${Number(m) + 1}</div>${markers[m].unsure ? '<div class="unsure-badge" title="unsure">?</div>' : ''}`,
         className: 'leaflet-marker-icon leaflet-div-icon',
         iconSize: L.point(25, 41)
       }),
@@ -3007,7 +3021,7 @@ async function map_init() {
     });
     marker.addTo(map);
 
-    marker.bindPopup("<b>" + markers[m].name + "</b>", {
+    marker.bindPopup("<b>" + markers[m].name + "</b>" + (markers[m].unsure ? ' <a class="unsure-marker" title="unsure">(?)</a>' : ''), {
       autoPan: false,
     });
 

@@ -1224,30 +1224,36 @@ manuscripts_init = function()
 
         // Group manuscripts by coordinates
         data.forEach((item, index) => {
-            let lat, lon, name, uuid;
+            let lat, lon, name, uuid, unsure;
             if (currentPlaceType === 'contemporary_repository_place') {
                 lat = item.contemporary_repository_place_latitude;
                 lon = item.contemporary_repository_place_longitude;
                 name = item.contemporary_repository_place_name;
                 uuid = item.uuid;
+                unsure = false;
             } else if (currentPlaceType === 'place_of_origin') {
                 lat = item.place_of_origin_latitude;
                 lon = item.place_of_origin_longitude;
                 name = item.place_of_origin_name;
                 uuid = item.uuid;
+                unsure = isUnsureFlag(item.place_of_origin_unsure);
             } else {
                 lat = item.binding_place_latitude;
                 lon = item.binding_place_longitude;
                 name = item.binding_place_name;
                 uuid = item.uuid;
+                unsure = isUnsureFlag(item.binding_place_unsure);
             }
 
             if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
                 let key = `${lat},${lon}`;
                 if (!manuscriptsByLocation[key]) {
-                    manuscriptsByLocation[key] = { lat, lon, name, manuscripts: [] };
+                    manuscriptsByLocation[key] = { lat, lon, name, unsure: false, manuscripts: [] };
                 }
-                manuscriptsByLocation[key].manuscripts.push({ uuid, name: item.name, shelf_mark: item.shelf_mark });
+                if (unsure) {
+                    manuscriptsByLocation[key].unsure = true;
+                }
+                manuscriptsByLocation[key].manuscripts.push({ uuid, name: item.name, shelf_mark: item.shelf_mark, unsure });
             }
         });
 
@@ -1257,12 +1263,13 @@ manuscripts_init = function()
             location.manuscripts.forEach(ms => {
                 const shelfMark = ms.shelf_mark || ''; // Fallback to empty string if shelf_mark is undefined
                 const displayName = shelfMark ? `${shelfMark}, ${ms.name || 'Manuscript'}` : ms.name || 'Manuscript';
-                popupContent += `<li><a href="${window.getManuscriptPageUrl(ms)}" class="text-blue-600 hover:underline">${displayName}</a></li>`;
+                const unsureMark = ms.unsure ? ' <a class="unsure-marker" title="unsure">(?)</a>' : '';
+                popupContent += `<li><a href="${window.getManuscriptPageUrl(ms)}" class="text-blue-600 hover:underline">${displayName}</a>${unsureMark}</li>`;
             });
             popupContent += '</ul>';
             var marker = L.marker([location.lat, location.lon], {
                 icon: L.divIcon({
-                    html: `<img src="/static/img/icons/marker_number.svg">${location.manuscripts.length > 1 ? '<div class="number">' + location.manuscripts.length + '</div>' : ''}`,
+                    html: `<img src="/static/img/icons/marker_number.svg">${location.manuscripts.length > 1 ? '<div class="number">' + location.manuscripts.length + '</div>' : ''}${location.unsure ? '<div class="unsure-badge" title="unsure">?</div>' : ''}`,
                     className: 'leaflet-marker-icon leaflet-div-icon',
                     iconSize: L.point(25, 41)
                 })
@@ -1326,7 +1333,7 @@ manuscripts_init = function()
                         + "<div class='left_script_content'>"
                         + "<div class='ms_foreign_id'><span class='mspltext'> " + (oData.contemporary_repository_place_name || '') + ":</span> "+ (oData.shelf_mark || '') + "<span class='mspltext'> (Shelfmark), </span><br /><span class='mspltext'>Manuscripta.pl: </span>" + (oData.foreign_id || '') + "</div>"
                         + "<div class='ms_dating'><b>Dating: </b>" + (oData.dating || '') + "</div>"
-                        + "<div class='ms_place_of_origin'><b>Place of origin: </b>" + (oData.place_of_origin_name || '') + "</div>"
+                        + "<div class='ms_place_of_origin'><b>Place of origin: </b>" + renderUnsurePlace(oData.place_of_origin_name || '', { unsure: oData.place_of_origin_unsure }) + "</div>"
                         + "<div class='ms_place_of_origin'><b>Medieval provenance: </b>" + (oData.ms_provenance || '') + "</div>"
                         + "</div>"
                         + "<div class='right_script_content'>"
@@ -1355,6 +1362,7 @@ manuscripts_init = function()
             { "data": "place_of_origin_name", "title": "Place of Origin Name", visible: false },
             { "data": "place_of_origin_latitude", "title": "Place of Origin Latitude", visible: false },
             { "data": "place_of_origin_longitude", "title": "Place of Origin Longitude", visible: false },
+            { "data": "place_of_origin_unsure", "title": "Place of Origin Unsure", visible: false },
             { "data": "dating", "title": "Dating", visible: false },
             { "data": "dating_year", "title": "Dating Year", visible: false },
             { "data": "decorated", "title": "Decorated", visible: false },
@@ -1363,6 +1371,7 @@ manuscripts_init = function()
             { "data": "binding_place_name", "title": "Binding Place Name", visible: false },
             { "data": "binding_place_latitude", "title": "Binding Place Latitude", visible: false },
             { "data": "binding_place_longitude", "title": "Binding Place Longitude", visible: false },
+            { "data": "binding_place_unsure", "title": "Binding Place Unsure", visible: false },
             { "data": "thumbnail_url", "title": "Thumbnail URL", visible: false },
             { "data": "source_project_name", "title": "Source Project Name", visible: false },
             { "data": "source_project_url", "title": "Source Project URL", visible: false },

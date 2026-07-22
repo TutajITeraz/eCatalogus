@@ -1955,6 +1955,7 @@ class ProvenanceAjaxView(View):
                     'name': name,
                     'lon': place.longitude,
                     'lat': place.latitude,
+                    'unsure': bool(p.unsure),
                 })
 
         # Handle debates
