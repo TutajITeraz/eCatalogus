@@ -456,6 +456,7 @@ class ManuscriptBibliographyInline(admin.TabularInline):
 
 class OriginsInline(admin.TabularInline):
     model = Origins
+    form = OriginsForm
     fk_name = 'manuscript_uuid'
     extra = 0
 
@@ -468,6 +469,7 @@ class OriginsInline(admin.TabularInline):
 
 class ProvenanceInline(admin.TabularInline):
     model = Provenance
+    form = ProvenanceForm
     fk_name = 'manuscript_uuid'
     extra = 0
 
