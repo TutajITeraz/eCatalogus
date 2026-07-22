@@ -107,6 +107,10 @@ from captcha.helpers import captcha_image_url
 #For traditions assignment:
 from django.db import transaction
 
+#For the data licence declared on exports:
+from django.conf import settings
+
+from .api_access import AnonExpensiveRateThrottle, EditorRequiredForWriteMixin, EditorRequiredMixin
 from .zotero_service import ZoteroConfigurationError, get_zotero_config, render_bibliography_entries
 
 
@@ -476,13 +480,16 @@ class GlobalCharFilter(GlobalFilter, filters.CharFilter):
     pass
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class MSGalleryView(View):
+class MSGalleryView(EditorRequiredForWriteMixin, View):
     """Manage manuscript gallery.
 
     GET: require ?manuscript_uuid=<uuid> — returns JSON with images for manuscript
     POST: accept multipart/form-data with manuscript_uuid and one or more files in 'images' field
+
+    Reading is public; uploading and deleting require an authorised account.
     """
+
+    required_permissions = ('add_image',)
     def get(self, request, *args, **kwargs):
         manuscript_selector = _get_first_present(request.GET, 'manuscript_uuid', 'ms_uuid')
         if not manuscript_selector:
@@ -669,7 +676,11 @@ class ContentGlobalFilter(DatatablesFilterSet):
         fields = '__all__'
 
 
-class ContentViewSet(viewsets.ModelViewSet):
+class ContentViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: these viewsets exist to feed the DataTables widgets in the
+    # UI, which only ever issue GET. ModelViewSet additionally published
+    # POST/PUT/PATCH/DELETE that nothing calls — surface with no purpose.
+    # Editing happens in the Django admin and through /api/v1/.
     queryset = Content.objects.all().order_by('manuscript_uuid')
     serializer_class = ContentSerializer
     filter_backends = [CustomDatatablesFilterBackend]
@@ -696,7 +707,11 @@ class ContentViewSet(viewsets.ModelViewSet):
     def count(self, request, queryset):
         return queryset.count()
 
-class ManuscriptHandsViewSet(viewsets.ModelViewSet):
+class ManuscriptHandsViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: these viewsets exist to feed the DataTables widgets in the
+    # UI, which only ever issue GET. ModelViewSet additionally published
+    # POST/PUT/PATCH/DELETE that nothing calls — surface with no purpose.
+    # Editing happens in the Django admin and through /api/v1/.
     serializer_class = ManuscriptHandsSerializer
     filter_backends = [DatatablesFilterBackend]
 
@@ -719,7 +734,11 @@ class ManuscriptHandsViewSet(viewsets.ModelViewSet):
         
         return queryset
 
-class ManuscriptsViewSet(viewsets.ModelViewSet):
+class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: these viewsets exist to feed the DataTables widgets in the
+    # UI, which only ever issue GET. ModelViewSet additionally published
+    # POST/PUT/PATCH/DELETE that nothing calls — surface with no purpose.
+    # Editing happens in the Django admin and through /api/v1/.
     queryset = Manuscripts.objects.all().order_by('name')
     serializer_class = ManuscriptsSerializer
 
@@ -2764,8 +2783,9 @@ class PlacesCountriesAutocomplete(autocomplete.Select2QuerySetView):
 
         return '-'
 
-@method_decorator(csrf_exempt, name='dispatch')
-class ContentImportView(View):
+class ContentImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_content',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3043,8 +3063,9 @@ class ContentImportView(View):
         obj = model.objects.filter(bibliography__shortname__iexact=bibliography_shortname, feast_rubric_sequence=feast_rubric_sequence).first()
         return obj.id if obj else None
 
-@method_decorator(csrf_exempt, name='dispatch')
-class ManuscriptsImportView(View):
+class ManuscriptsImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_manuscripts',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3214,8 +3235,9 @@ class ManuscriptsImportView(View):
         return obj.id if obj else None
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class TimeReferenceImportView(View):
+class TimeReferenceImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_timereference',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3274,8 +3296,9 @@ class TimeReferenceImportView(View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-@method_decorator(csrf_exempt, name='dispatch')
-class EditionContentImportView(View):
+class EditionContentImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_editioncontent',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3351,8 +3374,9 @@ class EditionContentImportView(View):
 
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class CllaImportView(View):
+class CllaImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_clla',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3438,8 +3462,9 @@ class CllaImportView(View):
         return obj.id if obj else None
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class PlacesImportView(View):
+class PlacesImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_places',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3514,8 +3539,9 @@ class PlacesImportView(View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-@method_decorator(csrf_exempt, name='dispatch')
-class RiteNamesImportView(View):
+class RiteNamesImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_ritenames',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3583,8 +3609,9 @@ class RiteNamesImportView(View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-@method_decorator(csrf_exempt, name='dispatch')
-class FormulasImportView(View):
+class FormulasImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_formulas',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -3635,8 +3662,9 @@ class FormulasImportView(View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-@method_decorator(csrf_exempt, name='dispatch')
-class BibliographyImportView(View):
+class BibliographyImportView(EditorRequiredMixin, View):
+    required_permissions = ('add_bibliography',)
+
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -4420,15 +4448,21 @@ class ManuscriptTEI(TemplateView):
         context = self.get_context_data(manuscript=manuscript)
         context['medieval_hands'] = medieval_hands
         context['added_hands'] = added_hands
+        # Feeds <availability>/<licence> in the teiHeader. A TEI file travels far
+        # from here, so it has to carry its own terms.
+        context['data_license'] = getattr(settings, 'DATA_LICENSE', {})
 
         xml_content = render_to_string(self.template_name, context)
 
         # Prepare the response as XML
         response = HttpResponse(xml_content, content_type="application/xml")
-        
+
         #Uncomment for download:
         #response['Content-Disposition'] = f'attachment; filename="manuscript_{ms_id}.xml"'
         response['Content-Disposition'] = 'inline'  # Display inline instead of downloading
+        license_url = context['data_license'].get('url')
+        if license_url:
+            response['Link'] = f'<{license_url}>; rel="license"'
 
 
         return response
@@ -4591,10 +4625,15 @@ class AssignMSContentToTraditionView(View):
             'added_count': added_count
         })
 
-class FormulasIndexViewSet(viewsets.ModelViewSet):
+class FormulasIndexViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: these viewsets exist to feed the DataTables widgets in the
+    # UI, which only ever issue GET. ModelViewSet additionally published
+    # POST/PUT/PATCH/DELETE that nothing calls — surface with no purpose.
+    # Editing happens in the Django admin and through /api/v1/.
     queryset = Formulas.objects.all().prefetch_related('tradition').order_by('id')
     serializer_class = FormulasIndexSerializer
     filter_backends = [CustomDatatablesFilterBackend]
+    throttle_classes = [AnonExpensiveRateThrottle]
 
     def get_queryset(self):
         queryset = Formulas.objects.prefetch_related('tradition', 'content_set__manuscript_uuid')
@@ -4645,10 +4684,15 @@ class FormulasIndexViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class RiteNamesIndexViewSet(viewsets.ModelViewSet):
+class RiteNamesIndexViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: these viewsets exist to feed the DataTables widgets in the
+    # UI, which only ever issue GET. ModelViewSet additionally published
+    # POST/PUT/PATCH/DELETE that nothing calls — surface with no purpose.
+    # Editing happens in the Django admin and through /api/v1/.
     queryset = RiteNames.objects.all().order_by('name')
     serializer_class = RiteNamesIndexSerializer
     filter_backends = [CustomDatatablesFilterBackend]
+    throttle_classes = [AnonExpensiveRateThrottle]
     skip_custom_ordering = True
 
     def get_queryset(self):
@@ -4693,10 +4737,15 @@ class RiteNamesIndexViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class SubjectsIndexViewSet(viewsets.ModelViewSet):
+class SubjectsIndexViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: these viewsets exist to feed the DataTables widgets in the
+    # UI, which only ever issue GET. ModelViewSet additionally published
+    # POST/PUT/PATCH/DELETE that nothing calls — surface with no purpose.
+    # Editing happens in the Django admin and through /api/v1/.
     queryset = Subjects.objects.all().order_by('name')
     serializer_class = SubjectsIndexSerializer
     filter_backends = [CustomDatatablesFilterBackend]
+    throttle_classes = [AnonExpensiveRateThrottle]
     skip_custom_ordering = True
 
     def get_queryset(self):

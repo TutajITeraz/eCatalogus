@@ -42,6 +42,11 @@
                <persName>Paweł Figurski</persName>
                <email>pawel.figurski.uw@gmail.com</email>
             </distributor>
+            <availability status="restricted">
+               <licence target="{{ data_license.url }}">{{ data_license.name }}</licence>
+               <p>{{ data_license.copyright }}</p>
+               <p>{{ data_license.required_statement }}</p>
+            </availability>
          </publicationStmt>
          <sourceDesc>
             <msDesc xml:lang="lat" xml:id="{{ manuscript.id }}">

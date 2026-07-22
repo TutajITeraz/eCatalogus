@@ -127,7 +127,7 @@ SESSION_COOKIE_DOMAIN_DYNAMIC = csv_env(
 CORS_ALLOW_CREDENTIALS = True
 SESSION_COOKIE_HTTPONLY = False
 SESSION_COOKIE_SAMESITE = None
-CRSF_COOKIE_SAMESITE = None
+CSRF_COOKIE_SAMESITE = None
 ETL_USE_CELERY = bool_env('ETL_USE_CELERY', '1')
 
 # Application definition
@@ -141,6 +141,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'indexerapp.apps.IndexerappConfig',
     'etlapp.apps.EtlappConfig',
+    'apiv1.apps.ApiV1Config',
     'data_browser',
     'admin_searchable_dropdown',
     # 'jquery',
@@ -165,13 +166,42 @@ REST_FRAMEWORK = {
         'rest_framework_datatables.renderers.DatatablesRenderer',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # Session for the browser UI, HTTP Basic for machine-to-machine callers such
+    # as ritus-indexer. Basic skips CSRF, session does not — both are safe.
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ),
+    # Fail closed on writes. Viewsets that need a different policy override it.
+    'DEFAULT_PERMISSION_CLASSES': (
+        'indexerapp.api_access.PublicReadOrEditorWrite',
+    ),
     'DEFAULT_FILTER_BACKENDS': (
         'rest_framework_datatables.filters.DatatablesFilterBackend',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework_datatables.pagination.DatatablesPageNumberPagination',
     'PAGE_SIZE': 50,
     'EXCEPTION_HANDLER': 'indexerapp.exceptions.custom_exception_handler',
+    # AnonRateThrottle returns no cache key for authenticated requests, so ETL
+    # token clients and logged-in integrations are never throttled. Only
+    # anonymous public traffic is.
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+    ),
+    # Generous enough that a human browsing the catalogue never notices — one
+    # manuscript page fires ~20 requests — but low enough to cap a scraper.
+    # NOTE: with the LocMemCache backend these counters are per gunicorn worker,
+    # so the effective limit is (rate x worker count). Point CACHES['default'] at
+    # Redis if you need the rate to be exact.
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv('API_ANON_THROTTLE_RATE', '600/min'),
+        'anon_expensive': os.getenv('API_ANON_EXPENSIVE_THROTTLE_RATE', '60/min'),
+    },
 }
+
+# Bulk imports legitimately post multi-megabyte JSON payloads. Anonymous callers
+# cannot reach any write endpoint, so a high ceiling costs us nothing.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('DATA_UPLOAD_MAX_MEMORY_SIZE', str(256 * 1024 * 1024)))
 
 DATATABLES = {
     'IGNORE_VALIDATION_ERRORS': True,
@@ -183,29 +213,44 @@ REST_FRAMEWORK_DATATABLES = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'eCatalogus ETL API',
-    'DESCRIPTION': 'OpenAPI schema for ETL synchronization endpoints used by multi-instance dictionary and manuscript replication.',
+    'TITLE': 'eCatalogus API',
+    'DESCRIPTION': (
+        'Two APIs live here.\n\n'
+        '**Public API v1** (`/api/v1/`) is the interoperability surface for other '
+        'digital humanities systems: read manuscripts, their full descriptions and the '
+        'controlled vocabularies; create manuscripts and bulk-import content. '
+        'Reads are open. Writes need an eCatalogus account sent as HTTP Basic '
+        'authentication over HTTPS.\n\n'
+        '**ETL** (`/api/etl/`) is internal replication between eCatalogus instances. '
+        'It authenticates with a shared per-instance token and is not intended for '
+        'third parties.\n\n'
+        'See `INTEGRATION.md` in the repository for a task-oriented walkthrough.'
+    ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
-    'SCHEMA_PATH_PREFIX': r'/api/etl',
+    'SCHEMA_PATH_PREFIX': r'/api',
     'TAGS': [
-        {'name': 'ETL', 'description': 'Machine-to-machine ETL synchronization endpoints.'},
+        {'name': 'Public API v1', 'description': 'Interoperability endpoints for external systems.'},
+        {'name': 'ETL', 'description': 'Machine-to-machine ETL synchronization between eCatalogus instances.'},
     ],
 }
 
 MIDDLEWARE = [
     'iommi.live_edit.Middleware',
     'django.middleware.security.SecurityMiddleware',
+    # CorsMiddleware must run before CommonMiddleware: it answers the preflight
+    # OPTIONS request itself, and CORS headers have to be present on every
+    # response CommonMiddleware might generate. Placed after it, cross-origin
+    # browser calls from partner sites fail at preflight.
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'iommi.sql_trace.Middleware',
     'iommi.profiling.Middleware',
-    'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'iommi.middleware',
 ]
@@ -318,6 +363,38 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake',
     }
+}
+
+# Rights and licensing of the exported data.
+#
+# Every public API response carries this, and a `Link: <url>; rel="license"`
+# header, so a consumer can never end up holding the data without knowing the
+# terms. Keys follow Dublin Core / schema.org naming so they map cleanly onto
+# what other digital humanities systems already understand.
+#
+# Set DATA_LICENSE_* environment variables to override per deployment.
+DATA_LICENSE = {
+    # SPDX identifier — the machine-readable form other systems match on.
+    'id': os.getenv('DATA_LICENSE_ID', 'CC-BY-4.0'),
+    'name': os.getenv('DATA_LICENSE_NAME', 'Creative Commons Attribution 4.0 International'),
+    'url': os.getenv('DATA_LICENSE_URL', 'https://creativecommons.org/licenses/by/4.0/'),
+    'copyright': os.getenv(
+        'DATA_LICENSE_COPYRIGHT',
+        'Copyright (c) 2024-2026 Instytut Sztuki Polskiej Akademii Nauk (PAN) '
+        '- Polish Academy of Sciences.',
+    ),
+    'rights_holder': os.getenv(
+        'DATA_LICENSE_RIGHTS_HOLDER',
+        'Instytut Sztuki Polskiej Akademii Nauk (PAN)',
+    ),
+    'rights_holder_url': os.getenv('DATA_LICENSE_RIGHTS_HOLDER_URL', 'https://ispan.pl/'),
+    # Attribution the reuser is required to reproduce. Kept separate from the
+    # copyright line because CC BY obliges display of the credit, not the notice.
+    'required_statement': os.getenv(
+        'DATA_LICENSE_REQUIRED_STATEMENT',
+        'Data from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). '
+        'Used under CC BY 4.0.',
+    ),
 }
 
 # Site identity — override per instance

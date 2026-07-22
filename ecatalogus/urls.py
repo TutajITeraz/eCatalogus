@@ -130,8 +130,11 @@ router.register(r'hands', views.ManuscriptHandsViewSet, basename='hands')
 router.register(r'manuscripts', views.ManuscriptsViewSet)
 
 urlpatterns = [
-    path('api/schema/', admin.site.admin_view(SpectacularAPIView.as_view()), name='api-schema'),
-    path('api/schema/swagger/', admin.site.admin_view(SpectacularSwaggerView.as_view(url_name='api-schema')), name='api-schema-swagger'),
+    # The schema documents endpoints, it does not expose data, and every write
+    # endpoint it describes requires authentication — so it is served publicly.
+    # Integration partners need to reach it without an eCatalogus admin account.
+    path('api/schema/', SpectacularAPIView.as_view(), name='api-schema'),
+    path('api/schema/swagger/', SpectacularSwaggerView.as_view(url_name='api-schema'), name='api-schema-swagger'),
     path('admin/etl-sync/', admin.site.admin_view(ETLAdminSyncView.as_view()), name='admin-etl-sync'),
     path('admin/', admin.site.urls),
     path("data-browser/", include("data_browser.urls")),
@@ -263,6 +266,7 @@ urlpatterns = [
 
     #path('ms_music_notation/<int:pk>/', views.MSMusicNotationView.as_view(), name='ms_music_notation'),
     #path('ms_content/<int:pk>/', views.MSContentView.as_view(), name='ms_content_view'),
+    path('api/v1/', include('apiv1.urls')),
     path('api/', include(router.urls)),
     path('api/etl/', include((etl_urls, 'etlapp'), namespace='etl')),
 

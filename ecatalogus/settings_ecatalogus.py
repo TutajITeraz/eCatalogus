@@ -36,5 +36,10 @@ apply_instance_settings(
             'https://ecatalogus.ispan.pl',
             'http://ecatalogus.ispan.pl',
         ],
+        # Partner sites allowed to call /api/v1/ from their users' browsers.
+        # Override per deployment with API_INTEGRATION_ORIGINS.
+        'api_integration_origins': [
+            'https://ritus-indexer.ispan.pl',
+        ],
     },
 )

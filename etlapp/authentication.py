@@ -2,6 +2,7 @@ import secrets
 from dataclasses import dataclass
 
 from django.conf import settings
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 
@@ -49,3 +50,27 @@ class ETLTokenAuthentication(BaseAuthentication):
             raise exceptions.AuthenticationFailed('Unsupported authorization header format.')
 
         return parts[1].strip()
+
+
+class ETLTokenAuthenticationScheme(OpenApiAuthenticationExtension):
+    """Describe the ETL token in the OpenAPI schema.
+
+    drf-spectacular cannot introspect a custom authentication class, so without
+    this the ETL operations were published with no security requirement at all —
+    making replication endpoints look unauthenticated to anyone reading the docs.
+    """
+
+    target_class = 'etlapp.authentication.ETLTokenAuthentication'
+    name = 'etlToken'
+
+    def get_security_definition(self, auto_schema):
+        return {
+            'type': 'apiKey',
+            'in': 'header',
+            'name': 'X-ETL-Token',
+            'description': (
+                'Shared per-instance replication token. Also accepted as '
+                '"Authorization: Token <value>" or "Authorization: Bearer <value>". '
+                'Internal to eCatalogus deployments — not for third-party use.'
+            ),
+        }

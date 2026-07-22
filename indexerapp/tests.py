@@ -933,6 +933,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 	def test_ms_gallery_upload_accepts_manuscript_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Upload manuscript')
 		uploaded = SimpleUploadedFile('gallery.txt', b'abc', content_type='text/plain')
+		# Uploads require an authorised account; reading the gallery does not.
+		self.client.force_login(
+			get_user_model().objects.create_superuser(
+				'gallery-upload-admin', 'gallery-upload-admin@example.com', 'secret'
+			)
+		)
 
 		response = self.client.post(
 			reverse('ms_gallery'),
@@ -942,6 +948,25 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(Image.objects.filter(manuscript_uuid=manuscript).count(), 1)
 		self.assertIn('uuid', response.json()['created'][0])
+
+	def test_ms_gallery_upload_rejects_anonymous(self):
+		manuscript = Manuscripts.objects.create(name='Anonymous upload manuscript')
+		uploaded = SimpleUploadedFile('gallery.txt', b'abc', content_type='text/plain')
+
+		response = self.client.post(
+			reverse('ms_gallery'),
+			{'manuscript_uuid': str(manuscript.uuid), 'images': [uploaded]},
+		)
+
+		self.assertEqual(response.status_code, 401)
+		self.assertEqual(Image.objects.filter(manuscript_uuid=manuscript).count(), 0)
+
+	def test_ms_gallery_read_stays_public(self):
+		manuscript = Manuscripts.objects.create(name='Public gallery manuscript')
+
+		response = self.client.get(reverse('ms_gallery'), {'manuscript_uuid': str(manuscript.uuid)})
+
+		self.assertEqual(response.status_code, 200)
 
 	def test_ms_gallery_delete_accepts_image_uuid(self):
 		manuscript = Manuscripts.objects.create(name='Delete gallery manuscript')
@@ -1260,6 +1285,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 			reverse('content_csv_export', kwargs={'manuscript_id': 1})
 
 	def test_content_import_accepts_manuscript_uuid_payload(self):
+		# Import endpoints now require an authorised account.
+		self.client.force_login(
+			get_user_model().objects.create_superuser(
+				'import-admin-1', 'import-admin-1@example.com', 'secret'
+			)
+		)
 		manuscript = Manuscripts.objects.create(name='Imported manuscript')
 
 		response = self.client.post(
@@ -1302,6 +1333,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertTrue(Content.objects.filter(manuscript_uuid=manuscript, formula_text='Imported text').exists())
 
 	def test_content_import_rejects_legacy_manuscript_id_payload(self):
+		# Import endpoints now require an authorised account.
+		self.client.force_login(
+			get_user_model().objects.create_superuser(
+				'import-admin-2', 'import-admin-2@example.com', 'secret'
+			)
+		)
 		manuscript = Manuscripts.objects.create(name='Legacy imported manuscript')
 
 		response = self.client.post(
@@ -1343,6 +1380,12 @@ class ManuscriptUUIDLookupViewTests(TestCase):
 		self.assertIn('could not resolve manuscript selector', response.json()['info'])
 
 	def test_clla_import_accepts_manuscript_uuid_payload(self):
+		# Import endpoints now require an authorised account.
+		self.client.force_login(
+			get_user_model().objects.create_superuser(
+				'import-admin-3', 'import-admin-3@example.com', 'secret'
+			)
+		)
 		manuscript = Manuscripts.objects.create(name='CLLA manuscript')
 
 		response = self.client.post(

@@ -22,6 +22,17 @@ def _csv(items):
     return ','.join(item for item in items if item)
 
 
+def _merge_origins(*origin_lists):
+    """Combine origin lists, dropping blanks and duplicates but keeping order."""
+    merged = []
+    for origins in origin_lists:
+        for origin in origins or []:
+            origin = origin.strip()
+            if origin and origin not in merged:
+                merged.append(origin)
+    return merged
+
+
 def load_instance_registry(base_dir, registry_path=None):
     path = Path(registry_path or (base_dir / 'scripts' / 'config' / 'instance_registry.toml'))
     if not path.exists():
@@ -117,6 +128,7 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         f"https://{resolved_defaults.get('domain', '')}" if resolved_defaults.get('domain') else '',
         f"http://{resolved_defaults.get('domain', '')}" if resolved_defaults.get('domain') else '',
     ]
+    default_api_integration_origins = resolved_defaults.get('api_integration_origins') or []
     media_root_env_name = resolved_defaults.get('media_root_env_name') or f'{env_prefix}_MEDIA_ROOT'
     default_media_root = resolved_defaults.get('media_root') or str(base_dir / 'media_instances' / instance_slug)
     default_role = resolved_defaults.get('role', 'slave')
@@ -204,9 +216,18 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
             f'{env_prefix}_CSRF_TRUSTED_ORIGINS',
             os.getenv('CSRF_TRUSTED_ORIGINS', _csv(default_csrf_trusted_origins)),
         ),
-        'CORS_ALLOWED_ORIGINS': csv_env(
-            f'{env_prefix}_CORS_ALLOWED_ORIGINS',
-            os.getenv('CORS_ALLOWED_ORIGINS', _csv(default_cors_allowed_origins)),
+        'CORS_ALLOWED_ORIGINS': _merge_origins(
+            csv_env(
+                f'{env_prefix}_CORS_ALLOWED_ORIGINS',
+                os.getenv('CORS_ALLOWED_ORIGINS', _csv(default_cors_allowed_origins)),
+            ),
+            # Partner sites whose browser code calls the public API directly.
+            # Kept separate so an integration can be added without editing the
+            # instance's own origin list.
+            csv_env(
+                f'{env_prefix}_API_INTEGRATION_ORIGINS',
+                os.getenv('API_INTEGRATION_ORIGINS', _csv(default_api_integration_origins)),
+            ),
         ),
         'DATABASES': {'default': database_config},
         'STATICFILES_DIRS': [

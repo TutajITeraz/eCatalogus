@@ -656,11 +656,20 @@ function sendToServer() {
         type: 'POST',
         data: JSON.stringify(data),
         contentType: 'application/json',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security
+        },
         success: function (response) {
             handleServerResponse(response);
         },
-        error: function () {
-            handleServerResponse({info: 'error'});
+        error: function (xhr) {
+            if (xhr.status === 401) {
+                handleServerResponse({info: 'you have to be logged in to import data'});
+            } else if (xhr.status === 403) {
+                handleServerResponse({info: 'your account is not allowed to import into this table'});
+            } else {
+                handleServerResponse({info: 'error'});
+            }
         }
     });
 }

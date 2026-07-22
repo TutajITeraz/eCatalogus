@@ -137,6 +137,24 @@ def ensure_configured_superuser_after_migrate(sender, app_config=None, verbosity
     if changed and verbosity >= 1:
         logger.info('Ensured Django superuser from DJANGO_SUPERUSER_* environment variables.')
 
+    ensure_api_importer_group(using=using)
+
+
+def ensure_api_importer_group(*, using='default'):
+    """Make the API write-access group exist so it is pickable in the admin.
+
+    Granting a user API write access should be one click on an existing account,
+    not a management command.
+    """
+    from django.contrib.auth.models import Group
+
+    from .api_access import API_IMPORTER_GROUP
+
+    _, created = Group.objects.using(using).get_or_create(name=API_IMPORTER_GROUP)
+    if created:
+        logger.info('Created the "%s" group for public API write access.', API_IMPORTER_GROUP)
+    return created
+
 # Signal for Layouts, Quires, Calendar, Decoration, ManuscriptHands, and ManuscriptMusicNotations
 @receiver(pre_save, sender=Layouts)
 @receiver(pre_save, sender=Quires)

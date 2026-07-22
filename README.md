@@ -291,3 +291,21 @@ export DJANGO_SETTINGS_MODULE=ecatalogus.settings_ecatalogus
 /Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py makemigrations
 /Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py migrate
 /Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py collectstatic
+
+cd /Users/lukasz/Developer/LiturgicaPoloniae
+export DJANGO_SETTINGS_MODULE=ecatalogus.settings_canon-missae
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py makemigrations
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py migrate
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py collectstatic
+
+cd /Users/lukasz/Developer/LiturgicaPoloniae
+export DJANGO_SETTINGS_MODULE=ecatalogus.settings_corpus-liturgicum
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py makemigrations
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py migrate
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py collectstatic
+
+cd /Users/lukasz/Developer/LiturgicaPoloniae
+export DJANGO_SETTINGS_MODULE=ecatalogus.settings_limbo
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py makemigrations
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py migrate
+/Users/lukasz/Developer/LiturgicaPoloniae/.venv/bin/python manage.py collectstatic

@@ -73,6 +73,11 @@ class ETLAPIView(APIView):
     authentication_classes = [ETLTokenAuthentication]
     permission_classes = [IsAuthenticated]
     renderer_classes = [JSONRenderer, ETLHTMLJSONRenderer]
+    # Replication between instances must never be rate limited. The global
+    # AnonRateThrottle would already exempt these token-authenticated calls;
+    # clearing the list makes that guarantee explicit and immune to future
+    # changes to DEFAULT_THROTTLE_CLASSES.
+    throttle_classes = []
 
 
 class ETLStatusView(ETLAPIView):
