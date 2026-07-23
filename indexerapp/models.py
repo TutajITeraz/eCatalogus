@@ -718,7 +718,7 @@ class Places(models.Model):
     longitude = models.FloatField(validators=[MinValueValidator(-180.0), MaxValueValidator(180.0)], blank=True, null=True)
     latitude = models.FloatField(validators=[MinValueValidator(-90.0), MaxValueValidator(90.0)], blank=True, null=True)
 
-    place_type = models.CharField(max_length=10,choices=[("library", "library"),("center", "center"),("scriptory","scriptory"),("multiple","multiple")], blank=True, null=True)
+    place_type = models.CharField(max_length=32,choices=[("library", "library"),("center", "center"),("scriptory","scriptory"),("multiple","multiple"),("current repository","current repository"),("historical institution","historical institution"),("region","region"),("city","city"),("diocese","diocese")], blank=True, null=True)
 
     country_today_eng = models.CharField(max_length=64, blank=True, null=True)
     region_today_eng = models.CharField(max_length=64, blank=True, null=True)

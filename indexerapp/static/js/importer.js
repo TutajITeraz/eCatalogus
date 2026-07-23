@@ -263,9 +263,9 @@ function validatePlaces(data) {
         if ( !isFloat(row.latitude) && row.latitude != "") {
             errors.push(`Invalid float value in latitude at row ${rowIndex + 1}. Value: "${row.latitude}"`);
         }
-        if( !(row.place_type=="library" || row.place_type=="center" || row.place_type=="scriptory" || row.place_type=="multiple" || row.place_type=="" || !row.place_type ) )
+        if( !(row.place_type=="library" || row.place_type=="center" || row.place_type=="scriptory" || row.place_type=="multiple" || row.place_type=="current repository" || row.place_type=="historical institution" || row.place_type=="region" || row.place_type=="city" || row.place_type=="diocese" || row.place_type=="" || !row.place_type ) )
         {
-            errors.push(`Invalid value in place_type at row ${rowIndex + 1}. Value: "${row.place_type}". Only "library", "center", "scriptory", "multiple" or empty is allowed"`);
+            errors.push(`Invalid value in place_type at row ${rowIndex + 1}. Value: "${row.place_type}". Only "library", "center", "scriptory", "multiple", "current repository", "historical institution", "region", "city", "diocese" or empty is allowed"`);
         }
     });
 
