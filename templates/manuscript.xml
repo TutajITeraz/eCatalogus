@@ -57,7 +57,7 @@
                   <idno type="shelfmark">{{ manuscript.shelf_mark }}</idno>
                   <msName xml:lang="la">{{ manuscript.name }}</msName>
                   <altIdentifier type="external">
-                     <idno type="MSPL">{{ manuscript.foreign_id }}</idno>
+                     <idno type="{{ foreign_id_name }}">{{ manuscript.foreign_id }}</idno>
                   </altIdentifier>
                   <altIdentifier type="external">
                      <idno type="RISM">{{ manuscript.rism_id }}</idno>

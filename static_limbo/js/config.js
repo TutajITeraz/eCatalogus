@@ -13,7 +13,7 @@ window.SITE_CONFIG = (function () {
         pageRoot: productionRoots[origin] || origin,
         projectId: 2,
         siteName: 'MPL Limbo',
-        foreign_id_name: 'MSPL no.',
+        foreign_id_name: 'Manuscripta.pl',
         features: {
             sourceProject: false,
             sourceProjectFilter: false,

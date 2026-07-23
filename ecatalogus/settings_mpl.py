@@ -14,7 +14,7 @@ apply_instance_settings(
         'database_name': 'ispan_mpl',
         'database_user': 'ispan_mpl',
         'project_id': 2,
-        'foreign_id_name': 'MSPL no.',
+        'foreign_id_name': 'Manuscripta.pl',
         'role': 'slave',
         'peer_id': 'mpl',
         'default_parent_peer': 'ecatalogus',

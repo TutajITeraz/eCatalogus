@@ -19,7 +19,7 @@ window.SITE_CONFIG = (function () {
         pageRoot:         productionRoots[origin] || origin,
         projectId:        2,
         siteName:         'Liturgica Poloniae',
-        foreign_id_name:  'MSPL no.',
+        foreign_id_name:  'Manuscripta.pl',
         features: {
             sourceProject: false,
             sourceProjectFilter: false,

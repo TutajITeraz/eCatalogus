@@ -14,7 +14,7 @@ apply_instance_settings(
         "database_name": "limbo",
         "database_user": "ecatalogus_user",
         "project_id": 2,
-        "foreign_id_name": "MSPL no.",
+        "foreign_id_name": "Manuscripta.pl",
         "role": "slave",
         "peer_id": "limbo",
         "canonical_master_id": "ecatalogus",

@@ -4452,6 +4452,7 @@ class ManuscriptTEI(TemplateView):
         # Feeds <availability>/<licence> in the teiHeader. A TEI file travels far
         # from here, so it has to carry its own terms.
         context['data_license'] = getattr(settings, 'DATA_LICENSE', {})
+        context['foreign_id_name'] = getattr(settings, 'FOREIGN_ID_NAME', 'foreign id')
 
         xml_content = render_to_string(self.template_name, context)
 
