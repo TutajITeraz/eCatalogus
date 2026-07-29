@@ -689,6 +689,18 @@ function init_music_table() {
 
 var content_table;
 
+// Opens the Levenshtein diff tool in a popup to compare
+// formula_standarized against formula_text (formula text from MS).
+window.openFormulaCompare = function (textA, textB) {
+  var p = new URLSearchParams({ a: textA || "", b: textB || "", ci: "1" });
+  var url = "/static/levenshtein-diff.html#" + p.toString();
+  window.open(
+    url,
+    "formula_compare_popup",
+    "width=1000,height=700,resizable=yes,scrollbars=yes"
+  );
+};
+
 function init_content_table(reinit = false) {
   content_table = $("#content").DataTable({
     destroy: reinit,
@@ -835,8 +847,34 @@ function init_content_table(reinit = false) {
         data: "formula_text",
         title: "formula (text from MS)",
         render: function (data, type, row, meta) {
-          if (row.music_notation != "-") return row.formula_text + " (♪)";
-          return row.formula_text;
+          var text = row.formula_text;
+          if (row.music_notation != "-") text = text + " (♪)";
+
+          var std = row.formula_standarized;
+          var ms = row.formula_text;
+          var hasBoth = std && std !== "-" && ms && ms !== "-";
+
+          if (hasBoth) {
+            var compareBtn =
+              '<span class="compare-formula-btn" title="Compare formula (standarized) vs formula (text from MS)" style="' +
+              "height: 12px;" +
+              "width: 12px;" +
+              "border-radius: 50%;" +
+              "display: inline-flex;" +
+              "align-items: center;" +
+              "justify-content: center;" +
+              "margin-right: 4px;" +
+              "cursor: pointer;" +
+              "border: 1px solid #795a42;" +
+              "font-size: 9px;" +
+              "line-height: 1;" +
+              "color: #795a42;" +
+              "background: #fff;" +
+              'vertical-align: middle;">⇌</span>';
+            text = compareBtn + text;
+          }
+
+          return text;
         },
         width: "40%",
       },
@@ -941,6 +979,15 @@ function init_content_table(reinit = false) {
       displaOriginalAddedLegend(content_table, "#content");
       if (IDENTIFY_TRADITIONS)
         displayTraditionLegend(content_table, "#content");
+
+      $("#content")
+        .off("click", ".compare-formula-btn")
+        .on("click", ".compare-formula-btn", function (e) {
+          e.stopPropagation();
+          var rowData = content_table.row($(this).closest("tr")).data();
+          if (rowData)
+            openFormulaCompare(rowData.formula_standarized, rowData.formula_text);
+        });
     },
   });
   content_table.draw();
