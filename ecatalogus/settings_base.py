@@ -130,6 +130,15 @@ SESSION_COOKIE_SAMESITE = None
 CSRF_COOKIE_SAMESITE = None
 ETL_USE_CELERY = bool_env('ETL_USE_CELERY', '1')
 
+# Per-record ETL import logging kicks in only for small batches. Above this many
+# changed records in a single model, the import logs one summary line instead, so a
+# first sync or a backfill cannot fill the disk. Set to 0 to always summarise, or to
+# -1 for unlimited per-record detail.
+try:
+    ETL_IMPORT_LOG_MAX_RECORDS = int(text_env('ETL_IMPORT_LOG_MAX_RECORDS', default='100'))
+except ValueError:
+    ETL_IMPORT_LOG_MAX_RECORDS = 100
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -297,6 +306,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOG_DIR = Path(text_env('DJANGO_LOG_DIR', 'LOG_DIR', default=str(BASE_DIR / 'logs')))
 DJANGO_ERROR_LOG = Path(text_env('DJANGO_ERROR_LOG', 'ERROR_LOG_FILE', default=str(LOG_DIR / 'error.log')))
+ETL_IMPORT_LOG = Path(text_env('ETL_IMPORT_LOG', default=str(LOG_DIR / 'etl_import.log')))
 
 try:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -323,6 +333,14 @@ LOGGING = {
         },
         'console': {
             'class': 'logging.StreamHandler',
+        },
+        'etl_import_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(ETL_IMPORT_LOG),
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 3,
+            'formatter': 'verbose',
         },
     },
     'root': {
@@ -353,6 +371,12 @@ LOGGING = {
         'celery': {
             'handlers': ['console', 'django_error_file'],
             'level': 'WARNING',
+            'propagate': False,
+        },
+        # Kept off the console and out of error.log: rotates at 5 MB, 4 files max.
+        'etlapp.import': {
+            'handlers': ['etl_import_file'],
+            'level': 'INFO',
             'propagate': False,
         },
     },

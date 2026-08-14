@@ -1,6 +1,7 @@
 import base64
 from decimal import Decimal
 import json
+import logging
 import os
 from pathlib import Path
 import tomllib
@@ -21,6 +22,8 @@ from ecatalogus.instance_settings import build_registry_peer_token_map, infer_in
 
 from .model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names, summarize_categories
 
+
+IMPORT_LOGGER = logging.getLogger('etlapp.import')
 
 ETL_IMPORT_PERMISSION_NAMES = [
     'add_manuscripts',
@@ -695,6 +698,9 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
     force_remote_uuids = set(force_remote_uuids or [])
     keep_local_uuids = set(keep_local_uuids or [])
 
+    created_uuids = []
+    updated_records = []
+
     pending_records = list(records)
     last_error = None
 
@@ -744,13 +750,15 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 instance.refresh_from_db()
                 _apply_m2m_values(instance, m2m_values)
                 model_summary['created'] += 1
+                created_uuids.append(str(record_uuid))
                 progress_made = True
                 continue
 
             for attname, target_attname in self_referential_attnames:
                 attrs[attname] = getattr(existing, target_attname)
 
-            if _is_noop(existing, attrs, m2m_values):
+            changed_fields = _changed_fields(existing, attrs, m2m_values)
+            if not changed_fields:
                 model_summary['skipped'] += 1
                 progress_made = True
                 continue
@@ -760,6 +768,7 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
             existing.refresh_from_db()
             _apply_m2m_values(existing, m2m_values)
             model_summary['updated'] += 1
+            updated_records.append({'uuid': str(record_uuid), 'fields': changed_fields})
             progress_made = True
 
         if not next_pending:
@@ -769,7 +778,59 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
 
         pending_records = next_pending
 
+    if _log_model_import_changes(model, created_uuids, updated_records):
+        model_summary['created_uuids'] = created_uuids
+        model_summary['updated_records'] = updated_records
+
     return model_summary
+
+
+def _get_import_log_threshold():
+    raw_value = getattr(settings, 'ETL_IMPORT_LOG_MAX_RECORDS', 100)
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return 100
+
+
+def _log_model_import_changes(model, created_uuids, updated_records):
+    """Log per-record detail for a model, unless the batch is too large.
+
+    Returns True when per-record detail was emitted, so the caller can attach the
+    same lists to the import summary. A first sync or a backfill touches millions of
+    rows; writing a line per record there would flood the log file and the Celery
+    result payload, so anything above ETL_IMPORT_LOG_MAX_RECORDS collapses to a
+    single count line.
+    """
+    changed_count = len(created_uuids) + len(updated_records)
+    if not changed_count:
+        return False
+
+    threshold = _get_import_log_threshold()
+    label = model._meta.label
+
+    if 0 <= threshold < changed_count:
+        IMPORT_LOGGER.info(
+            '%s: created=%d updated=%d (per-record detail suppressed, above ETL_IMPORT_LOG_MAX_RECORDS=%d)',
+            label,
+            len(created_uuids),
+            len(updated_records),
+            threshold,
+        )
+        return False
+
+    for uuid_value in created_uuids:
+        IMPORT_LOGGER.info('%s created uuid=%s', label, uuid_value)
+
+    for entry in updated_records:
+        IMPORT_LOGGER.info(
+            '%s updated uuid=%s fields=%s',
+            label,
+            entry['uuid'],
+            ','.join(entry['fields']) or '-',
+        )
+
+    return True
 
 
 def _prepare_import_values(model, record):
@@ -870,19 +931,25 @@ def _apply_m2m_values(instance, m2m_values):
         getattr(instance, field_name).set(related_objects)
 
 
-def _is_noop(instance, attrs, m2m_values):
+def _changed_fields(instance, attrs, m2m_values):
+    changed = []
+
     for key, expected_value in attrs.items():
         current_value = _get_comparable_instance_value(instance, key)
         if current_value != expected_value:
-            return False
+            changed.append(key)
 
     for field_name, related_objects in m2m_values.items():
         current_ids = list(getattr(instance, field_name).order_by('pk').values_list('pk', flat=True))
         expected_ids = sorted(related_object.pk for related_object in related_objects)
         if current_ids != expected_ids:
-            return False
+            changed.append(field_name)
 
-    return True
+    return changed
+
+
+def _is_noop(instance, attrs, m2m_values):
+    return not _changed_fields(instance, attrs, m2m_values)
 
 
 def _get_comparable_instance_value(instance, key):

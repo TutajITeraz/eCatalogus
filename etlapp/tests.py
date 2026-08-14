@@ -22,7 +22,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from etlapp.views import ETLAdminSyncView, ETLUIPullCategoryView, ETLUIPullManuscriptView
-from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_manuscript_payload
+from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_delta_payload, import_manuscript_payload
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
@@ -2063,3 +2063,106 @@ class ETLUIViewTests(ETLUIEditorMixin, TestCase):
         self.assertTrue(payload['result']['kept_local'])
         self.assertEqual(payload['result']['pull_result']['import_summary']['skipped'], 1)
         self.assertEqual(payload['result']['keep_local_uuids'], [str(bibliography.uuid)])
+
+def _import_logging_payload(count, name_prefix='Logged'):
+    return {
+        'category': 'main',
+        'models': [
+            {
+                'model': 'indexerapp.Type',
+                'results': [
+                    {
+                        'uuid': str(uuid4()),
+                        'short_name': f'L{index}',
+                        'name': f'{name_prefix} {index}',
+                        'entry_date': timezone.now().isoformat(),
+                    }
+                    for index in range(count)
+                ],
+            }
+        ],
+    }
+
+
+class ETLImportLoggingTests(TestCase):
+    @override_settings(ETL_IMPORT_LOG_MAX_RECORDS=100)
+    def test_small_batch_logs_each_created_record(self):
+        payload = _import_logging_payload(3)
+        with self.assertLogs('etlapp.import', level='INFO') as captured:
+            summary = import_delta_payload('main', payload)
+
+        self.assertEqual(summary['created'], 3)
+        self.assertEqual(len(captured.output), 3)
+        self.assertIn('indexerapp.Type created uuid=', captured.output[0])
+        self.assertEqual(len(summary['models'][0]['created_uuids']), 3)
+
+    @override_settings(ETL_IMPORT_LOG_MAX_RECORDS=2)
+    def test_large_batch_collapses_to_one_line_and_omits_uuids(self):
+        payload = _import_logging_payload(5)
+        with self.assertLogs('etlapp.import', level='INFO') as captured:
+            summary = import_delta_payload('main', payload)
+
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn('per-record detail suppressed', captured.output[0])
+        self.assertNotIn('created_uuids', summary['models'][0])
+
+    @override_settings(ETL_IMPORT_LOG_MAX_RECORDS=100)
+    def test_update_logs_changed_field_names(self):
+        record_uuid = str(uuid4())
+        payload = {
+            'category': 'main',
+            'models': [
+                {
+                    'model': 'indexerapp.Type',
+                    'results': [
+                        {
+                            'uuid': record_uuid,
+                            'short_name': 'UP1',
+                            'name': 'Before',
+                            'entry_date': timezone.now().isoformat(),
+                        }
+                    ],
+                }
+            ],
+        }
+        import_delta_payload('main', payload)
+
+        payload['models'][0]['results'][0]['name'] = 'After'
+        payload['models'][0]['results'][0]['entry_date'] = timezone.now().isoformat()
+        with self.assertLogs('etlapp.import', level='INFO') as captured:
+            summary = import_delta_payload('main', payload)
+
+        self.assertEqual(summary['updated'], 1)
+        self.assertIn('updated uuid=', captured.output[0])
+        self.assertIn('name', captured.output[0])
+        self.assertEqual(summary['models'][0]['updated_records'][0]['uuid'], record_uuid)
+
+    @override_settings(ETL_IMPORT_LOG_MAX_RECORDS=100)
+    def test_noop_reimport_logs_nothing(self):
+        payload = _import_logging_payload(2)
+        import_delta_payload('main', payload)
+
+        with self.assertNoLogs('etlapp.import', level='INFO'):
+            summary = import_delta_payload('main', payload)
+
+        self.assertEqual(summary['skipped'], 2)
+
+    def test_recent_changes_command_lists_touched_records(self):
+        import_delta_payload('main', _import_logging_payload(2, name_prefix='Recent'))
+
+        stdout = StringIO()
+        call_command('etl_recent_changes', '--hours', '1', '--model', 'Type', stdout=stdout)
+        output = stdout.getvalue()
+
+        self.assertIn('indexerapp.Type [main] - 2 record(s)', output)
+        self.assertIn('Recent 0', output)
+
+    def test_recent_changes_command_json_mode(self):
+        import_delta_payload('main', _import_logging_payload(1, name_prefix='Json'))
+
+        stdout = StringIO()
+        call_command('etl_recent_changes', '--hours', '1', '--model', 'Type', '--json', stdout=stdout)
+        report = json.loads(stdout.getvalue())
+
+        self.assertEqual(report['total'], 1)
+        self.assertEqual(report['models'][0]['model'], 'indexerapp.Type')

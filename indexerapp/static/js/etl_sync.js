@@ -424,6 +424,32 @@ function logCategoryPullSummary(category, result) {
     appendETLLog(
         `${category} pull completed: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, deleted=${deleteSummary.deleted || 0}, missing_deleted=${deleteSummary.missing || 0}.`
     );
+
+    logImportSummaryDetails(importSummary);
+}
+
+function logImportSummaryDetails(importSummary) {
+    const modelSummaries = Array.isArray(importSummary.models) ? importSummary.models : [];
+
+    modelSummaries.forEach(function(modelSummary) {
+        const created = modelSummary.created || 0;
+        const updated = modelSummary.updated || 0;
+        if (!created && !updated) {
+            return;
+        }
+
+        appendETLLog(`  ${modelSummary.model}: created=${created}, updated=${updated}, skipped=${modelSummary.skipped || 0}.`);
+
+        // Present only for small batches; large imports omit them on purpose (see
+        // ETL_IMPORT_LOG_MAX_RECORDS). Full detail always lands in logs/etl_import.log.
+        (modelSummary.created_uuids || []).forEach(function(uuid) {
+            appendETLLog(`    + ${uuid}`);
+        });
+
+        (modelSummary.updated_records || []).forEach(function(record) {
+            appendETLLog(`    ~ ${record.uuid} (${(record.fields || []).join(', ') || 'no field list'})`);
+        });
+    });
 }
 
 function logManuscriptPullSummary(result) {
