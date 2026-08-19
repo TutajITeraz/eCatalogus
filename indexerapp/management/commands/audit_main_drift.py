@@ -40,6 +40,7 @@ from etlapp.services import (
     _get_peer_api_token,
     _normalize_peer_url,
     _prepare_import_values,
+    _serialize_instance,
     fetch_remote_etl_json,
     get_etl_peer_configs,
     get_main_source_urls,
@@ -146,6 +147,24 @@ def _index_remote_payload(payload):
     return remote_by_model
 
 
+def _remote_label(model, attrs):
+    """What the upstream row would be called, without saving anything.
+
+    Used to spot a local row that duplicates an upstream one under a different
+    uuid — the failure mode that produced three "XII 3/4" datings. __str__ can
+    reach for related objects, so an unsaved instance may not be able to render
+    itself; an unusable label simply never matches.
+    """
+    try:
+        return str(model(**attrs))
+    except Exception:
+        return None
+
+
+def _normalise_label(label):
+    return ' '.join(str(label).split()).casefold() if label else None
+
+
 def _compare_model_against_remote(model, remote_records):
     """Rows that the next pull would overwrite, and rows it would never see."""
     findings = {
@@ -158,6 +177,19 @@ def _compare_model_against_remote(model, remote_records):
     }
 
     seen_uuids = set()
+
+    upstream_by_label = {}
+    for remote_uuid, remote_record in remote_records.items():
+        try:
+            remote_attrs, _, _ = _prepare_import_values(model, remote_record)
+        except ValueError:
+            continue
+        label_key = _normalise_label(_remote_label(model, remote_attrs))
+        if label_key:
+            upstream_by_label.setdefault(label_key, []).append({
+                'uuid': remote_uuid,
+                'label': _remote_label(model, remote_attrs),
+            })
 
     for instance in model.objects.all().order_by('pk').iterator(chunk_size=500):
         findings['checked'] += 1
@@ -172,7 +204,14 @@ def _compare_model_against_remote(model, remote_records):
         remote_record = remote_records.get(instance_uuid)
 
         if remote_record is None:
-            findings['local_only'].append({'uuid': instance_uuid, 'pk': instance.pk, 'label': str(instance)})
+            label = str(instance)
+            findings['local_only'].append({
+                'uuid': instance_uuid,
+                'pk': instance.pk,
+                'label': label,
+                'upstream_matches': upstream_by_label.get(_normalise_label(label), []),
+                'record': _serialize_instance(instance),
+            })
             continue
 
         try:
@@ -207,7 +246,7 @@ def _compare_model_against_remote(model, remote_records):
     return findings
 
 
-def _collect_admin_log(models, since=None):
+def _collect_admin_log(models, since=None, limit=500):
     """Who changed a main vocabulary in the Django admin, and when."""
     content_types = ContentType.objects.filter(
         app_label='indexerapp',
@@ -217,8 +256,9 @@ def _collect_admin_log(models, since=None):
     if since is not None:
         queryset = queryset.filter(action_time__gte=since)
 
+    total = queryset.count()
     entries = []
-    for entry in queryset.select_related('user', 'content_type').order_by('-action_time')[:500]:
+    for entry in queryset.select_related('user', 'content_type').order_by('-action_time')[:limit]:
         entries.append({
             'model': entry.content_type.model_class().__name__ if entry.content_type.model_class() else entry.content_type.model,
             'action': ACTION_LABELS.get(entry.action_flag, str(entry.action_flag)),
@@ -228,24 +268,26 @@ def _collect_admin_log(models, since=None):
             'at': entry.action_time.isoformat(),
         })
 
-    return entries
+    return {'total': total, 'listed': entries, 'truncated': total > len(entries)}
 
 
-def _collect_local_deletions(since=None):
+def _collect_local_deletions(since=None, limit=500):
     from indexerapp.models import DeletedRecord
 
     queryset = DeletedRecord.objects.filter(category='main')
     if since is not None:
         queryset = queryset.filter(deleted_at__gte=since)
 
-    return [
+    total = queryset.count()
+    records = [
         {
             'model_label': record.model_label,
             'object_uuid': str(record.object_uuid),
             'deleted_at': record.deleted_at.isoformat(),
         }
-        for record in queryset.order_by('-deleted_at')[:500]
+        for record in queryset.order_by('-deleted_at')[:limit]
     ]
+    return {'total': total, 'listed': records, 'truncated': total > len(records)}
 
 
 class Command(BaseCommand):
@@ -279,6 +321,19 @@ class Command(BaseCommand):
         )
         parser.add_argument('--json', action='store_true', help='Emit the full report as JSON.')
         parser.add_argument('--output', help='Write every drifted row to this file as TSV.')
+        parser.add_argument(
+            '--export-local-only',
+            help=(
+                'Write the local-only rows to this path as an ETL main bundle, ready for '
+                'import_etl_bundle on eCatalogus. UUIDs are preserved, so the rows come back '
+                'matched at the next pull instead of duplicating.'
+            ),
+        )
+        parser.add_argument(
+            '--skip-duplicate-candidates',
+            action='store_true',
+            help='Leave rows that share a name with an upstream row out of the exported bundle.',
+        )
         parser.add_argument(
             '--fail-on-drift',
             action='store_true',
@@ -344,6 +399,13 @@ class Command(BaseCommand):
         )
         report['drift_row_count'] = drift_count
 
+        if options['export_local_only']:
+            self._write_promotion_bundle(
+                options['export_local_only'],
+                report,
+                skip_duplicate_candidates=options['skip_duplicate_candidates'],
+            )
+
         if options['output']:
             self._write_tsv(options['output'], report)
 
@@ -358,10 +420,14 @@ class Command(BaseCommand):
         return None
 
     def _write_tsv(self, path, report):
-        lines = ['model\tfinding\tuuid\tpk\tfield\tlocal\tremote\tlabel']
+        lines = ['model\tfinding\tuuid\tpk\tfield\tlocal\tremote_or_upstream_uuid\tlabel']
         for entry in report['models']:
             for row in entry['local_only']:
-                lines.append(f'{entry["model"]}\tlocal_only\t{row["uuid"]}\t{row["pk"]}\t\t\t\t{_format_value(row["label"])}')
+                finding = 'duplicate_candidate' if row.get('upstream_matches') else 'local_only'
+                upstream = ' '.join(match['uuid'] for match in row.get('upstream_matches') or [])
+                lines.append(
+                    f'{entry["model"]}\t{finding}\t{row["uuid"]}\t{row["pk"]}\t\t\t{upstream}\t{_format_value(row["label"])}'
+                )
             for row in entry['differs']:
                 for difference in row['differences']:
                     lines.append(
@@ -375,6 +441,47 @@ class Command(BaseCommand):
             handle.write('\n'.join(lines) + '\n')
 
         self.stdout.write(f'Wrote {len(lines) - 1} drift row(s) to {path}')
+
+    def _write_promotion_bundle(self, path, report, skip_duplicate_candidates):
+        """An ETL main bundle of the local-only rows, for import on eCatalogus.
+
+        The serialised records keep their uuids, so once eCatalogus has them the
+        next pull matches these very rows instead of adding a second copy beside
+        them — and every local manuscript that already points at them keeps
+        pointing at them.
+        """
+        models_payload = []
+        record_count = 0
+        skipped = 0
+
+        for entry in report['models']:
+            records = []
+            for row in entry['local_only']:
+                if skip_duplicate_candidates and row.get('upstream_matches'):
+                    skipped += 1
+                    continue
+                records.append(row['record'])
+
+            if records:
+                models_payload.append({'model': entry['model'], 'results': records})
+                record_count += len(records)
+
+        payload = {
+            'site_name': report['site_name'],
+            'category': 'main',
+            'model_count': len(models_payload),
+            'record_count': record_count,
+            'models': models_payload,
+        }
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, default=str)
+            handle.write('\n')
+
+        message = f'Wrote {record_count} local-only row(s) across {len(models_payload)} model(s) to {path}'
+        if skipped:
+            message += f' ({skipped} duplicate candidate(s) left out)'
+        self.stdout.write(message)
 
     def _write_human_report(self, report, show, local_only):
         def limited(rows):
@@ -395,15 +502,21 @@ class Command(BaseCommand):
             if not issues:
                 continue
 
+            duplicate_candidates = sum(1 for row in entry['local_only'] if row.get('upstream_matches'))
             self.stdout.write(
                 f'{entry["name"]}: status=DRIFT checked={entry["checked"]} '
-                f'local_only={len(entry["local_only"])} differs={len(entry["differs"])} '
+                f'local_only={len(entry["local_only"])} duplicate_candidates={duplicate_candidates} '
+                f'differs={len(entry["differs"])} '
                 f'missing_uuid={entry["missing_uuid"]} unresolvable={len(entry["unresolvable"])} '
                 f'missing_locally={entry["missing_locally"]}'
             )
 
             for row in limited(entry['local_only']):
                 self.stdout.write(f'  local-only  uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
+                for match in row.get('upstream_matches') or []:
+                    self.stdout.write(
+                        f'      duplicate? upstream {match["uuid"]} already has this name'
+                    )
             for row in limited(entry['differs']):
                 self.stdout.write(f'  differs     uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
                 for difference in row['differences']:
@@ -413,18 +526,23 @@ class Command(BaseCommand):
             for row in limited(entry['unresolvable']):
                 self.stdout.write(f'  unresolvable uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["reason"])}')
 
-        if report['admin_log']:
-            self.stdout.write(f'Admin log entries touching main models: {len(report["admin_log"])}')
-            for entry in limited(report['admin_log']):
+        admin_log = report['admin_log']
+        if admin_log['total']:
+            self.stdout.write(
+                f'Admin log entries touching main models: {admin_log["total"]}'
+                + (f' (listing {min(show, len(admin_log["listed"])) if show else len(admin_log["listed"])})' if admin_log['total'] > 1 else '')
+            )
+            for entry in limited(admin_log['listed']):
                 self.stdout.write(
                     f'  {entry["at"]} {entry["user"]} {entry["action"]} {entry["model"]} {_format_value(entry["object_repr"])}'
                 )
         else:
             self.stdout.write('Admin log entries touching main models: none')
 
-        if report['local_deletions']:
-            self.stdout.write(f'Local main deletions recorded: {len(report["local_deletions"])}')
-            for entry in limited(report['local_deletions']):
+        deletions = report['local_deletions']
+        if deletions['total']:
+            self.stdout.write(f'Local main deletions recorded: {deletions["total"]}')
+            for entry in limited(deletions['listed']):
                 self.stdout.write(f'  {entry["deleted_at"]} {entry["model_label"]} uuid={entry["object_uuid"]}')
 
         if report['drift_row_count']:

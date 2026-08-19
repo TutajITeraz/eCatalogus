@@ -1,6 +1,9 @@
 import csv
 import json
+import os
+import tempfile
 from io import StringIO
+from uuid import uuid4
 from unittest.mock import patch
 
 from django.apps import apps
@@ -22,6 +25,7 @@ from etlapp.model_categories import get_sync_model_names
 from etlapp.services import _serialize_instance
 from indexerapp.ai_tools import get_all_manuscript_names
 from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
+from indexerapp.models import DeletedRecord
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.zotero_service import import_zotero_items, list_zotero_collection_items
 from indexerapp.views import get_obj_dictionary
@@ -1975,3 +1979,109 @@ class AuditMainDriftCommandTests(TestCase):
 
 		fetch_mock.assert_not_called()
 		self.assertIsNone(report['peer'])
+
+	def test_flags_a_local_row_that_duplicates_an_upstream_name(self):
+		upstream = TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
+		)
+		upstream_record = _serialize_instance(upstream)
+		duplicate = TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
+		)
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value={'models': [{'model': 'indexerapp.TimeReference', 'results': [upstream_record]}]},
+		):
+			report = self._run('--model', 'TimeReference')
+
+		entry = next(item for item in report['models'] if item['name'] == 'TimeReference')
+		local_row = next(row for row in entry['local_only'] if row['uuid'] == str(duplicate.uuid))
+
+		self.assertEqual([match['uuid'] for match in local_row['upstream_matches']], [str(upstream.uuid)])
+
+	def test_promotion_bundle_keeps_uuids_and_can_skip_duplicates(self):
+		upstream = TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
+		)
+		upstream_record = _serialize_instance(upstream)
+		TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
+		)
+		genuinely_new = TimeReference.objects.create(
+			time_description='XIV-XVI', century_from=14, century_to=16, year_from=1301, year_to=1600,
+		)
+
+		bundle_path = os.path.join(tempfile.mkdtemp(), 'promote.json')
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value={'models': [{'model': 'indexerapp.TimeReference', 'results': [upstream_record]}]},
+		):
+			call_command(
+				'audit_main_drift',
+				'--model', 'TimeReference',
+				'--export-local-only', bundle_path,
+				'--skip-duplicate-candidates',
+				stdout=StringIO(),
+			)
+
+		with open(bundle_path, encoding='utf-8') as handle:
+			bundle = json.load(handle)
+
+		self.assertEqual(bundle['category'], 'main')
+		exported_uuids = [record['uuid'] for record in bundle['models'][0]['results']]
+		self.assertEqual(exported_uuids, [str(genuinely_new.uuid)])
+
+
+class MergeMainDuplicatesCommandTests(TestCase):
+	"""Folding a local twin into the canonical row, references and all."""
+
+	def setUp(self):
+		self.canonical = TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
+		)
+		self.duplicate = TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
+		)
+		self.manuscript = Manuscripts.objects.create(name='Dated MS', dating_uuid=self.duplicate)
+
+	def _run(self, *args):
+		stdout = StringIO()
+		call_command('merge_main_duplicates', '--json', *args, stdout=stdout)
+		return json.loads(stdout.getvalue())
+
+	def test_dry_run_changes_nothing(self):
+		result = self._run('--pair', f'{self.duplicate.uuid}={self.canonical.uuid}')
+
+		self.assertFalse(result['applied'])
+		self.assertEqual(result['merges'][0]['reference_count'], 1)
+		self.manuscript.refresh_from_db()
+		self.assertEqual(self.manuscript.dating_uuid, self.duplicate)
+		self.assertTrue(TimeReference.objects.filter(pk=self.duplicate.pk).exists())
+
+	def test_apply_repoints_references_and_deletes_the_duplicate(self):
+		result = self._run('--pair', f'{self.duplicate.uuid}={self.canonical.uuid}', '--apply')
+
+		self.assertTrue(result['applied'])
+		self.manuscript.refresh_from_db()
+		self.assertEqual(self.manuscript.dating_uuid, self.canonical)
+		self.assertFalse(TimeReference.objects.filter(pk=self.duplicate.pk).exists())
+
+	def test_deleting_the_duplicate_is_recorded_for_the_etl(self):
+		self._run('--pair', f'{self.duplicate.uuid}={self.canonical.uuid}', '--apply')
+
+		self.assertTrue(
+			DeletedRecord.objects.filter(
+				model_label='indexerapp.TimeReference', object_uuid=self.duplicate.uuid
+			).exists()
+		)
+
+	def test_refuses_to_merge_across_tables(self):
+		place = Places.objects.create(city_today_eng='Krakow')
+
+		with self.assertRaises(CommandError):
+			self._run('--pair', f'{self.duplicate.uuid}={place.uuid}')
+
+	def test_refuses_an_unknown_uuid(self):
+		with self.assertRaises(CommandError):
+			self._run('--pair', f'{uuid4()}={self.canonical.uuid}')
