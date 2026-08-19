@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% comment %}
+Shown when someone reaches a page that would edit a `main` reference table on an
+instance that only receives those tables through the ETL sync. Deliberately
+self-contained styling: this page is reachable from the iommi admin, which does
+not load the site's own stylesheets.
+{% endcomment %}
+
+{% block title %}Curated in {{ main_master }} — {{ SITE_NAME }}{% endblock %}
+
+{% block body %}
+<body style="margin:0; background:#f8efe8; font-family:Georgia, 'Times New Roman', serif; color:#0d1b2a;">
+    <main style="max-width:640px; margin:0 auto; padding:64px 24px;">
+        <section style="background:#fffaf6; border:1px solid #e3d5ca; border-radius:8px; box-shadow:0 1px 3px rgba(13,27,42,.08); padding:32px;">
+            <p style="margin:0 0 8px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#8a6d55;">Read-only reference data</p>
+            <h1 style="margin:0 0 16px; font-size:26px; line-height:1.25;">{{ subject }} is curated in {{ main_master }}</h1>
+            <p style="margin:0 0 20px; font-size:16px; line-height:1.6; color:#3d4b5c;">{{ message }}</p>
+            <p style="margin:0;">
+                <a href="{{ main_master_url }}" target="_blank" rel="noopener"
+                   style="display:inline-block; background:#e8d3c3; color:#0d1b2a; font-weight:600; text-decoration:none; padding:10px 18px; border-radius:4px;">
+                    Open {{ main_master }} →
+                </a>
+            </p>
+        </section>
+        <p style="margin:20px 0 0; font-size:14px; color:#6f4e37;">
+            Manuscript descriptions, content and the shared tables stay fully editable here — only the common vocabularies are read-only.
+        </p>
+    </main>
+</body>
+{% endblock %}

@@ -22,7 +22,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from etlapp.views import ETLAdminSyncView, ETLUIPullCategoryView, ETLUIPullManuscriptView
-from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_delta_payload, import_manuscript_payload
+from etlapp.main_guard import main_read_only_message, main_read_only_payload, main_writes_allowed
+from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_delta_payload, import_manuscript_payload, pull_remote_category
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
@@ -2166,3 +2167,118 @@ class ETLImportLoggingTests(TestCase):
 
         self.assertEqual(report['total'], 1)
         self.assertEqual(report['models'][0]['model'], 'indexerapp.Type')
+
+
+@override_settings(
+    SITE_NAME='Liturgica Poloniae',
+    ETL_ROLE='slave',
+    ETL_SELF_PEER_ID='mpl',
+    ETL_CANONICAL_MASTER_ID='ecatalogus',
+    ETL_MAIN_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_MASTER_URL='https://ecatalogus.ispan.pl',
+)
+class MainWritePolicyTests(SimpleTestCase):
+    def test_slave_may_not_write_main_locally(self):
+        self.assertFalse(main_writes_allowed())
+
+    @override_settings(ETL_SELF_PEER_ID='ecatalogus', ETL_ROLE='master', ETL_MASTER_URL=None)
+    def test_canonical_master_may_write_main(self):
+        self.assertTrue(main_writes_allowed())
+
+    @override_settings(ETL_ALLOW_MAIN_EDITS=True)
+    def test_explicit_override_reopens_editing(self):
+        self.assertTrue(main_writes_allowed())
+
+    @override_settings(ETL_SELF_PEER_ID='', INSTANCE_SLUG='')
+    def test_instance_without_an_identity_falls_back_to_its_role(self):
+        # Single-instance installs and the base settings do not name themselves;
+        # only an explicit slave role locks them down.
+        self.assertFalse(main_writes_allowed())
+
+        with override_settings(ETL_ROLE='undefined'):
+            self.assertTrue(main_writes_allowed())
+
+    def test_refusal_message_names_the_master_and_its_url(self):
+        message = main_read_only_message('"Formulas"')
+
+        self.assertIn('"Formulas"', message)
+        self.assertIn('https://ecatalogus.ispan.pl', message)
+
+    def test_refusal_payload_carries_the_master_url_for_the_import_ui(self):
+        payload = main_read_only_payload('"Rite names"')
+
+        self.assertTrue(payload['read_only'])
+        self.assertEqual(payload['main_master_url'], 'https://ecatalogus.ispan.pl')
+        self.assertEqual(payload['info'], payload['detail'])
+
+
+@override_settings(
+    SITE_NAME='Liturgica Poloniae',
+    ETL_ROLE='slave',
+    ETL_SELF_PEER_ID='mpl',
+    ETL_CANONICAL_MASTER_ID='ecatalogus',
+    ETL_MAIN_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_API_TOKEN='test-token',
+)
+class MainPullDirectionTests(TestCase):
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_relay_instance_pulls_main_from_its_parent(self, fetch_remote_etl_json_mock):
+        # mpl is a slave of eCatalogus and the parent of limbo, so it has to keep
+        # receiving main through the ETL even though it may not edit it locally.
+        imported_type_uuid = str(uuid4())
+        fetch_remote_etl_json_mock.side_effect = [
+            {'models': []},
+            {'category': 'shared', 'results': []},
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Type',
+                        'results': [
+                            {
+                                'uuid': imported_type_uuid,
+                                'short_name': 'REL',
+                                'name': 'Relayed type',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    }
+                ]
+            },
+            {'category': 'main', 'results': []},
+        ]
+
+        result = pull_remote_category('https://ecatalogus.ispan.pl', 'main')
+
+        self.assertEqual(result['import_summary']['created'], 1)
+        self.assertTrue(Type.objects.filter(uuid=imported_type_uuid).exists())
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_pulling_main_from_a_sibling_is_refused(self, fetch_remote_etl_json_mock):
+        with self.assertRaises(ValueError) as raised:
+            pull_remote_category('https://limbo.example.pl', 'main')
+
+        self.assertIn('parent peer', str(raised.exception))
+        self.assertIn('https://ecatalogus.ispan.pl', str(raised.exception))
+        fetch_remote_etl_json_mock.assert_not_called()
+
+    @override_settings(ETL_ROLE='master', ETL_SELF_PEER_ID='ecatalogus', ETL_MASTER_URL=None)
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_master_never_pulls_main_from_a_slave(self, fetch_remote_etl_json_mock):
+        with self.assertRaises(ValueError) as raised:
+            pull_remote_category('https://mpl.example.pl', 'main')
+
+        self.assertIn('curated here', str(raised.exception))
+        fetch_remote_etl_json_mock.assert_not_called()
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_shared_pull_is_not_direction_restricted(self, fetch_remote_etl_json_mock):
+        # `shared` is bidirectional by design and has its own conflict workflow.
+        fetch_remote_etl_json_mock.side_effect = [
+            {'models': []},
+            {'category': 'shared', 'results': []},
+        ]
+
+        result = pull_remote_category('https://limbo.example.pl', 'shared')
+
+        self.assertEqual(result['category'], 'shared')

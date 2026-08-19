@@ -117,6 +117,9 @@ ETL_STATUS_EXAMPLE = OpenApiExample(
         'slave_urls': ['https://ecatalogus.ispan.pl'],
         'has_api_token': True,
         'model_category_counts': {'main': 34, 'shared': 4, 'ms': 28, 'local': 5},
+        'main_writes_allowed': False,
+        'main_master': 'eCatalogus',
+        'main_master_url': 'https://ecatalogus.ispan.pl',
     },
     response_only=True,
 )

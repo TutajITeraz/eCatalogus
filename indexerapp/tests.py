@@ -1,5 +1,6 @@
 import csv
 import json
+from io import StringIO
 from unittest.mock import patch
 
 from django.apps import apps
@@ -10,14 +11,17 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import RequestFactory
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import NoReverseMatch, reverse
 from dal import autocomplete
 
 from etlapp.model_categories import get_sync_model_names
+from etlapp.services import _serialize_instance
 from indexerapp.ai_tools import get_all_manuscript_names
-from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Watermarks, Week, Colours
+from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.zotero_service import import_zotero_items, list_zotero_collection_items
 from indexerapp.views import get_obj_dictionary
@@ -1780,3 +1784,194 @@ class AdminUUIDLookupTests(TestCase):
 			layouts_admin.url_for_result(layout),
 			reverse('admin:indexerapp_layouts_change', args=[layout.uuid]),
 		)
+
+
+@override_settings(
+	SITE_NAME='Liturgica Poloniae',
+	ETL_ROLE='slave',
+	ETL_SELF_PEER_ID='mpl',
+	ETL_CANONICAL_MASTER_ID='ecatalogus',
+	ETL_MAIN_MASTER_URL='https://ecatalogus.ispan.pl',
+)
+class MainReferenceDataReadOnlyTests(TestCase):
+	"""The `main` vocabularies are curated in eCatalogus; every other instance
+	receives them read-only through the ETL pull and says so when asked to edit."""
+
+	def setUp(self):
+		self.editor = get_user_model().objects.create_superuser('main-guard', 'main-guard@example.com', 'secret')
+		self.client.force_login(self.editor)
+
+	def test_formulas_import_is_refused_with_a_link_to_the_master(self):
+		response = self.client.post(
+			reverse('formulas_import'),
+			data=json.dumps([{'text': 'Local formula'}]),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 403)
+		payload = response.json()
+		self.assertEqual(payload['main_master_url'], 'https://ecatalogus.ispan.pl')
+		self.assertIn('https://ecatalogus.ispan.pl', payload['info'])
+		self.assertFalse(Formulas.objects.filter(text='Local formula').exists())
+
+	@override_settings(ETL_SELF_PEER_ID='ecatalogus', ETL_ROLE='master')
+	def test_formulas_import_is_accepted_on_the_master(self):
+		response = self.client.post(
+			reverse('formulas_import'),
+			data=json.dumps([{'text': 'Local formula'}]),
+			content_type='application/json',
+		)
+
+		self.assertNotEqual(response.status_code, 403)
+		self.assertNotIn('main_master_url', response.json())
+
+	def test_manuscript_import_stays_open_on_a_slave(self):
+		# Only the shared vocabularies are locked; manuscript data is exactly what
+		# the other instances are there to produce.
+		response = self.client.post(
+			reverse('manuscripts_import'),
+			data=json.dumps([]),
+			content_type='application/json',
+		)
+
+		self.assertNotEqual(response.status_code, 403)
+
+	def test_admin_refuses_to_add_change_or_import_main_vocabularies(self):
+		request = RequestFactory().get('/admin/indexerapp/formulas/')
+		request.user = self.editor
+		formulas_admin = admin.site._registry[Formulas]
+
+		self.assertFalse(formulas_admin.has_add_permission(request))
+		self.assertFalse(formulas_admin.has_change_permission(request))
+		self.assertFalse(formulas_admin.has_delete_permission(request))
+		self.assertFalse(formulas_admin.has_import_permission(request))
+
+	@override_settings(ETL_SELF_PEER_ID='ecatalogus', ETL_ROLE='master')
+	def test_admin_edits_main_vocabularies_on_the_master(self):
+		request = RequestFactory().get('/admin/indexerapp/formulas/')
+		request.user = self.editor
+		formulas_admin = admin.site._registry[Formulas]
+
+		self.assertTrue(formulas_admin.has_add_permission(request))
+		self.assertTrue(formulas_admin.has_change_permission(request))
+
+	@override_settings(ETL_SELF_PEER_ID='ecatalogus', ETL_ROLE='master')
+	def test_guard_narrows_django_permissions_rather_than_replacing_them(self):
+		staff = get_user_model().objects.create_user('main-guard-staff', 'staff@example.com', 'secret', is_staff=True)
+		request = RequestFactory().get('/admin/indexerapp/formulas/')
+		request.user = staff
+		formulas_admin = admin.site._registry[Formulas]
+
+		self.assertFalse(formulas_admin.has_add_permission(request))
+
+	def test_admin_still_edits_manuscript_models_on_a_slave(self):
+		request = RequestFactory().get('/admin/indexerapp/manuscripts/')
+		request.user = self.editor
+		manuscripts_admin = admin.site._registry[Manuscripts]
+
+		self.assertTrue(manuscripts_admin.has_add_permission(request))
+		self.assertTrue(manuscripts_admin.has_change_permission(request))
+
+	def test_admin_changelist_explains_where_the_vocabulary_is_edited(self):
+		response = self.client.get(reverse('admin:indexerapp_formulas_changelist'))
+
+		self.assertEqual(response.status_code, 200)
+		# The message keeps its markup: the editor gets a link, not an escaped tag.
+		self.assertContains(response, '<a href="https://ecatalogus.ispan.pl"')
+
+	def test_iommi_admin_write_pages_explain_where_the_vocabulary_is_edited(self):
+		response = self.client.get('/iommi-admin/indexerapp/formulas/create/')
+
+		self.assertEqual(response.status_code, 403)
+		self.assertContains(response, 'https://ecatalogus.ispan.pl', status_code=403)
+
+
+@override_settings(
+	SITE_NAME='MPL Limbo',
+	ETL_ROLE='slave',
+	ETL_SELF_PEER_ID='limbo',
+	ETL_CANONICAL_MASTER_ID='ecatalogus',
+	ETL_MASTER_URL='https://mpl.example.pl',
+)
+class AuditMainDriftCommandTests(TestCase):
+	"""The audit answers "would the next pull overwrite anything here?"."""
+
+	def _remote_payload(self, records):
+		return {'models': [{'model': 'indexerapp.Type', 'results': records}]}
+
+	def _run(self, *args):
+		stdout = StringIO()
+		call_command('audit_main_drift', '--json', *args, stdout=stdout)
+		return json.loads(stdout.getvalue())
+
+	def test_reports_locally_created_and_locally_edited_rows(self):
+		in_sync = Type.objects.create(short_name='SYN', name='In sync')
+		edited = Type.objects.create(short_name='EDT', name='Edited locally')
+		local_only = Type.objects.create(short_name='NEW', name='Invented here')
+
+		upstream_edited = _serialize_instance(edited)
+		upstream_edited['name'] = 'Upstream name'
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value=self._remote_payload([_serialize_instance(in_sync), upstream_edited]),
+		):
+			report = self._run('--model', 'Type')
+
+		entry = next(item for item in report['models'] if item['name'] == 'Type')
+
+		self.assertEqual([row['uuid'] for row in entry['local_only']], [str(local_only.uuid)])
+		self.assertEqual([row['uuid'] for row in entry['differs']], [str(edited.uuid)])
+		self.assertEqual(
+			[difference['field'] for difference in entry['differs'][0]['differences']],
+			['name'],
+		)
+		self.assertEqual(entry['differs'][0]['differences'][0]['remote'], 'Upstream name')
+		self.assertEqual(report['drift_row_count'], 2)
+
+	def test_reports_nothing_when_every_row_matches_the_peer(self):
+		in_sync = Type.objects.create(short_name='SYN', name='In sync')
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value=self._remote_payload([_serialize_instance(in_sync)]),
+		):
+			report = self._run('--model', 'Type')
+
+		self.assertEqual(report['drift_row_count'], 0)
+		self.assertEqual(report['peer']['url'], 'https://mpl.example.pl')
+
+	def test_rows_the_peer_has_and_we_do_not_are_not_drift(self):
+		# A row still to be pulled is normal, not evidence of local editing.
+		pending = Type.objects.create(short_name='PND', name='Pending')
+		remote_record = _serialize_instance(pending)
+		pending.delete()
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value=self._remote_payload([remote_record]),
+		):
+			report = self._run('--model', 'Type')
+
+		entry = next(item for item in report['models'] if item['name'] == 'Type')
+		self.assertEqual(entry['missing_locally'], 1)
+		self.assertEqual(report['drift_row_count'], 0)
+
+	def test_fail_on_drift_exits_with_an_error(self):
+		Type.objects.create(short_name='NEW', name='Invented here')
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value=self._remote_payload([]),
+		):
+			with self.assertRaises(CommandError):
+				call_command('audit_main_drift', '--model', 'Type', '--fail-on-drift', stdout=StringIO())
+
+	def test_local_only_mode_skips_the_peer_entirely(self):
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json'
+		) as fetch_mock:
+			report = self._run('--local-only', '--model', 'Type')
+
+		fetch_mock.assert_not_called()
+		self.assertIsNone(report['peer'])

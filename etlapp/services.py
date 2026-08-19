@@ -20,6 +20,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from indexerapp.models import DeletedRecord, Manuscripts
 from ecatalogus.instance_settings import build_registry_peer_token_map, infer_instance_slug
 
+from .main_guard import main_master_label, main_master_url, main_writes_allowed
 from .model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names, summarize_categories
 
 
@@ -67,6 +68,12 @@ def build_status_payload():
         'peer_ids': [peer['id'] for peer in peers],
         'has_api_token': bool(getattr(settings, 'ETL_API_TOKEN', '')),
         'model_category_counts': dict(summarize_categories(model_names)),
+        # Whether the main vocabularies may be edited here, and where they are
+        # curated if not. Lets an operator see the policy without having to
+        # trigger a refusal first.
+        'main_writes_allowed': main_writes_allowed(),
+        'main_master': main_master_label(),
+        'main_master_url': main_master_url(),
     }
 
 
@@ -444,6 +451,9 @@ def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None
     if category not in {'main', 'shared'}:
         raise ValueError(f'Unsupported delta import category: {category}')
 
+    if category == 'main':
+        _assert_main_pull_direction(peer_url)
+
     query = {}
     if since:
         query['since'] = since
@@ -526,6 +536,32 @@ def pull_remote_manuscript(peer_url, manuscript_uuid):
         'manuscript_uuid': str(manuscript_uuid),
         'import_summary': import_summary,
     }
+
+
+def _assert_main_pull_direction(peer_url):
+    """`main` may only ever flow downstream, from the configured parent peer.
+
+    Without this an instance could pull vocabularies from a sibling or, worse,
+    eCatalogus could pull them from a slave — the two-way sync the categories
+    were designed to avoid. mpl is both a slave of eCatalogus and the parent of
+    limbo, so the rule is 'from your parent', not 'from the canonical master'.
+    """
+    parent_url = _normalize_peer_url(getattr(settings, 'ETL_MASTER_URL', None))
+    requested_url = _normalize_peer_url(peer_url)
+
+    if not parent_url:
+        raise ValueError(
+            f'This instance has no parent peer, so it does not pull main dictionaries — '
+            f'they are curated here and flow outwards. '
+            f'({main_master_label()} is the source of truth: {main_master_url()})'
+        )
+
+    if requested_url != parent_url:
+        raise ValueError(
+            f'Main dictionaries may only be pulled from this instance\'s parent peer '
+            f'({parent_url}), not from {requested_url}. They are curated in '
+            f'{main_master_label()} ({main_master_url()}) and travel downstream only.'
+        )
 
 
 @transaction.atomic

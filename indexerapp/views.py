@@ -110,7 +110,12 @@ from django.db import transaction
 #For the data licence declared on exports:
 from django.conf import settings
 
-from .api_access import AnonExpensiveRateThrottle, EditorRequiredForWriteMixin, EditorRequiredMixin
+from .api_access import (
+    AnonExpensiveRateThrottle,
+    EditorRequiredForWriteMixin,
+    EditorRequiredMixin,
+    MainMasterOnlyMixin,
+)
 from .zotero_service import ZoteroConfigurationError, get_zotero_config, render_bibliography_entries
 
 
@@ -3236,8 +3241,9 @@ class ManuscriptsImportView(EditorRequiredMixin, View):
         return obj.id if obj else None
 
 
-class TimeReferenceImportView(EditorRequiredMixin, View):
+class TimeReferenceImportView(EditorRequiredMixin, MainMasterOnlyMixin, View):
     required_permissions = ('add_timereference',)
+    main_subject = 'The time reference vocabulary'
 
     def post(self, request, *args, **kwargs):
         try:
@@ -3297,8 +3303,9 @@ class TimeReferenceImportView(EditorRequiredMixin, View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-class EditionContentImportView(EditorRequiredMixin, View):
+class EditionContentImportView(EditorRequiredMixin, MainMasterOnlyMixin, View):
     required_permissions = ('add_editioncontent',)
+    main_subject = 'Edition content'
 
     def post(self, request, *args, **kwargs):
         try:
@@ -3463,8 +3470,9 @@ class CllaImportView(EditorRequiredMixin, View):
         return obj.id if obj else None
 
 
-class PlacesImportView(EditorRequiredMixin, View):
+class PlacesImportView(EditorRequiredMixin, MainMasterOnlyMixin, View):
     required_permissions = ('add_places',)
+    main_subject = 'The places vocabulary'
 
     def post(self, request, *args, **kwargs):
         try:
@@ -3540,8 +3548,9 @@ class PlacesImportView(EditorRequiredMixin, View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-class RiteNamesImportView(EditorRequiredMixin, View):
+class RiteNamesImportView(EditorRequiredMixin, MainMasterOnlyMixin, View):
     required_permissions = ('add_ritenames',)
+    main_subject = 'The rite names vocabulary'
 
     def post(self, request, *args, **kwargs):
         try:
@@ -3610,8 +3619,9 @@ class RiteNamesImportView(EditorRequiredMixin, View):
         obj = model.objects.filter(**{f'{field_name}__iexact': name}).first()
         return obj.id if obj else None
 
-class FormulasImportView(EditorRequiredMixin, View):
+class FormulasImportView(EditorRequiredMixin, MainMasterOnlyMixin, View):
     required_permissions = ('add_formulas',)
+    main_subject = 'The formulas vocabulary'
 
     def post(self, request, *args, **kwargs):
         try:

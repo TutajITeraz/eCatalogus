@@ -198,6 +198,35 @@ Expected local URLs:
 - `http://127.0.0.1:8080` for Liturgica Poloniae
 - `http://127.0.0.1:8000` for eCatalogus
 
+## Reference data is curated in eCatalogus
+
+The `main` category — the controlled vocabularies (Formulas, RiteNames, Places,
+Sections, LiturgicalGenres, the Binding* and Decoration* tables, Projects, and
+the rest listed in `etlapp/model_categories.py`) — has exactly one source of
+truth: eCatalogus. Every other instance receives those tables through the
+one-way ETL pull and cannot edit them:
+
+- the Django admin and the iommi admin show them read-only, with a message
+  pointing at https://ecatalogus.ispan.pl
+- the bulk import endpoints (`/formulas_import/`, `/ritenames_import/`,
+  `/places_import/`, `/timereference_import/`, `/editioncontent_import/`)
+  answer 403 with the same explanation
+- `Pull main dictionaries` only accepts the instance's own parent peer, so
+  `main` can never travel sideways or back upstream
+
+Manuscript data (`ms`) and the bidirectional `shared` tables (Hands,
+Bibliography, Contributors, Watermarks) are unaffected — those stay fully
+editable everywhere.
+
+`mpl` is a slave of eCatalogus *and* the parent peer of `limbo`, so it keeps
+relaying `main` downstream through the ETL even though it may not edit it. The
+ETL import path is deliberately outside the block; only the editorial surfaces
+are closed.
+
+To promote another instance temporarily, set `ETL_ALLOW_MAIN_EDITS=1` in its
+environment. Without it, an instance may edit `main` only when its
+`ETL_SELF_PEER_ID` equals `ETL_CANONICAL_MASTER_ID`.
+
 ## Local ETL smoke test
 
 Minimal end-to-end local ETL verification:

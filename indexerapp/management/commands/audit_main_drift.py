@@ -1,0 +1,422 @@
+"""Reports local divergence in the `main` reference tables.
+
+`main` is curated in eCatalogus and reaches every other instance through the
+one-way ETL pull, so anything written locally is drift with one of two endings:
+a row that also exists upstream gets silently overwritten by the next pull
+(only `shared` has conflict detection), and a row created locally stays local
+forever, because `main` has no push path.
+
+This command answers "has anyone touched the vocabularies here?" from two
+directions:
+
+* against the peer — every local row is compared with the upstream export using
+  the very same routine the importer uses, so `differs` means precisely "the
+  next `Pull main dictionaries` would overwrite this row";
+* locally — the Django admin log and the ETL deletion records name who changed
+  what and when, which the peer diff cannot tell you.
+
+The two are complementary: the admin log misses writes made through the iommi
+admin or the bulk import endpoints, and the peer diff cannot attribute a
+change to a person.
+"""
+
+import json
+from datetime import datetime
+
+from django.apps import apps
+from django.conf import settings
+from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
+from django.contrib.contenttypes.models import ContentType
+from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
+
+from etlapp.model_categories import get_model_category
+from etlapp.services import (
+    _changed_fields,
+    _get_category_models_in_dependency_order,
+    _get_comparable_instance_value,
+    _get_concrete_field,
+    _get_peer_api_token,
+    _normalize_peer_url,
+    _prepare_import_values,
+    fetch_remote_etl_json,
+    get_etl_peer_configs,
+    resolve_etl_peer,
+)
+
+
+ACTION_LABELS = {ADDITION: 'added', CHANGE: 'changed', DELETION: 'deleted'}
+
+MAX_VALUE_LENGTH = 120
+
+
+def _format_value(value):
+    text = 'NULL' if value is None else str(value)
+    if len(text) > MAX_VALUE_LENGTH:
+        text = f'{text[:MAX_VALUE_LENGTH - 1]}…'
+    return text.replace('\t', ' ').replace('\n', ' ')
+
+
+def _parse_since(raw):
+    if not raw:
+        return None
+
+    parsed = parse_datetime(raw)
+    if parsed is None:
+        parsed_date = parse_date(raw)
+        if parsed_date is not None:
+            parsed = datetime.combine(parsed_date, datetime.min.time())
+
+    if parsed is None:
+        raise CommandError(f'Could not parse "{raw}" as an ISO date or datetime.')
+
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+
+    return parsed
+
+
+def _resolve_default_peer():
+    """The parent peer — the only instance this one may take `main` from."""
+    parent_url = _normalize_peer_url(getattr(settings, 'ETL_MASTER_URL', None))
+    if not parent_url:
+        raise CommandError(
+            'This instance has no parent peer configured, so there is nothing to compare '
+            'against. It is the source of truth for main. Pass --peer explicitly to audit '
+            'a different instance from here, or --local-only to skip the comparison.'
+        )
+
+    for peer in get_etl_peer_configs():
+        if _normalize_peer_url(peer['url']) == parent_url:
+            return peer
+
+    return {'id': 'parent', 'label': 'Parent', 'url': parent_url, 'api_token': _get_peer_api_token(parent_url)}
+
+
+def _select_models(requested_model_names):
+    requested = set(requested_model_names or [])
+    available = {
+        model.__name__
+        for model in apps.get_app_config('indexerapp').get_models()
+        if get_model_category(model.__name__) == 'main'
+    }
+
+    unknown = requested.difference(available)
+    if unknown:
+        raise CommandError('Not main-category indexerapp models: ' + ', '.join(sorted(unknown)))
+
+    models = [
+        model for model in _get_category_models_in_dependency_order('main')
+        if not requested or model.__name__ in requested
+    ]
+    return models
+
+
+def _index_remote_payload(payload):
+    """{model label: {uuid: record}} out of an ETL main export."""
+    if not isinstance(payload, dict):
+        raise CommandError('Peer returned an unexpected payload for the main export.')
+
+    remote_by_model = {}
+    for model_payload in payload.get('models') or []:
+        model_label = model_payload.get('model')
+        if not model_label:
+            continue
+        records = {}
+        for record in model_payload.get('results') or []:
+            record_uuid = record.get('uuid')
+            if record_uuid:
+                records[str(record_uuid)] = record
+        remote_by_model[model_label] = records
+
+    return remote_by_model
+
+
+def _compare_model_against_remote(model, remote_records):
+    """Rows that the next pull would overwrite, and rows it would never see."""
+    findings = {
+        'local_only': [],
+        'differs': [],
+        'missing_uuid': 0,
+        'unresolvable': [],
+        'missing_locally': 0,
+        'checked': 0,
+    }
+
+    seen_uuids = set()
+
+    for instance in model.objects.all().order_by('pk').iterator(chunk_size=500):
+        findings['checked'] += 1
+        instance_uuid = getattr(instance, 'uuid', None)
+
+        if instance_uuid is None:
+            findings['missing_uuid'] += 1
+            continue
+
+        instance_uuid = str(instance_uuid)
+        seen_uuids.add(instance_uuid)
+        remote_record = remote_records.get(instance_uuid)
+
+        if remote_record is None:
+            findings['local_only'].append({'uuid': instance_uuid, 'pk': instance.pk, 'label': str(instance)})
+            continue
+
+        try:
+            attrs, m2m_values, _ = _prepare_import_values(model, remote_record)
+        except ValueError as exc:
+            findings['unresolvable'].append({'uuid': instance_uuid, 'pk': instance.pk, 'reason': str(exc)})
+            continue
+
+        changed = _changed_fields(instance, attrs, m2m_values)
+        if not changed:
+            continue
+
+        differences = []
+        for field_name in changed:
+            if field_name in m2m_values:
+                differences.append({'field': field_name, 'local': '<m2m>', 'remote': '<m2m>'})
+                continue
+            differences.append({
+                'field': field_name,
+                'local': _format_value(_get_comparable_instance_value(instance, field_name)),
+                'remote': _format_value(attrs.get(field_name)),
+            })
+
+        findings['differs'].append({
+            'uuid': instance_uuid,
+            'pk': instance.pk,
+            'label': str(instance),
+            'differences': differences,
+        })
+
+    findings['missing_locally'] = len(set(remote_records).difference(seen_uuids))
+    return findings
+
+
+def _collect_admin_log(models, since=None):
+    """Who changed a main vocabulary in the Django admin, and when."""
+    content_types = ContentType.objects.filter(
+        app_label='indexerapp',
+        model__in=[model._meta.model_name for model in models],
+    )
+    queryset = LogEntry.objects.filter(content_type__in=content_types)
+    if since is not None:
+        queryset = queryset.filter(action_time__gte=since)
+
+    entries = []
+    for entry in queryset.select_related('user', 'content_type').order_by('-action_time')[:500]:
+        entries.append({
+            'model': entry.content_type.model_class().__name__ if entry.content_type.model_class() else entry.content_type.model,
+            'action': ACTION_LABELS.get(entry.action_flag, str(entry.action_flag)),
+            'object_repr': entry.object_repr,
+            'object_id': entry.object_id,
+            'user': entry.user.get_username() if entry.user else 'unknown',
+            'at': entry.action_time.isoformat(),
+        })
+
+    return entries
+
+
+def _collect_local_deletions(since=None):
+    from indexerapp.models import DeletedRecord
+
+    queryset = DeletedRecord.objects.filter(category='main')
+    if since is not None:
+        queryset = queryset.filter(deleted_at__gte=since)
+
+    return [
+        {
+            'model_label': record.model_label,
+            'object_uuid': str(record.object_uuid),
+            'deleted_at': record.deleted_at.isoformat(),
+        }
+        for record in queryset.order_by('-deleted_at')[:500]
+    ]
+
+
+class Command(BaseCommand):
+    help = 'Reports rows in the main reference tables that diverge from the upstream instance.'
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--peer',
+            help='Peer id to compare against. Defaults to this instance\'s parent peer.',
+        )
+        parser.add_argument(
+            '--local-only',
+            action='store_true',
+            help='Skip the peer comparison; report only local evidence (admin log, deletions, rows without uuid).',
+        )
+        parser.add_argument(
+            '--model',
+            action='append',
+            dest='models',
+            help='Limit the audit to one main model. Can be passed multiple times.',
+        )
+        parser.add_argument(
+            '--since',
+            help='ISO date/datetime lower bound for the admin log and deletion listings.',
+        )
+        parser.add_argument(
+            '--show',
+            type=int,
+            default=20,
+            help='Maximum rows listed per model and per section. 0 lists everything. Default 20.',
+        )
+        parser.add_argument('--json', action='store_true', help='Emit the full report as JSON.')
+        parser.add_argument('--output', help='Write every drifted row to this file as TSV.')
+        parser.add_argument(
+            '--fail-on-drift',
+            action='store_true',
+            help='Exit with a command error when drift is found, for use in a cron check.',
+        )
+
+    def handle(self, *args, **options):
+        since = _parse_since(options.get('since'))
+        models = _select_models(options.get('models'))
+        show = options['show']
+
+        report = {
+            'site_name': getattr(settings, 'SITE_NAME', ''),
+            'instance': getattr(settings, 'ETL_SELF_PEER_ID', '') or getattr(settings, 'INSTANCE_SLUG', ''),
+            'since': since.isoformat() if since else None,
+            'peer': None,
+            'models': [],
+            'admin_log': _collect_admin_log(models, since),
+            'local_deletions': _collect_local_deletions(since),
+        }
+
+        if options['local_only']:
+            for model in models:
+                report['models'].append({
+                    'model': model._meta.label,
+                    'name': model.__name__,
+                    'checked': model.objects.count(),
+                    'local_only': [],
+                    'differs': [],
+                    'unresolvable': [],
+                    'missing_uuid': model.objects.filter(uuid__isnull=True).count(),
+                    'missing_locally': 0,
+                })
+        else:
+            peer = resolve_etl_peer(options['peer']) if options.get('peer') else _resolve_default_peer()
+            report['peer'] = {'id': peer['id'], 'url': peer['url']}
+
+            try:
+                payload = fetch_remote_etl_json(
+                    peer['url'],
+                    '/api/etl/main/export/',
+                    api_token=peer.get('api_token') or _get_peer_api_token(peer['url']),
+                )
+            except ValueError as exc:
+                raise CommandError(f'Could not read the main export from {peer["url"]}: {exc}') from exc
+
+            remote_by_model = _index_remote_payload(payload)
+
+            for model in models:
+                if _get_concrete_field(model, 'entry_date') is None:
+                    # The exporter skips these, so the peer never sends them and
+                    # every local row would look like drift.
+                    continue
+
+                findings = _compare_model_against_remote(model, remote_by_model.get(model._meta.label, {}))
+                findings['model'] = model._meta.label
+                findings['name'] = model.__name__
+                report['models'].append(findings)
+
+        drift_count = sum(
+            len(entry['local_only']) + len(entry['differs']) + entry['missing_uuid'] + len(entry['unresolvable'])
+            for entry in report['models']
+        )
+        report['drift_row_count'] = drift_count
+
+        if options['output']:
+            self._write_tsv(options['output'], report)
+
+        if options['json']:
+            self.stdout.write(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        else:
+            self._write_human_report(report, show, local_only=options['local_only'])
+
+        if drift_count and options['fail_on_drift']:
+            raise CommandError(f'Main reference data drift detected: {drift_count} row(s).')
+
+        return None
+
+    def _write_tsv(self, path, report):
+        lines = ['model\tfinding\tuuid\tpk\tfield\tlocal\tremote\tlabel']
+        for entry in report['models']:
+            for row in entry['local_only']:
+                lines.append(f'{entry["model"]}\tlocal_only\t{row["uuid"]}\t{row["pk"]}\t\t\t\t{_format_value(row["label"])}')
+            for row in entry['differs']:
+                for difference in row['differences']:
+                    lines.append(
+                        f'{entry["model"]}\tdiffers\t{row["uuid"]}\t{row["pk"]}\t'
+                        f'{difference["field"]}\t{difference["local"]}\t{difference["remote"]}\t{_format_value(row["label"])}'
+                    )
+            for row in entry['unresolvable']:
+                lines.append(f'{entry["model"]}\tunresolvable\t{row["uuid"]}\t{row["pk"]}\t\t\t\t{_format_value(row["reason"])}')
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write('\n'.join(lines) + '\n')
+
+        self.stdout.write(f'Wrote {len(lines) - 1} drift row(s) to {path}')
+
+    def _write_human_report(self, report, show, local_only):
+        def limited(rows):
+            return rows if show == 0 else rows[:show]
+
+        self.stdout.write(f'Instance: {report["site_name"]} ({report["instance"] or "unnamed"})')
+
+        if local_only:
+            self.stdout.write('Peer comparison skipped (--local-only).')
+        else:
+            self.stdout.write(f'Compared against: {report["peer"]["id"]} {report["peer"]["url"]}')
+
+        for entry in report['models']:
+            issues = (
+                len(entry['local_only']) + len(entry['differs'])
+                + entry['missing_uuid'] + len(entry['unresolvable'])
+            )
+            if not issues:
+                continue
+
+            self.stdout.write(
+                f'{entry["name"]}: status=DRIFT checked={entry["checked"]} '
+                f'local_only={len(entry["local_only"])} differs={len(entry["differs"])} '
+                f'missing_uuid={entry["missing_uuid"]} unresolvable={len(entry["unresolvable"])} '
+                f'missing_locally={entry["missing_locally"]}'
+            )
+
+            for row in limited(entry['local_only']):
+                self.stdout.write(f'  local-only  uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
+            for row in limited(entry['differs']):
+                self.stdout.write(f'  differs     uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
+                for difference in row['differences']:
+                    self.stdout.write(
+                        f'      {difference["field"]}: local={difference["local"]!r} remote={difference["remote"]!r}'
+                    )
+            for row in limited(entry['unresolvable']):
+                self.stdout.write(f'  unresolvable uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["reason"])}')
+
+        if report['admin_log']:
+            self.stdout.write(f'Admin log entries touching main models: {len(report["admin_log"])}')
+            for entry in limited(report['admin_log']):
+                self.stdout.write(
+                    f'  {entry["at"]} {entry["user"]} {entry["action"]} {entry["model"]} {_format_value(entry["object_repr"])}'
+                )
+        else:
+            self.stdout.write('Admin log entries touching main models: none')
+
+        if report['local_deletions']:
+            self.stdout.write(f'Local main deletions recorded: {len(report["local_deletions"])}')
+            for entry in limited(report['local_deletions']):
+                self.stdout.write(f'  {entry["deleted_at"]} {entry["model_label"]} uuid={entry["object_uuid"]}')
+
+        if report['drift_row_count']:
+            self.stdout.write(self.style.WARNING(f'Drift found: {report["drift_row_count"]} row(s).'))
+        elif local_only:
+            self.stdout.write(self.style.SUCCESS('No local evidence of main edits.'))
+        else:
+            self.stdout.write(self.style.SUCCESS('No drift: every local main row matches the peer.'))

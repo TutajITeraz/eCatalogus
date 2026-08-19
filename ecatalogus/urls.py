@@ -13,12 +13,15 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.apps import apps
 from django.contrib import admin
 from django.urls import include,path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from etlapp import urls as etl_urls
+from etlapp.main_guard import is_main_model, main_writes_allowed
 from etlapp.views import ETLAdminSyncView
 from indexerapp import views
+from indexerapp.api_access import main_read_only_response
 
 #from indexerapp import views #nie wiem czy to zgodne ze sztuką
 
@@ -117,8 +120,48 @@ class IommiAdmin(Admin):
 
     @staticmethod
     def has_permission(request, operation, model=None, instance=None):
-        # This is the default implementation
-        return request.user.is_staff
+        if not request.user.is_staff:
+            return False
+
+        # `main` vocabularies are curated in eCatalogus and arrive here through
+        # the one-way ETL pull, so this admin may only read them. The wrapper
+        # installed by _guard_iommi_admin_urls() turns an attempt to reach the
+        # create/edit/delete pages into an explanation rather than a 404.
+        if model is not None and operation in {'create', 'edit', 'delete'}:
+            if is_main_model(model.__name__) and not main_writes_allowed():
+                return False
+
+        return True
+
+
+def _guard_iommi_admin_urls(admin_urls):
+    """Answer iommi's write pages with the read-only notice for `main` models."""
+    guarded_names = {'iommi.Admin.create', 'iommi.Admin.edit', 'iommi.Admin.delete'}
+
+    for url_pattern in admin_urls.urlpatterns:
+        if getattr(url_pattern, 'name', None) not in guarded_names:
+            continue
+
+        def guarded_view(request, *args, _original=url_pattern.callback, **kwargs):
+            model = _resolve_iommi_model(kwargs.get('app_name'), kwargs.get('model_name'))
+            if model is not None and is_main_model(model.__name__) and not main_writes_allowed():
+                verbose_name = model._meta.verbose_name
+                subject = f'"{verbose_name[:1].upper()}{verbose_name[1:]}"'
+                return main_read_only_response(request, subject)
+            return _original(request, *args, **kwargs)
+
+        url_pattern.callback = guarded_view
+
+    return admin_urls
+
+
+def _resolve_iommi_model(app_name, model_name):
+    if not app_name or not model_name:
+        return None
+    try:
+        return apps.get_model(app_name, model_name)
+    except LookupError:
+        return None
 
 
 router = routers.DefaultRouter()
@@ -258,7 +301,7 @@ urlpatterns = [
 
     path('iommi-form-test/', Form.create(auto__model=Manuscripts).as_view()),
     path('iommi-table-test/', Table(auto__model=Content).as_view()),
-    path('iommi-admin/', include(IommiAdmin.urls())),
+    path('iommi-admin/', include(_guard_iommi_admin_urls(IommiAdmin.urls()))),
 
     path('ms_tei/',views.ManuscriptTEIView.as_view(), name='ms_tei'),
     path('manuscript_tei/', views.ManuscriptTEI.as_view(), name='manuscript_tei_xml'),

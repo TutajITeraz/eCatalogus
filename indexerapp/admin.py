@@ -1,6 +1,12 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin.options import BaseModelAdmin
 import json
+
+from etlapp.main_guard import (
+    is_main_model,
+    main_read_only_message_html,
+    main_writes_allowed,
+)
 
 from .models import *
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
@@ -1805,3 +1811,64 @@ def _patch_uuid_to_field_allowed():
 _patch_uuid_related_widget_wrapper()
 _patch_uuid_relation_formfields()
 _patch_uuid_to_field_allowed()
+
+# ---------------------------------------------------------------------------
+# main reference data is read-only outside eCatalogus
+# ---------------------------------------------------------------------------
+#
+# eCatalogus curates every vocabulary in the ``main`` category; the other
+# instances receive them through the one-way ETL pull. Editing one here would
+# be lost at the next `Pull main dictionaries` and would never reach the other
+# instances, so the admin refuses the write and says where to make it instead.
+#
+# This runs as a sweep over the registry rather than a mixin on each ModelAdmin
+# so that a vocabulary added later is covered as soon as it is categorised as
+# ``main`` in etlapp.model_categories.
+
+
+def _install_main_read_only_guard(model_admin):
+    subject = model_admin.model._meta.verbose_name
+    subject = f'"{subject[:1].upper()}{subject[1:]}"'
+
+    # Each guard narrows the existing decision rather than replacing it, so the
+    # ordinary Django model permissions still apply on eCatalogus itself.
+    def guard_object_permission(original):
+        def guarded(request, obj=None):
+            return main_writes_allowed() and original(request, obj)
+        return guarded
+
+    def guard_add_permission(original):
+        def guarded(request):
+            return main_writes_allowed() and original(request)
+        return guarded
+
+    model_admin.has_add_permission = guard_add_permission(model_admin.has_add_permission)
+    model_admin.has_change_permission = guard_object_permission(model_admin.has_change_permission)
+    model_admin.has_delete_permission = guard_object_permission(model_admin.has_delete_permission)
+    # import_export grants CSV import to anyone who can reach the page unless
+    # IMPORT_EXPORT_IMPORT_PERMISSION_CODE is set, so has_add_permission alone
+    # would not close that door.
+    if hasattr(model_admin, 'has_import_permission'):
+        model_admin.has_import_permission = guard_add_permission(model_admin.has_import_permission)
+
+    original_changelist_view = model_admin.changelist_view
+
+    def changelist_view(request, extra_context=None, _original=original_changelist_view):
+        if not main_writes_allowed():
+            messages.warning(request, main_read_only_message_html(subject))
+        return _original(request, extra_context=extra_context)
+
+    model_admin.changelist_view = changelist_view
+    model_admin._main_read_only_guarded = True
+
+
+def _guard_main_reference_admins():
+    for model, model_admin in admin.site._registry.items():
+        if not is_main_model(model.__name__):
+            continue
+        if getattr(model_admin, '_main_read_only_guarded', False):
+            continue
+        _install_main_read_only_guard(model_admin)
+
+
+_guard_main_reference_admins()

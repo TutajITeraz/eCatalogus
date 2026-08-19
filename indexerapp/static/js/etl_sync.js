@@ -106,6 +106,12 @@ function renderLocalSummary() {
         ['Database', local.database_name || 'unknown'],
         ['Peer count', String((etlOverview && etlOverview.peers ? etlOverview.peers.length : 0))],
         ['Categories', Object.entries(counts).map(([key, value]) => `${key}: ${value}`).join(', ') || 'No data'],
+        [
+            'Main dictionaries',
+            local.main_writes_allowed
+                ? 'Curated here'
+                : `Read-only — curated in ${local.main_master || 'the master instance'}`,
+        ],
     ];
 
     container.innerHTML = cards.map(([label, value]) => `

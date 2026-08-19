@@ -663,7 +663,16 @@ function sendToServer() {
             handleServerResponse(response);
         },
         error: function (xhr) {
-            if (xhr.status === 401) {
+            // A refusal usually carries its own explanation - the read-only
+            // reference tables in particular say where the entry belongs.
+            const serverResponse = xhr.responseJSON;
+            if (serverResponse && (serverResponse.info || serverResponse.detail)) {
+                handleServerResponse({
+                    info: serverResponse.info || serverResponse.detail,
+                    main_master_url: serverResponse.main_master_url,
+                    main_master: serverResponse.main_master
+                });
+            } else if (xhr.status === 401) {
                 handleServerResponse({info: 'you have to be logged in to import data'});
             } else if (xhr.status === 403) {
                 handleServerResponse({info: 'your account is not allowed to import into this table'});
@@ -695,7 +704,22 @@ function handleServerResponse(response) {
     } else {
         console.log('import error');
         console.log(response);
-        document.getElementById('error-info').innerText = 'Error: ' + response.info;
+        const errorInfo = document.getElementById('error-info');
+        errorInfo.innerText = 'Error: ' + response.info;
+
+        if (response.main_master_url) {
+            const link = document.createElement('a');
+            link.href = response.main_master_url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.innerText = 'Open ' + (response.main_master || response.main_master_url);
+            link.style.display = 'inline-block';
+            link.style.marginTop = '8px';
+            link.style.fontWeight = '600';
+            link.style.textDecoration = 'underline';
+            errorInfo.appendChild(document.createElement('br'));
+            errorInfo.appendChild(link);
+        }
     }
 }
 

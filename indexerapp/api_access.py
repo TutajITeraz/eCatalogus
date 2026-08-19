@@ -9,8 +9,17 @@ Read access stays open — the catalogue is meant to be public.
 """
 
 from django.http import JsonResponse
+from django.shortcuts import render
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.throttling import AnonRateThrottle
+
+from etlapp.main_guard import (
+    main_master_label,
+    main_master_url,
+    main_read_only_message,
+    main_read_only_payload,
+    main_writes_allowed,
+)
 
 
 API_IMPORTER_GROUP = 'api_importers'
@@ -99,4 +108,42 @@ class EditorRequiredForWriteMixin(EditorRequiredMixin):
     def dispatch(self, request, *args, **kwargs):
         if request.method in SAFE_METHODS:
             return super(EditorRequiredMixin, self).dispatch(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
+
+
+def main_read_only_response(request, subject=None):
+    """Full-page explanation for browser surfaces such as the iommi admin.
+
+    The JSON endpoints answer with :func:`main_read_only_payload` instead; this
+    one exists because a bare 403 or 404 in a form-based admin tells the editor
+    nothing about where the entry actually belongs.
+    """
+    subject = subject or 'This reference table'
+    return render(
+        request,
+        'main_read_only.html',
+        {
+            'subject': subject,
+            'message': main_read_only_message(subject),
+            'main_master': main_master_label(),
+            'main_master_url': main_master_url(),
+        },
+        status=403,
+    )
+
+
+class MainMasterOnlyMixin:
+    """Refuses writes to ``main`` reference tables outside eCatalogus.
+
+    Mix it in *after* :class:`EditorRequiredMixin` so an anonymous caller still
+    gets 401 rather than the read-only explanation, which would otherwise leak
+    which tables exist to callers who cannot write anywhere.
+    """
+
+    #: Human-readable name of the table, used to open the refusal message.
+    main_subject = 'This reference table'
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method not in SAFE_METHODS and not main_writes_allowed():
+            return JsonResponse(main_read_only_payload(self.main_subject), status=403)
         return super().dispatch(request, *args, **kwargs)
