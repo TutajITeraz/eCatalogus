@@ -42,6 +42,7 @@ from etlapp.services import (
     _prepare_import_values,
     fetch_remote_etl_json,
     get_etl_peer_configs,
+    get_main_source_urls,
     resolve_etl_peer,
 )
 
@@ -78,20 +79,32 @@ def _parse_since(raw):
 
 
 def _resolve_default_peer():
-    """The parent peer — the only instance this one may take `main` from."""
-    parent_url = _normalize_peer_url(getattr(settings, 'ETL_MASTER_URL', None))
-    if not parent_url:
+    """This instance's upstream — the peer it actually pulls `main` from.
+
+    A configured peer is preferred over a bare ETL_MASTER_URL even when both
+    name an upstream: only the configured one carries an API token. On limbo
+    the two disagree (registry says mpl, the environment still says
+    eCatalogus) and only mpl will authenticate.
+    """
+    allowed_urls = get_main_source_urls()
+    if not allowed_urls:
         raise CommandError(
-            'This instance has no parent peer configured, so there is nothing to compare '
+            'This instance has no upstream peer configured, so there is nothing to compare '
             'against. It is the source of truth for main. Pass --peer explicitly to audit '
             'a different instance from here, or --local-only to skip the comparison.'
         )
 
     for peer in get_etl_peer_configs():
-        if _normalize_peer_url(peer['url']) == parent_url:
+        if _normalize_peer_url(peer['url']) in allowed_urls:
             return peer
 
-    return {'id': 'parent', 'label': 'Parent', 'url': parent_url, 'api_token': _get_peer_api_token(parent_url)}
+    fallback_url = sorted(allowed_urls)[0]
+    return {
+        'id': 'upstream',
+        'label': 'Upstream',
+        'url': fallback_url,
+        'api_token': _get_peer_api_token(fallback_url),
+    }
 
 
 def _select_models(requested_model_names):

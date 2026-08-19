@@ -538,29 +538,61 @@ def pull_remote_manuscript(peer_url, manuscript_uuid):
     }
 
 
+def get_main_source_urls():
+    """Peers this instance may take `main` from — its upstream, nothing else.
+
+    Two settings can name the upstream and they do not always agree: the
+    registry gives a parent peer id (limbo's parent is mpl) while
+    ETL_MASTER_URL may still carry an older value from the environment
+    (limbo's points straight at eCatalogus). Both are legitimately upstream —
+    eCatalogus is the origin and mpl only relays it — so both are accepted. A
+    sibling is in neither, and the canonical master has neither, which is what
+    keeps main from ever flowing sideways or back up.
+    """
+    urls = set()
+
+    parent_peer_id = getattr(settings, 'ETL_DEFAULT_PARENT_PEER', '') or ''
+    if parent_peer_id:
+        try:
+            parent_peer = resolve_etl_peer(parent_peer_id)
+        except ValueError:
+            parent_peer = None
+        if parent_peer is not None:
+            parent_peer_url = _normalize_peer_url(parent_peer['url'])
+            if parent_peer_url:
+                urls.add(parent_peer_url)
+
+    master_url = _normalize_peer_url(getattr(settings, 'ETL_MASTER_URL', None))
+    if master_url:
+        urls.add(master_url)
+
+    return urls
+
+
 def _assert_main_pull_direction(peer_url):
-    """`main` may only ever flow downstream, from the configured parent peer.
+    """`main` may only ever flow downstream, from this instance's upstream.
 
     Without this an instance could pull vocabularies from a sibling or, worse,
     eCatalogus could pull them from a slave — the two-way sync the categories
     were designed to avoid. mpl is both a slave of eCatalogus and the parent of
-    limbo, so the rule is 'from your parent', not 'from the canonical master'.
+    limbo, so the rule is 'from upstream', not 'from the canonical master'.
     """
-    parent_url = _normalize_peer_url(getattr(settings, 'ETL_MASTER_URL', None))
+    allowed_urls = get_main_source_urls()
     requested_url = _normalize_peer_url(peer_url)
 
-    if not parent_url:
+    if not allowed_urls:
         raise ValueError(
-            f'This instance has no parent peer, so it does not pull main dictionaries — '
+            f'This instance has no upstream peer, so it does not pull main dictionaries — '
             f'they are curated here and flow outwards. '
             f'({main_master_label()} is the source of truth: {main_master_url()})'
         )
 
-    if requested_url != parent_url:
+    if requested_url not in allowed_urls:
         raise ValueError(
-            f'Main dictionaries may only be pulled from this instance\'s parent peer '
-            f'({parent_url}), not from {requested_url}. They are curated in '
-            f'{main_master_label()} ({main_master_url()}) and travel downstream only.'
+            f'Main dictionaries may only be pulled from this instance\'s upstream '
+            f'({", ".join(sorted(allowed_urls))}), not from {requested_url}. They are '
+            f'curated in {main_master_label()} ({main_master_url()}) and travel '
+            f'downstream only.'
         )
 
 

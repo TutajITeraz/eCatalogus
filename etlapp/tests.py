@@ -2258,7 +2258,7 @@ class MainPullDirectionTests(TestCase):
         with self.assertRaises(ValueError) as raised:
             pull_remote_category('https://limbo.example.pl', 'main')
 
-        self.assertIn('parent peer', str(raised.exception))
+        self.assertIn('upstream', str(raised.exception))
         self.assertIn('https://ecatalogus.ispan.pl', str(raised.exception))
         fetch_remote_etl_json_mock.assert_not_called()
 
@@ -2269,6 +2269,63 @@ class MainPullDirectionTests(TestCase):
             pull_remote_category('https://mpl.example.pl', 'main')
 
         self.assertIn('curated here', str(raised.exception))
+        fetch_remote_etl_json_mock.assert_not_called()
+
+    @override_settings(
+        ETL_SELF_PEER_ID='limbo',
+        ETL_DEFAULT_PARENT_PEER='mpl',
+        ETL_MASTER_URL='https://ecatalogus.ispan.pl',
+    )
+    @patch('etlapp.services.get_etl_peer_configs')
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_child_pulls_from_its_registry_parent_when_master_url_disagrees(
+        self,
+        fetch_remote_etl_json_mock,
+        get_etl_peer_configs_mock,
+    ):
+        # limbo's environment still points ETL_MASTER_URL at eCatalogus while the
+        # registry makes mpl its parent. mpl is the peer it holds a token for, so
+        # the pull has to keep working.
+        get_etl_peer_configs_mock.return_value = [{
+            'id': 'mpl',
+            'label': 'Liturgica Poloniae',
+            'url': 'https://monumenta-poloniae-liturgica.ispan.pl',
+            'api_token': 'limbo-to-mpl-token',
+        }]
+        fetch_remote_etl_json_mock.side_effect = [
+            {'models': []},
+            {'category': 'shared', 'results': []},
+            {'models': []},
+            {'category': 'main', 'results': []},
+        ]
+
+        result = pull_remote_category('https://monumenta-poloniae-liturgica.ispan.pl', 'main')
+
+        self.assertEqual(result['category'], 'main')
+
+    @override_settings(
+        ETL_SELF_PEER_ID='limbo',
+        ETL_DEFAULT_PARENT_PEER='mpl',
+        ETL_MASTER_URL='https://ecatalogus.ispan.pl',
+    )
+    @patch('etlapp.services.get_etl_peer_configs')
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_sibling_is_still_refused_when_two_upstreams_are_configured(
+        self,
+        fetch_remote_etl_json_mock,
+        get_etl_peer_configs_mock,
+    ):
+        get_etl_peer_configs_mock.return_value = [{
+            'id': 'mpl',
+            'label': 'Liturgica Poloniae',
+            'url': 'https://monumenta-poloniae-liturgica.ispan.pl',
+            'api_token': 'limbo-to-mpl-token',
+        }]
+
+        with self.assertRaises(ValueError) as raised:
+            pull_remote_category('https://canon-missae.ispan.pl', 'main')
+
+        self.assertIn('upstream', str(raised.exception))
         fetch_remote_etl_json_mock.assert_not_called()
 
     @patch('etlapp.services.fetch_remote_etl_json')
