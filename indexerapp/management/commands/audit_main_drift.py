@@ -165,6 +165,45 @@ def _normalise_label(label):
     return ' '.join(str(label).split()).casefold() if label else None
 
 
+# Identity, bookkeeping and the shadow keys _serialize_instance emits alongside
+# a relation — none of them say anything about whether two rows mean the same.
+NON_COMPARABLE_KEYS = {'id', 'uuid', 'entry_date'}
+
+
+def _record_differences(local_record, other_record):
+    """Field-by-field comparison of two serialised rows.
+
+    A shared __str__ is far too coarse to call two rows the same: Places builds
+    its name from three of its twenty-five columns, so two entries agreeing on
+    country/city/repository can still differ in coordinates, place_type, region
+    or any of the historic and local-language names. Only a full comparison can
+    say whether dropping one of them would lose anything.
+    """
+    differences = []
+
+    for key in sorted(set(local_record) | set(other_record)):
+        if key in NON_COMPARABLE_KEYS:
+            continue
+
+        local_value = local_record.get(key)
+        other_value = other_record.get(key)
+        if local_value == other_value:
+            continue
+
+        # Treat None and empty string as the same absence of information.
+        if (local_value in (None, '')) and (other_value in (None, '')):
+            continue
+
+        differences.append({
+            'field': key,
+            'local': _format_value(local_value),
+            'other': _format_value(other_value),
+            'only_local': other_value in (None, '') and local_value not in (None, ''),
+        })
+
+    return differences
+
+
 def _compare_model_against_remote(model, remote_records):
     """Rows that the next pull would overwrite, and rows it would never see."""
     findings = {
@@ -185,11 +224,13 @@ def _compare_model_against_remote(model, remote_records):
             remote_attrs, _, _ = _prepare_import_values(model, remote_record)
         except ValueError:
             continue
-        label_key = _normalise_label(_remote_label(model, remote_attrs))
+        remote_label = _remote_label(model, remote_attrs)
+        label_key = _normalise_label(remote_label)
         if label_key:
             upstream_by_label.setdefault(label_key, []).append({
                 'uuid': remote_uuid,
-                'label': _remote_label(model, remote_attrs),
+                'label': remote_label,
+                'record': remote_record,
             })
 
     for instance in model.objects.all().order_by('pk').iterator(chunk_size=500):
@@ -206,12 +247,23 @@ def _compare_model_against_remote(model, remote_records):
 
         if remote_record is None:
             label = str(instance)
+            local_record = _serialize_instance(instance)
+            matches = []
+            for candidate in upstream_by_label.get(_normalise_label(label), []):
+                differences = _record_differences(local_record, candidate['record'])
+                matches.append({
+                    'uuid': candidate['uuid'],
+                    'label': candidate['label'],
+                    'identical': not differences,
+                    'differences': differences,
+                })
+
             findings['local_only'].append({
                 'uuid': instance_uuid,
                 'pk': instance.pk,
                 'label': label,
-                'upstream_matches': upstream_by_label.get(_normalise_label(label), []),
-                'record': _serialize_instance(instance),
+                'upstream_matches': matches,
+                'record': local_record,
             })
             continue
 
@@ -259,14 +311,31 @@ def _compare_model_against_remote(model, remote_records):
         if len(siblings) < 2:
             continue
         for row in siblings:
-            row['local_duplicates'] = [
-                {'uuid': sibling['uuid'], 'pk': sibling['pk']}
-                for sibling in siblings if sibling['uuid'] != row['uuid']
-            ]
+            duplicates = []
+            for sibling in siblings:
+                if sibling['uuid'] == row['uuid']:
+                    continue
+                differences = _record_differences(row['record'], sibling['record'])
+                duplicates.append({
+                    'uuid': sibling['uuid'],
+                    'pk': sibling['pk'],
+                    'identical': not differences,
+                    'differences': differences,
+                })
+            row['local_duplicates'] = duplicates
 
     findings['local_duplicate_groups'] = sum(
         1 for siblings in local_by_label.values() if len(siblings) > 1
     )
+
+    for row in findings['local_only']:
+        twins = (row.get('upstream_matches') or []) + (row.get('local_duplicates') or [])
+        if any(twin['identical'] for twin in twins):
+            row['duplicate_kind'] = 'identical'
+        elif twins:
+            row['duplicate_kind'] = 'name_collision'
+        else:
+            row['duplicate_kind'] = None
 
     return findings
 
@@ -449,18 +518,19 @@ class Command(BaseCommand):
         lines = ['model\tfinding\tuuid\tpk\tfield\tlocal\tremote_or_upstream_uuid\tlabel']
         for entry in report['models']:
             for row in entry['local_only']:
-                if row.get('upstream_matches'):
-                    finding = 'duplicate_candidate'
-                elif row.get('local_duplicates'):
-                    finding = 'local_duplicate'
-                else:
-                    finding = 'local_only'
-                upstream = ' '.join(
-                    match['uuid'] for match in
-                    (row.get('upstream_matches') or row.get('local_duplicates') or [])
-                )
+                twins = (row.get('upstream_matches') or []) + (row.get('local_duplicates') or [])
+                finding = {
+                    'identical': 'identical_twin',
+                    'name_collision': 'name_collision',
+                }.get(row.get('duplicate_kind'), 'local_only')
+                twin_uuids = ' '.join(twin['uuid'] for twin in twins)
+                differing = ' '.join(sorted({
+                    difference['field']
+                    for twin in twins for difference in twin['differences']
+                }))
                 lines.append(
-                    f'{entry["model"]}\t{finding}\t{row["uuid"]}\t{row["pk"]}\t\t\t{upstream}\t{_format_value(row["label"])}'
+                    f'{entry["model"]}\t{finding}\t{row["uuid"]}\t{row["pk"]}\t{differing}\t\t'
+                    f'{twin_uuids}\t{_format_value(row["label"])}'
                 )
             for row in entry['differs']:
                 for difference in row['differences']:
@@ -476,6 +546,14 @@ class Command(BaseCommand):
 
         self.stdout.write(f'Wrote {len(lines) - 1} drift row(s) to {path}')
 
+    def _write_differences(self, differences):
+        for difference in differences:
+            marker = '  <- only here' if difference['only_local'] else ''
+            self.stdout.write(
+                f'          {difference["field"]}: this={difference["local"]!r} '
+                f'other={difference["other"]!r}{marker}'
+            )
+
     def _write_promotion_bundle(self, path, report, skip_duplicate_candidates):
         """An ETL main bundle of the local-only rows, for import on eCatalogus.
 
@@ -487,13 +565,20 @@ class Command(BaseCommand):
         models_payload = []
         record_count = 0
         skipped = 0
+        collisions_included = 0
+        local_only_total = 0
 
         for entry in report['models']:
             records = []
             for row in entry['local_only']:
-                if skip_duplicate_candidates and (row.get('upstream_matches') or row.get('local_duplicates')):
+                local_only_total += 1
+                # Only a row proven identical to a twin, field for field, may be
+                # left out — a shared name alone is not evidence of sameness.
+                if skip_duplicate_candidates and row.get('duplicate_kind') == 'identical':
                     skipped += 1
                     continue
+                if row.get('duplicate_kind') == 'name_collision':
+                    collisions_included += 1
                 records.append(row['record'])
 
             if records:
@@ -512,10 +597,21 @@ class Command(BaseCommand):
             json.dump(payload, handle, ensure_ascii=False, indent=2, default=str)
             handle.write('\n')
 
-        message = f'Wrote {record_count} local-only row(s) across {len(models_payload)} model(s) to {path}'
-        if skipped:
-            message += f' ({skipped} duplicate candidate(s) left out)'
-        self.stdout.write(message)
+        self.stdout.write(
+            f'Wrote {record_count} local-only row(s) across {len(models_payload)} model(s) to {path}'
+        )
+        # Every local-only row has to land in exactly one of these buckets, so a
+        # row can never disappear between the audit and the bundle unnoticed.
+        self.stdout.write(
+            f'  reconciliation: {local_only_total} local-only = {record_count} exported '
+            f'+ {skipped} skipped (identical to a twin, nothing lost)'
+        )
+        if collisions_included:
+            self.stdout.write(self.style.WARNING(
+                f'  {collisions_included} row(s) share a name with another row but differ in '
+                f'other fields — they were EXPORTED, not skipped. Review them above and merge '
+                f'them first if they are really the same thing.'
+            ))
 
     def _write_human_report(self, report, show, local_only):
         def limited(rows):
@@ -536,10 +632,16 @@ class Command(BaseCommand):
             if not issues:
                 continue
 
-            duplicate_candidates = sum(1 for row in entry['local_only'] if row.get('upstream_matches'))
+            identical_twins = sum(
+                1 for row in entry['local_only'] if row.get('duplicate_kind') == 'identical'
+            )
+            name_collisions = sum(
+                1 for row in entry['local_only'] if row.get('duplicate_kind') == 'name_collision'
+            )
             self.stdout.write(
                 f'{entry["name"]}: status=DRIFT checked={entry["checked"]} '
-                f'local_only={len(entry["local_only"])} duplicate_candidates={duplicate_candidates} '
+                f'local_only={len(entry["local_only"])} identical_twins={identical_twins} '
+                f'name_collisions={name_collisions} '
                 f'local_duplicate_groups={entry.get("local_duplicate_groups", 0)} '
                 f'differs={len(entry["differs"])} '
                 f'missing_uuid={entry["missing_uuid"]} unresolvable={len(entry["unresolvable"])} '
@@ -549,13 +651,27 @@ class Command(BaseCommand):
             for row in limited(entry['local_only']):
                 self.stdout.write(f'  local-only  uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
                 for match in row.get('upstream_matches') or []:
-                    self.stdout.write(
-                        f'      duplicate? upstream {match["uuid"]} already has this name'
-                    )
+                    if match['identical']:
+                        self.stdout.write(
+                            f'      identical to upstream {match["uuid"]} — safe to drop'
+                        )
+                    else:
+                        self.stdout.write(
+                            f'      same name as upstream {match["uuid"]}, but '
+                            f'{len(match["differences"])} field(s) differ:'
+                        )
+                        self._write_differences(match['differences'])
                 for sibling in row.get('local_duplicates') or []:
-                    self.stdout.write(
-                        f'      duplicate? local {sibling["uuid"]} (pk={sibling["pk"]}) has the same name'
-                    )
+                    if sibling['identical']:
+                        self.stdout.write(
+                            f'      identical to local {sibling["uuid"]} (pk={sibling["pk"]}) — safe to drop'
+                        )
+                    else:
+                        self.stdout.write(
+                            f'      same name as local {sibling["uuid"]} (pk={sibling["pk"]}), but '
+                            f'{len(sibling["differences"])} field(s) differ:'
+                        )
+                        self._write_differences(sibling['differences'])
             for row in limited(entry['differs']):
                 self.stdout.write(f'  differs     uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
                 for difference in row['differences']:

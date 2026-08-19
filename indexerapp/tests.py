@@ -2021,15 +2021,71 @@ class AuditMainDriftCommandTests(TestCase):
 			[sibling['uuid'] for sibling in by_uuid[str(first.uuid)]['local_duplicates']],
 			[str(second.uuid)],
 		)
+		self.assertEqual(by_uuid[str(first.uuid)]['duplicate_kind'], 'identical')
 		self.assertEqual(by_uuid[str(solo.uuid)].get('local_duplicates'), None)
+
+	def test_same_name_but_different_fields_is_not_treated_as_a_duplicate(self):
+		# Places builds its name from three of its twenty-five columns, so two rows
+		# can read alike and still hold different data. Dropping one would lose it.
+		upstream = Places.objects.create(country_today_eng='Germany')
+		upstream_record = _serialize_instance(upstream)
+		richer = Places.objects.create(
+			country_today_eng='Germany',
+			region_today_eng='Bavaria',
+			latitude=48.13,
+		)
+		upstream.delete()
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value={'models': [{'model': 'indexerapp.Places', 'results': [upstream_record]}]},
+		):
+			report = self._run('--model', 'Places')
+
+		entry = next(item for item in report['models'] if item['name'] == 'Places')
+		row = next(row for row in entry['local_only'] if row['uuid'] == str(richer.uuid))
+
+		self.assertEqual(row['duplicate_kind'], 'name_collision')
+		differing = {difference['field'] for difference in row['upstream_matches'][0]['differences']}
+		self.assertEqual(differing, {'region_today_eng', 'latitude'})
+		self.assertTrue(all(difference['only_local'] for difference in row['upstream_matches'][0]['differences']))
+
+	def test_bundle_keeps_name_collisions_and_only_drops_proven_twins(self):
+		upstream = Places.objects.create(country_today_eng='Germany')
+		upstream_record = _serialize_instance(upstream)
+		twin = Places.objects.create(country_today_eng='Germany')
+		collision = Places.objects.create(country_today_eng='Germany', latitude=48.13)
+		upstream.delete()
+
+		bundle_path = os.path.join(tempfile.mkdtemp(), 'promote.json')
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value={'models': [{'model': 'indexerapp.Places', 'results': [upstream_record]}]},
+		):
+			call_command(
+				'audit_main_drift',
+				'--model', 'Places',
+				'--export-local-only', bundle_path,
+				'--skip-duplicate-candidates',
+				stdout=StringIO(),
+			)
+
+		with open(bundle_path, encoding='utf-8') as handle:
+			bundle = json.load(handle)
+
+		exported = {record['uuid'] for record in bundle['models'][0]['results']}
+		self.assertIn(str(collision.uuid), exported)
+		self.assertNotIn(str(twin.uuid), exported)
 
 	def test_promotion_bundle_keeps_uuids_and_can_skip_duplicates(self):
 		upstream = TimeReference.objects.create(
 			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
 		)
 		upstream_record = _serialize_instance(upstream)
+		# Identical to the upstream row in every field, so nothing is lost by
+		# leaving it out of the bundle.
 		TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
 		)
 		genuinely_new = TimeReference.objects.create(
 			time_description='XIV-XVI', century_from=14, century_to=16, year_from=1301, year_to=1600,
