@@ -2000,6 +2000,29 @@ class AuditMainDriftCommandTests(TestCase):
 
 		self.assertEqual([match['uuid'] for match in local_row['upstream_matches']], [str(upstream.uuid)])
 
+	def test_flags_local_rows_that_duplicate_each_other(self):
+		# Three "Germany" rows typed on three different days: nothing upstream to
+		# match, but promoting all three would carry the mess into the master.
+		first = Places.objects.create(country_today_eng='Germany')
+		second = Places.objects.create(country_today_eng='Germany')
+		solo = Places.objects.create(country_today_eng='Hungary')
+
+		with patch(
+			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
+			return_value={'models': []},
+		):
+			report = self._run('--model', 'Places')
+
+		entry = next(item for item in report['models'] if item['name'] == 'Places')
+		by_uuid = {row['uuid']: row for row in entry['local_only']}
+
+		self.assertEqual(entry['local_duplicate_groups'], 1)
+		self.assertEqual(
+			[sibling['uuid'] for sibling in by_uuid[str(first.uuid)]['local_duplicates']],
+			[str(second.uuid)],
+		)
+		self.assertEqual(by_uuid[str(solo.uuid)].get('local_duplicates'), None)
+
 	def test_promotion_bundle_keeps_uuids_and_can_skip_duplicates(self):
 		upstream = TimeReference.objects.create(
 			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,

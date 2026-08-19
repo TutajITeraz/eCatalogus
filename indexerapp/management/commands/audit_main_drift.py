@@ -173,6 +173,7 @@ def _compare_model_against_remote(model, remote_records):
         'missing_uuid': 0,
         'unresolvable': [],
         'missing_locally': 0,
+        'local_duplicate_groups': 0,
         'checked': 0,
     }
 
@@ -243,6 +244,30 @@ def _compare_model_against_remote(model, remote_records):
         })
 
     findings['missing_locally'] = len(set(remote_records).difference(seen_uuids))
+
+    # Rows that duplicate each other rather than something upstream — three
+    # separate "Germany" entries typed on three different days, or the same
+    # place saved twice by a double-clicked submit button. Promoting those as
+    # they stand would carry the mess into the master.
+    local_by_label = {}
+    for row in findings['local_only']:
+        label_key = _normalise_label(row['label'])
+        if label_key:
+            local_by_label.setdefault(label_key, []).append(row)
+
+    for siblings in local_by_label.values():
+        if len(siblings) < 2:
+            continue
+        for row in siblings:
+            row['local_duplicates'] = [
+                {'uuid': sibling['uuid'], 'pk': sibling['pk']}
+                for sibling in siblings if sibling['uuid'] != row['uuid']
+            ]
+
+    findings['local_duplicate_groups'] = sum(
+        1 for siblings in local_by_label.values() if len(siblings) > 1
+    )
+
     return findings
 
 
@@ -366,6 +391,7 @@ class Command(BaseCommand):
                     'unresolvable': [],
                     'missing_uuid': model.objects.filter(uuid__isnull=True).count(),
                     'missing_locally': 0,
+                    'local_duplicate_groups': 0,
                 })
         else:
             peer = resolve_etl_peer(options['peer']) if options.get('peer') else _resolve_default_peer()
@@ -423,8 +449,16 @@ class Command(BaseCommand):
         lines = ['model\tfinding\tuuid\tpk\tfield\tlocal\tremote_or_upstream_uuid\tlabel']
         for entry in report['models']:
             for row in entry['local_only']:
-                finding = 'duplicate_candidate' if row.get('upstream_matches') else 'local_only'
-                upstream = ' '.join(match['uuid'] for match in row.get('upstream_matches') or [])
+                if row.get('upstream_matches'):
+                    finding = 'duplicate_candidate'
+                elif row.get('local_duplicates'):
+                    finding = 'local_duplicate'
+                else:
+                    finding = 'local_only'
+                upstream = ' '.join(
+                    match['uuid'] for match in
+                    (row.get('upstream_matches') or row.get('local_duplicates') or [])
+                )
                 lines.append(
                     f'{entry["model"]}\t{finding}\t{row["uuid"]}\t{row["pk"]}\t\t\t{upstream}\t{_format_value(row["label"])}'
                 )
@@ -457,7 +491,7 @@ class Command(BaseCommand):
         for entry in report['models']:
             records = []
             for row in entry['local_only']:
-                if skip_duplicate_candidates and row.get('upstream_matches'):
+                if skip_duplicate_candidates and (row.get('upstream_matches') or row.get('local_duplicates')):
                     skipped += 1
                     continue
                 records.append(row['record'])
@@ -506,6 +540,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 f'{entry["name"]}: status=DRIFT checked={entry["checked"]} '
                 f'local_only={len(entry["local_only"])} duplicate_candidates={duplicate_candidates} '
+                f'local_duplicate_groups={entry.get("local_duplicate_groups", 0)} '
                 f'differs={len(entry["differs"])} '
                 f'missing_uuid={entry["missing_uuid"]} unresolvable={len(entry["unresolvable"])} '
                 f'missing_locally={entry["missing_locally"]}'
@@ -516,6 +551,10 @@ class Command(BaseCommand):
                 for match in row.get('upstream_matches') or []:
                     self.stdout.write(
                         f'      duplicate? upstream {match["uuid"]} already has this name'
+                    )
+                for sibling in row.get('local_duplicates') or []:
+                    self.stdout.write(
+                        f'      duplicate? local {sibling["uuid"]} (pk={sibling["pk"]}) has the same name'
                     )
             for row in limited(entry['differs']):
                 self.stdout.write(f'  differs     uuid={row["uuid"]} pk={row["pk"]} {_format_value(row["label"])}')
