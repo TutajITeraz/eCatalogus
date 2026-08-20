@@ -168,6 +168,44 @@ function renderPeerOptions() {
     });
 }
 
+function isCascadeUpstreamEnabled() {
+    const checkbox = document.getElementById('etl-cascade-upstream');
+    return Boolean(checkbox && checkbox.checked);
+}
+
+function logUpstreamRefreshSummary(refresh, indent) {
+    if (!refresh) {
+        return;
+    }
+
+    const prefix = indent || '  ';
+    const peerLabel = refresh.site_name || refresh.peer_url || 'the peer';
+
+    if (refresh.refreshed) {
+        const importSummary = refresh.import_summary || {};
+        const deleteSummary = refresh.delete_summary || {};
+        appendETLLog(
+            `${prefix}${peerLabel} refreshed from its upstream ${refresh.upstream_url || ''}: created=${importSummary.created || 0}, updated=${importSummary.updated || 0}, skipped=${importSummary.skipped || 0}, deleted=${deleteSummary.deleted || 0}.`
+        );
+        // A longer relay chain reports each hop it had to walk.
+        logUpstreamRefreshSummary(refresh.upstream_refresh, `${prefix}  `);
+        return;
+    }
+
+    const reasons = {
+        is_source: `${prefix}${peerLabel} curates this data itself, so there was no upstream to refresh from.`,
+        depth_exhausted: `${prefix}Upstream refresh stopped: the relay chain is longer than the configured depth.`,
+        unsupported: `${prefix}${peerLabel} does not support upstream refresh (older instance) — continuing with the data it already has.`,
+        conflict: `${prefix}${peerLabel} could not refresh: a shared conflict needs to be resolved there first — continuing with the data it already has.`,
+        failed: `${prefix}${peerLabel} could not reach its own upstream — continuing with the data it already has.`,
+    };
+
+    appendETLLog(reasons[refresh.reason] || `${prefix}Upstream refresh did not run (${refresh.reason || 'unknown reason'}).`);
+    if (refresh.error) {
+        appendETLLog(`${prefix}  ${refresh.error}`);
+    }
+}
+
 function getETLSyncModelOptions() {
     // The peer is what gets exported, so prefer the table list it advertises.
     // An older peer without `sync_models` falls back to the local one, which is
@@ -262,6 +300,7 @@ async function triggerCategoryPull(category, options) {
 
     const models = (options && Array.isArray(options.models) && options.models.length) ? options.models : null;
     const scopeLabel = models ? ((options && options.label) || models.join(', ')) : `${category} dictionaries`;
+    const cascadeUpstream = isCascadeUpstreamEnabled();
 
     const sinceValue = (document.getElementById('etl-since') || {}).value || '';
     etlConflictWorkflow = {
@@ -271,11 +310,15 @@ async function triggerCategoryPull(category, options) {
         since: sinceValue,
         models,
         scopeLabel,
+        cascadeUpstream,
         forceRemoteDecisions: [],
         keepLocalDecisions: [],
     };
     clearActiveConflict();
     appendETLLog(`Pulling ${scopeLabel} from ${peer.url}${sinceValue ? ` since ${sinceValue}` : ''}...`);
+    if (cascadeUpstream) {
+        appendETLLog(`  Asking ${peer.label} to refresh ${category} from its own upstream first. This can take a while if the peer is far behind.`);
+    }
     beginETLBusyState(`Pulling ${scopeLabel}...`, 12);
     await waitForNextPaint();
 
@@ -287,6 +330,7 @@ async function triggerCategoryPull(category, options) {
                 category: category,
                 since: sinceValue,
                 models: models,
+                cascade_upstream: cascadeUpstream,
                 force_remote_uuids: buildDecisionUuidList(etlConflictWorkflow.forceRemoteDecisions),
                 keep_local_uuids: buildDecisionUuidList(etlConflictWorkflow.keepLocalDecisions),
             }),
@@ -501,6 +545,8 @@ function logCategoryPullSummary(category, result) {
     const deleteSummary = summary.delete_summary || {};
     clearActiveConflict({ resetWorkflow: true });
     updateETLBusyProgress(100, `${capitalize(category)} pull completed.`);
+
+    logUpstreamRefreshSummary(summary.upstream_refresh);
 
     // A single-table pull carries whatever same-category tables its foreign keys
     // point at, so say which ones actually came along.
@@ -851,7 +897,7 @@ function renderETLBusyState(message) {
     const text = document.getElementById('etl-busy-text');
     const progressBar = document.getElementById('etl-busy-progress-bar');
     const progressLabel = document.getElementById('etl-busy-progress-label');
-    const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-pull-model, #etl-model-select, #etl-peer-select, #etl-since, .etl-import-manuscript, #etl-conflict-keep-local, #etl-conflict-apply-remote, #etl-conflict-close, #etl-conflict-reset-workflow');
+    const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-pull-model, #etl-model-select, #etl-peer-select, #etl-since, #etl-cascade-upstream, .etl-import-manuscript, #etl-conflict-keep-local, #etl-conflict-apply-remote, #etl-conflict-close, #etl-conflict-reset-workflow');
     const isBusy = etlPendingOperations > 0;
 
     if (panel) {

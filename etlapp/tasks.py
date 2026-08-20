@@ -46,6 +46,7 @@ def pull_category_task(
     force_remote_uuids=None,
     keep_local_uuids=None,
     models=None,
+    cascade_upstream=False,
 ):
     """Background task for pulling a category from remote peer."""
     try:
@@ -56,6 +57,7 @@ def pull_category_task(
             force_remote_uuids=force_remote_uuids,
             keep_local_uuids=keep_local_uuids,
             models=models,
+            cascade_upstream=cascade_upstream,
         )
         stats = get_database_stats()
         return {

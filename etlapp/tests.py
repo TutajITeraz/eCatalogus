@@ -23,7 +23,7 @@ from rest_framework.test import APIClient
 
 from etlapp.views import ETLAdminSyncView, ETLUIPullCategoryView, ETLUIPullManuscriptView
 from etlapp.main_guard import main_read_only_message, main_read_only_payload, main_writes_allowed
-from etlapp.services import ETLImportConflictError, _serialize_value, build_deleted_records_payload, build_delta_export_payload, build_manuscript_export_payload, expand_category_model_selection, get_etl_peer_configs, import_delta_payload, import_manuscript_payload, normalize_category_model_selection, pull_remote_category
+from etlapp.services import ETLImportConflictError, ETLRemoteRequestError, _serialize_value, build_deleted_records_payload, build_delta_export_payload, build_manuscript_export_payload, expand_category_model_selection, get_etl_peer_configs, get_upstream_peer_url, import_delta_payload, import_manuscript_payload, normalize_category_model_selection, pull_remote_category, refresh_category_from_upstream
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
@@ -152,6 +152,7 @@ class ETLTaskQueueRoutingTests(SimpleTestCase):
                 'force_remote_uuids': [],
                 'keep_local_uuids': [],
                 'models': None,
+                'cascade_upstream': False,
             },
             queue='etl_corpus-liturgicum',
         )
@@ -498,6 +499,7 @@ class ETLUIAsyncFallbackTests(SimpleTestCase):
             force_remote_uuids=[],
             keep_local_uuids=[],
             models=None,
+            cascade_upstream=False,
         )
         user_can_manage_etl_mock.assert_called_once_with(request.user)
 
@@ -2518,3 +2520,239 @@ class SingleTablePullViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 400)
         apply_async_mock.assert_not_called()
+
+
+@override_settings(
+    SITE_NAME='Liturgica Poloniae',
+    ETL_ROLE='slave',
+    ETL_SELF_PEER_ID='mpl',
+    ETL_CANONICAL_MASTER_ID='ecatalogus',
+    ETL_MAIN_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_MASTER_URL='https://ecatalogus.ispan.pl',
+    # Named explicitly: without it the instance registry on the machine running
+    # the tests decides who mpl's parent is.
+    ETL_DEFAULT_PARENT_PEER='',
+    ETL_API_TOKEN='test-token',
+)
+class UpstreamRefreshTests(TestCase):
+    """A relay catches up with its own master before serving a downstream peer."""
+
+    def _main_export_response(self, type_uuid, name):
+        return {
+            'models': [
+                {
+                    'model': 'indexerapp.Type',
+                    'results': [
+                        {
+                            'uuid': type_uuid,
+                            'short_name': 'REL',
+                            'name': name,
+                            'entry_date': timezone.now().isoformat(),
+                        }
+                    ],
+                }
+            ]
+        }
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_relay_pulls_from_its_master_when_a_downstream_peer_asks(self, fetch_remote_etl_json_mock):
+        type_uuid = str(uuid4())
+        fetch_remote_etl_json_mock.side_effect = [
+            # The master answers the next hop of the cascade: it has no upstream.
+            {'category': 'main', 'refreshed': False, 'reason': 'is_source'},
+            {'models': []},
+            {'category': 'shared', 'results': []},
+            self._main_export_response(type_uuid, 'Fresh'),
+            {'category': 'main', 'results': []},
+        ]
+
+        result = refresh_category_from_upstream('main', requested_by='limbo (127.0.0.1)')
+
+        self.assertTrue(result['refreshed'])
+        self.assertEqual(result['upstream_url'], 'https://ecatalogus.ispan.pl')
+        self.assertEqual(result['import_summary']['created'], 1)
+        self.assertTrue(Type.objects.filter(uuid=type_uuid, name='Fresh').exists())
+
+    @override_settings(ETL_ROLE='master', ETL_SELF_PEER_ID='ecatalogus', ETL_MASTER_URL=None, ETL_DEFAULT_PARENT_PEER='')
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_the_source_instance_reports_that_it_has_no_upstream(self, fetch_remote_etl_json_mock):
+        self.assertIsNone(get_upstream_peer_url())
+
+        result = refresh_category_from_upstream('main')
+
+        self.assertFalse(result['refreshed'])
+        self.assertEqual(result['reason'], 'is_source')
+        fetch_remote_etl_json_mock.assert_not_called()
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_an_unreachable_master_does_not_fail_the_downstream_request(self, fetch_remote_etl_json_mock):
+        fetch_remote_etl_json_mock.side_effect = ValueError('Cannot reach ETL peer: timed out')
+
+        result = refresh_category_from_upstream('main')
+
+        self.assertFalse(result['refreshed'])
+        self.assertEqual(result['reason'], 'failed')
+        self.assertIn('timed out', result['error'])
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_the_selected_table_narrows_the_upstream_refresh_too(self, fetch_remote_etl_json_mock):
+        # A one-table pull downstream must stay a one-table pull upstream —
+        # otherwise the cascade reintroduces exactly the slow full sync the
+        # table selection exists to avoid.
+        fetch_remote_etl_json_mock.side_effect = [
+            {'category': 'main', 'refreshed': False, 'reason': 'is_source'},
+            {'models': []},
+            {'category': 'main', 'results': []},
+        ]
+
+        refresh_category_from_upstream('main', models=['Places'], since='2025-01-31')
+
+        refresh_calls = [call for call in fetch_remote_etl_json_mock.call_args_list if 'payload' in call.kwargs]
+        export_calls = [call for call in fetch_remote_etl_json_mock.call_args_list if call.kwargs.get('query')]
+
+        self.assertEqual(refresh_calls[0].kwargs['payload']['models'], ['Places'])
+        self.assertEqual(refresh_calls[0].kwargs['payload']['since'], '2025-01-31')
+        self.assertEqual(len(export_calls), 2)
+        for call in export_calls:
+            self.assertEqual(call.kwargs['query'], {'since': '2025-01-31', 'models': 'Places'})
+
+
+@override_settings(
+    SITE_NAME='Limbo',
+    ETL_ROLE='slave',
+    ETL_SELF_PEER_ID='limbo',
+    ETL_CANONICAL_MASTER_ID='ecatalogus',
+    ETL_MAIN_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_MASTER_URL='https://mpl.example.pl',
+    ETL_DEFAULT_PARENT_PEER='',
+    ETL_API_TOKEN='test-token',
+)
+class CascadingPullTests(TestCase):
+    """The downstream half: limbo asks mpl to catch up before reading from it."""
+
+    def _peer_responses(self, calls=None, refresh_response=None):
+        """Answer whatever the pull asks for, so a test only states what it cares about."""
+        def fake_fetch(peer_url, path, **kwargs):
+            if calls is not None:
+                calls.append((path, kwargs))
+            if path.endswith('/refresh-upstream/'):
+                if isinstance(refresh_response, Exception):
+                    raise refresh_response
+                return refresh_response
+            category = path.split('/')[3]
+            if path.endswith('/deleted/'):
+                return {'category': category, 'results': []}
+            return {'category': category, 'models': []}
+
+        return fake_fetch
+
+    def test_cascade_asks_the_peer_to_refresh_before_reading_from_it(self):
+        calls = []
+        fake_fetch = self._peer_responses(
+            calls,
+            refresh_response={
+                'category': 'main',
+                'site_name': 'Liturgica Poloniae',
+                'upstream_url': 'https://ecatalogus.ispan.pl',
+                'refreshed': True,
+                'reason': None,
+                'error': None,
+                'import_summary': {'created': 3, 'updated': 1, 'skipped': 0},
+                'delete_summary': {'deleted': 0},
+            },
+        )
+
+        with patch('etlapp.services.fetch_remote_etl_json', side_effect=fake_fetch):
+            result = pull_remote_category(
+                'https://mpl.example.pl',
+                'main',
+                models=['Places'],
+                cascade_upstream=True,
+            )
+
+        # The refresh has to happen before we read, or we import the stale copy.
+        self.assertEqual(calls[0][0], '/api/etl/main/refresh-upstream/')
+        self.assertEqual(calls[0][1]['method'], 'POST')
+        self.assertEqual(calls[0][1]['payload']['models'], ['Places'])
+        self.assertEqual(calls[0][1]['payload']['depth'], 2)
+        self.assertTrue(result['upstream_refresh']['refreshed'])
+        self.assertEqual(result['upstream_refresh']['import_summary']['created'], 3)
+
+    def test_a_peer_too_old_to_know_the_endpoint_does_not_break_the_pull(self):
+        fake_fetch = self._peer_responses(
+            refresh_response=ETLRemoteRequestError('Remote ETL request failed (404): Not Found', status_code=404),
+        )
+
+        with patch('etlapp.services.fetch_remote_etl_json', side_effect=fake_fetch):
+            result = pull_remote_category('https://mpl.example.pl', 'main', cascade_upstream=True)
+
+        self.assertEqual(result['upstream_refresh']['reason'], 'unsupported')
+        self.assertFalse(result['upstream_refresh']['refreshed'])
+        self.assertEqual(result['import_summary']['created'], 0)
+
+    def test_no_refresh_request_is_sent_when_the_cascade_is_off(self):
+        calls = []
+
+        with patch('etlapp.services.fetch_remote_etl_json', side_effect=self._peer_responses(calls)):
+            result = pull_remote_category('https://mpl.example.pl', 'main')
+
+        self.assertNotIn('/api/etl/main/refresh-upstream/', [path for path, _ in calls])
+        self.assertIsNone(result['upstream_refresh'])
+
+    def test_depth_stops_a_registry_that_names_two_instances_as_each_others_parent(self):
+        with patch('etlapp.services.fetch_remote_etl_json', side_effect=self._peer_responses()):
+            result = pull_remote_category(
+                'https://mpl.example.pl',
+                'main',
+                cascade_upstream=True,
+                cascade_depth=0,
+            )
+
+        self.assertEqual(result['upstream_refresh']['reason'], 'depth_exhausted')
+        self.assertFalse(result['upstream_refresh']['requested'])
+
+
+class UpstreamRefreshEndpointTests(TestCase):
+    """The HTTP surface a downstream peer talks to."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+    @override_settings(ETL_API_TOKEN='test-token')
+    @patch('etlapp.views.refresh_category_from_upstream')
+    def test_endpoint_forwards_the_request_scope_to_the_service(self, refresh_mock):
+        refresh_mock.return_value = {'category': 'main', 'refreshed': True}
+        self.client.credentials(HTTP_AUTHORIZATION='Token test-token')
+
+        response = self.client.post(
+            reverse('etl:etl-upstream-refresh', args=['main']),
+            data={'since': '2025-01-31', 'models': ['Places'], 'depth': 2},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['refreshed'])
+        self.assertEqual(refresh_mock.call_args.kwargs['since'], '2025-01-31')
+        self.assertEqual(refresh_mock.call_args.kwargs['models'], ['Places'])
+        self.assertEqual(refresh_mock.call_args.kwargs['depth'], 2)
+
+    @override_settings(ETL_API_TOKEN='test-token')
+    def test_endpoint_rejects_a_category_that_has_no_upstream_flow(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Token test-token')
+
+        response = self.client.post(
+            reverse('etl:etl-upstream-refresh', args=['ms']),
+            data={},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_endpoint_requires_authentication(self):
+        response = self.client.post(
+            reverse('etl:etl-upstream-refresh', args=['main']),
+            data={},
+            format='json',
+        )
+
+        self.assertIn(response.status_code, (401, 403))

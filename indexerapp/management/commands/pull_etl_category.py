@@ -25,6 +25,12 @@ class Command(BaseCommand):
             help='Pull only this table instead of the whole category, e.g. --model Places. Can be passed multiple times.',
         )
         parser.add_argument(
+            '--refresh-upstream',
+            action='store_true',
+            dest='cascade_upstream',
+            help='Ask the peer to pull from its own upstream first, so a relay does not serve a stale copy.',
+        )
+        parser.add_argument(
             '--keep-local-uuid',
             action='append',
             dest='keep_local_uuids',
@@ -41,6 +47,7 @@ class Command(BaseCommand):
                 force_remote_uuids=options.get('force_remote_uuids') or [],
                 keep_local_uuids=options.get('keep_local_uuids') or [],
                 models=options.get('models') or None,
+                cascade_upstream=options.get('cascade_upstream', False),
             )
         except ETLImportConflictError as exc:
             raise CommandError(json.dumps(exc.to_payload(), ensure_ascii=False, indent=2)) from exc

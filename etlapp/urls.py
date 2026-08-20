@@ -14,6 +14,7 @@ from .views import (
     ETLUIPullManuscriptView,
     ETLUIResolveConflictView,
     ETLUITaskStatusView,
+    ETLUpstreamRefreshView,
 )
 
 
@@ -31,4 +32,5 @@ urlpatterns = [
     path('<str:category>/export/', ETLDeltaExportView.as_view(), name='etl-delta-export'),
     path('<str:category>/import/', ETLDeltaImportView.as_view(), name='etl-delta-import'),
     path('<str:category>/deleted/', ETLDeletedRecordsView.as_view(), name='etl-deleted-records'),
+    path('<str:category>/refresh-upstream/', ETLUpstreamRefreshView.as_view(), name='etl-upstream-refresh'),
 ]

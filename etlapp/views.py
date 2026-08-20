@@ -34,6 +34,8 @@ from .schema import (
     ETLManuscriptImportResponseSerializer,
     ETLManuscriptListResponseSerializer,
     ETLStatusResponseSerializer,
+    ETLUpstreamRefreshRequestSerializer,
+    ETLUpstreamRefreshResponseSerializer,
 )
 from .services import (
     ETLImportConflictError,
@@ -48,6 +50,7 @@ from .services import (
     import_manuscript_payload,
     normalize_category_model_selection,
     pull_remote_category,
+    refresh_category_from_upstream,
     pull_remote_manuscript,
     resolve_shared_conflict,
     resolve_etl_peer,
@@ -79,6 +82,14 @@ class ETLAPIView(APIView):
     # clearing the list makes that guarantee explicit and immune to future
     # changes to DEFAULT_THROTTLE_CLASSES.
     throttle_classes = []
+
+
+def _describe_etl_requester(request):
+    """Label for the relay's log line, so an unexpected refresh can be traced back."""
+    user = getattr(request, 'user', None)
+    user_label = getattr(user, 'username', '') or 'anonymous'
+    address = request.META.get('REMOTE_ADDR') or 'unknown address'
+    return f'{user_label} ({address})'
 
 
 class ETLStatusView(ETLAPIView):
@@ -190,6 +201,38 @@ class ETLDeltaExportView(ETLAPIView):
             )
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(payload)
+
+
+class ETLUpstreamRefreshView(ETLAPIView):
+    """Lets a downstream peer ask this instance to catch up with its own upstream.
+
+    Only relays answer with real work: on the instance that curates the category
+    there is no upstream, and the response says so instead of failing, so the
+    caller can log "peer is the source" and carry on.
+    """
+
+    @extend_schema(
+        tags=['ETL'],
+        summary='Refresh a category from this instance\'s own upstream peer',
+        request=ETLUpstreamRefreshRequestSerializer,
+        responses={200: ETLUpstreamRefreshResponseSerializer, 400: ETLErrorSerializer, 404: ETLErrorSerializer},
+    )
+    def post(self, request, category):
+        body = request.data if isinstance(request.data, dict) else {}
+
+        try:
+            payload = refresh_category_from_upstream(
+                category,
+                since=body.get('since') or None,
+                models=body.get('models') or None,
+                depth=body.get('depth'),
+                requested_by=_describe_etl_requester(request),
+            )
+        except ValueError as exc:
+            status_code = status.HTTP_404_NOT_FOUND if 'Unsupported' in str(exc) else status.HTTP_400_BAD_REQUEST
+            return Response({'detail': str(exc)}, status=status_code)
 
         return Response(payload)
 
@@ -397,6 +440,7 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
         force_remote_uuids = body.get('force_remote_uuids') or []
         keep_local_uuids = body.get('keep_local_uuids') or []
         models = body.get('models') or None
+        cascade_upstream = bool(body.get('cascade_upstream', False))
         async_mode = body.get('async', True)  # Default to async for UI
 
         if not peer_id or not category:
@@ -420,6 +464,7 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
                     'force_remote_uuids': force_remote_uuids,
                     'keep_local_uuids': keep_local_uuids,
                     'models': models,
+                    'cascade_upstream': cascade_upstream,
                 },
                 sync_callable=pull_remote_category,
                 sync_kwargs={
@@ -427,6 +472,7 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
                     'force_remote_uuids': force_remote_uuids,
                     'keep_local_uuids': keep_local_uuids,
                     'models': models,
+                    'cascade_upstream': cascade_upstream,
                 },
             )
         except ETLImportConflictError as exc:

@@ -139,6 +139,22 @@ try:
 except ValueError:
     ETL_IMPORT_LOG_MAX_RECORDS = 100
 
+# How many relay hops a cascading pull may refresh. A pull from a peer that only
+# relays reference data (mpl receives main from eCatalogus) first asks that peer
+# to catch up, so this instance never imports a copy that is one sync behind.
+# eCatalogus -> mpl -> limbo needs 1; the default leaves room for one more level.
+try:
+    ETL_UPSTREAM_REFRESH_DEPTH = int(text_env('ETL_UPSTREAM_REFRESH_DEPTH', default='2'))
+except ValueError:
+    ETL_UPSTREAM_REFRESH_DEPTH = 2
+
+# The relay pulls from its own upstream while this instance waits, so this has to
+# allow for a full sync there — far longer than an ordinary ETL request.
+try:
+    ETL_UPSTREAM_REFRESH_TIMEOUT = int(text_env('ETL_UPSTREAM_REFRESH_TIMEOUT', default='900'))
+except ValueError:
+    ETL_UPSTREAM_REFRESH_TIMEOUT = 900
+
 # Application definition
 
 INSTALLED_APPS = [

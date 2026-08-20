@@ -54,6 +54,23 @@ class ETLDeltaExportResponseSerializer(serializers.Serializer):
     models = ETLDeltaModelSerializer(many=True)
 
 
+class ETLUpstreamRefreshRequestSerializer(serializers.Serializer):
+    since = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    models = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
+    depth = serializers.IntegerField(required=False, allow_null=True)
+
+
+class ETLUpstreamRefreshResponseSerializer(serializers.Serializer):
+    category = serializers.CharField()
+    site_name = serializers.CharField(allow_blank=True)
+    upstream_url = serializers.CharField(allow_null=True)
+    refreshed = serializers.BooleanField()
+    reason = serializers.CharField(allow_null=True)
+    error = serializers.CharField(allow_null=True)
+    import_summary = serializers.DictField(required=False, allow_null=True)
+    delete_summary = serializers.DictField(required=False, allow_null=True)
+
+
 class ETLDeltaImportRequestSerializer(serializers.Serializer):
     models = ETLDeltaModelSerializer(many=True)
 

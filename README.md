@@ -256,6 +256,36 @@ python manage.py pull_etl_category --peer ecatalogus --category main --model Pla
 and on the export endpoints as a comma-separated query param,
 `/api/etl/main/export/?models=Places,TimeReference`.
 
+## Pulling through a relay
+
+`mpl` is a slave of eCatalogus *and* the parent peer of `limbo`, so when limbo
+pulls `main` from mpl it receives whatever mpl last synced — which can already be
+behind eCatalogus, with nothing in the log to say so.
+
+`Refresh the peer from its own upstream first` (checked by default in ETL sync)
+closes that gap: before reading, limbo calls
+`POST /api/etl/main/refresh-upstream/` on mpl, mpl pulls from eCatalogus, and
+only then does limbo import. The narrowing options travel with it — a
+`Places`-only pull since a given date triggers a `Places`-only refresh since the
+same date, not a full sync on the relay.
+
+A peer that curates the category itself has no upstream and answers `is_source`,
+so the step costs one request and nothing else. If the relay cannot reach its own
+parent, is stuck on a shared conflict, or is too old to know the endpoint, the
+pull still completes with the data the relay already has and the reason is
+written to the operation log and to `logs/etl_import.log` on both instances.
+
+`ETL_UPSTREAM_REFRESH_DEPTH` (default 2) bounds how many relay hops a refresh
+travels — it is also what stops two instances that name each other as parent from
+bouncing a refresh back and forth. `ETL_UPSTREAM_REFRESH_TIMEOUT` (default 900s)
+has to cover the relay's own sync, since the downstream request waits for it.
+
+The same flag exists outside the GUI:
+
+```
+python manage.py pull_etl_category --peer mpl --category main --refresh-upstream
+```
+
 
 
 ### Every time you want to run the project, you have to activate the environment first:

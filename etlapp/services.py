@@ -32,6 +32,10 @@ from .model_categories import (
 
 IMPORT_LOGGER = logging.getLogger('etlapp.import')
 
+# Relay hops a cascading refresh may travel. eCatalogus -> mpl -> limbo needs
+# one; the cap is what keeps a mutually-parented pair of instances from looping.
+UPSTREAM_REFRESH_MAX_DEPTH = 5
+
 ETL_IMPORT_PERMISSION_NAMES = [
     'add_manuscripts',
     'add_content',
@@ -41,6 +45,20 @@ ETL_IMPORT_PERMISSION_NAMES = [
     'add_ritenames',
     'add_timereference',
 ]
+
+
+class ETLRemoteRequestError(ValueError):
+    """A peer answered with an HTTP error.
+
+    Subclasses ValueError so every existing `except ValueError` around the ETL
+    fetch keeps working, while callers that care can look at `status_code` —
+    a 404 means the peer does not know the endpoint (an older instance), which
+    is not the same failure as a peer that cannot be reached at all.
+    """
+
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class ETLImportConflictError(Exception):
@@ -358,7 +376,10 @@ def fetch_remote_etl_json(peer_url, path, query=None, method='GET', payload=None
             body = response.read().decode('utf-8')
     except urllib_error.HTTPError as exc:
         detail = _extract_remote_error(exc)
-        raise ValueError(f'Remote ETL request failed for {url} ({exc.code}): {detail}') from exc
+        raise ETLRemoteRequestError(
+            f'Remote ETL request failed for {url} ({exc.code}): {detail}',
+            status_code=exc.code,
+        ) from exc
     except urllib_error.URLError as exc:
         raise ValueError(f'Cannot reach ETL peer {peer_url}: {exc.reason}') from exc
 
@@ -605,6 +626,8 @@ def pull_remote_category(
     force_remote_uuids=None,
     keep_local_uuids=None,
     models=None,
+    cascade_upstream=False,
+    cascade_depth=None,
 ):
     if category not in {'main', 'shared'}:
         raise ValueError(f'Unsupported delta import category: {category}')
@@ -620,6 +643,18 @@ def pull_remote_category(
         query['since'] = since
     if selected_models is not None:
         query['models'] = ','.join(selected_models)
+
+    # The peer may itself be a relay. Refresh it before reading, or we import a
+    # copy that is a sync behind the instance that actually curates the data.
+    upstream_refresh = None
+    if cascade_upstream:
+        upstream_refresh = _request_peer_upstream_refresh(
+            peer_url,
+            category,
+            since=since,
+            models=selected_models,
+            depth=cascade_depth,
+        )
 
     shared_dependency_summary = None
     if _selection_needs_shared_dependencies(category, selected_models):
@@ -663,6 +698,7 @@ def pull_remote_category(
         'since': since,
         'requested_models': requested_models,
         'models': selected_models,
+        'upstream_refresh': upstream_refresh,
         'shared_dependency_sync': shared_dependency_summary['summary'] if shared_dependency_summary is not None else None,
         'import_summary': import_summary,
         'delete_summary': delete_summary,
@@ -738,6 +774,183 @@ def get_main_source_urls():
         urls.add(master_url)
 
     return urls
+
+
+def get_upstream_peer_url():
+    """The one peer this instance receives reference data from, or None.
+
+    `get_main_source_urls` deliberately accepts several URLs (the registry parent
+    and a possibly older ETL_MASTER_URL both count as upstream) because it only
+    has to answer "is this direction allowed". A cascade has to *pick* one, so
+    the registry parent wins and ETL_MASTER_URL is the fallback. The canonical
+    master has neither and gets None — it is the source, it refreshes from
+    nobody.
+    """
+    parent_peer_id = getattr(settings, 'ETL_DEFAULT_PARENT_PEER', '') or ''
+    if parent_peer_id:
+        try:
+            parent_peer = resolve_etl_peer(parent_peer_id)
+        except ValueError:
+            parent_peer = None
+        if parent_peer is not None:
+            parent_peer_url = _normalize_peer_url(parent_peer['url'])
+            if parent_peer_url:
+                return parent_peer_url
+
+    return _normalize_peer_url(getattr(settings, 'ETL_MASTER_URL', None)) or None
+
+
+def _resolve_cascade_depth(depth):
+    """How many relay hops upstream a refresh may still travel.
+
+    Bounded on purpose: the depth is what stops a misconfigured registry (two
+    instances naming each other as parent) from bouncing a refresh between them
+    forever.
+    """
+    if depth is None:
+        depth = getattr(settings, 'ETL_UPSTREAM_REFRESH_DEPTH', 2)
+    try:
+        depth = int(depth)
+    except (TypeError, ValueError):
+        depth = 0
+    return max(0, min(depth, UPSTREAM_REFRESH_MAX_DEPTH))
+
+
+def refresh_category_from_upstream(category, since=None, models=None, depth=None, requested_by=None):
+    """Pull `category` from this instance's own upstream, on a downstream peer's request.
+
+    limbo pulls main from mpl, but mpl only relays it — eCatalogus is where it is
+    curated. Without this step limbo receives whatever mpl happened to have last
+    synced, with no way to tell that it is stale. Refreshing first makes the two
+    hops behave like one.
+
+    Never raises for an upstream problem: a relay that cannot reach its own
+    parent, or that is stuck on a shared conflict, still has to serve the data it
+    already has. The reason travels back in the payload so the downstream
+    operator sees it in the log instead of getting a silently older copy.
+    """
+    if category not in {'main', 'shared'}:
+        raise ValueError(f'Unsupported upstream refresh category: {category}')
+
+    requested_by = requested_by or 'a downstream peer'
+    result = {
+        'category': category,
+        'site_name': getattr(settings, 'SITE_NAME', ''),
+        'upstream_url': None,
+        'refreshed': False,
+        'reason': None,
+        'error': None,
+        'import_summary': None,
+        'delete_summary': None,
+    }
+
+    upstream_url = get_upstream_peer_url()
+    if not upstream_url:
+        result['reason'] = 'is_source'
+        IMPORT_LOGGER.info(
+            'Upstream refresh of %s requested by %s: this instance is the source, nothing to refresh.',
+            category,
+            requested_by,
+        )
+        return result
+
+    result['upstream_url'] = upstream_url
+    remaining_depth = max(0, _resolve_cascade_depth(depth) - 1)
+    IMPORT_LOGGER.info(
+        'Upstream refresh of %s from %s requested by %s (models=%s, since=%s, remaining_depth=%d).',
+        category,
+        upstream_url,
+        requested_by,
+        ','.join(models) if models else 'all',
+        since or 'full',
+        remaining_depth,
+    )
+
+    try:
+        pull_result = pull_remote_category(
+            upstream_url,
+            category,
+            since=since,
+            models=models,
+            cascade_upstream=remaining_depth > 0,
+            cascade_depth=remaining_depth,
+        )
+    except ETLImportConflictError as exc:
+        # Only `shared` can get here. The conflict needs a human on this
+        # instance, so report it downstream rather than guessing a resolution.
+        result['reason'] = 'conflict'
+        result['error'] = str(exc)
+        result['conflict'] = exc.conflict
+        IMPORT_LOGGER.warning('Upstream refresh of %s from %s stopped on a conflict: %s', category, upstream_url, exc)
+        return result
+    except ValueError as exc:
+        result['reason'] = 'failed'
+        result['error'] = str(exc)
+        IMPORT_LOGGER.warning('Upstream refresh of %s from %s failed: %s', category, upstream_url, exc)
+        return result
+
+    result['refreshed'] = True
+    result['models'] = pull_result.get('models')
+    result['import_summary'] = pull_result.get('import_summary')
+    result['delete_summary'] = pull_result.get('delete_summary')
+    # A longer chain (a relay whose parent is itself a relay) reports its own hop here.
+    result['upstream_refresh'] = pull_result.get('upstream_refresh')
+    IMPORT_LOGGER.info(
+        'Upstream refresh of %s from %s completed: created=%d updated=%d skipped=%d deleted=%d.',
+        category,
+        upstream_url,
+        (result['import_summary'] or {}).get('created', 0),
+        (result['import_summary'] or {}).get('updated', 0),
+        (result['import_summary'] or {}).get('skipped', 0),
+        (result['delete_summary'] or {}).get('deleted', 0),
+    )
+    return result
+
+
+def _request_peer_upstream_refresh(peer_url, category, since=None, models=None, depth=None):
+    """Ask the peer to refresh from its own upstream before we read from it."""
+    resolved_depth = _resolve_cascade_depth(depth)
+    if resolved_depth <= 0:
+        return {
+            'requested': False,
+            'refreshed': False,
+            'reason': 'depth_exhausted',
+            'peer_url': _normalize_peer_url(peer_url),
+        }
+
+    IMPORT_LOGGER.info(
+        'Asking %s to refresh %s from its own upstream before pulling (depth=%d).',
+        _normalize_peer_url(peer_url),
+        category,
+        resolved_depth,
+    )
+
+    try:
+        payload = fetch_remote_etl_json(
+            peer_url,
+            f'/api/etl/{category}/refresh-upstream/',
+            method='POST',
+            payload={'since': since, 'models': models, 'depth': resolved_depth},
+            timeout=getattr(settings, 'ETL_UPSTREAM_REFRESH_TIMEOUT', 900),
+            api_token=_get_peer_api_token(peer_url),
+        )
+    except ValueError as exc:
+        # The peer may be unreachable, still on a version without the endpoint,
+        # or mid-conflict. None of that should cost us the rows it already has.
+        reason = 'unsupported' if getattr(exc, 'status_code', None) == 404 else 'failed'
+        IMPORT_LOGGER.warning('Upstream refresh on %s could not run (%s): %s', peer_url, reason, exc)
+        return {
+            'requested': True,
+            'refreshed': False,
+            'reason': reason,
+            'error': str(exc),
+            'peer_url': _normalize_peer_url(peer_url),
+        }
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    return {'requested': True, 'peer_url': _normalize_peer_url(peer_url), **payload}
 
 
 def _assert_main_pull_direction(peer_url):

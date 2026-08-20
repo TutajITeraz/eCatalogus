@@ -63,6 +63,10 @@
                 <input id="etl-since" type="text" placeholder="2025-01-31 or 2025-01-31T10:30:00Z" class="w-full border border-[#d9c8bb] rounded px-3 py-2 bg-white" />
             </div>
         </div>
+        <label for="etl-cascade-upstream" class="flex items-start gap-2 mt-4 text-sm text-[#3d4b5c] cursor-pointer">
+            <input id="etl-cascade-upstream" type="checkbox" checked class="mt-1" />
+            <span>Refresh the peer from its own upstream first. A peer that only relays reference data (mpl receives it from eCatalogus) catches up before it answers, so this instance does not import a copy that is one sync behind. Peers that curate the data themselves skip this step.</span>
+        </label>
         <div class="flex flex-col sm:flex-row gap-3 mt-4">
             <button data-category="main" class="etl-sync-category py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull main dictionaries</button>
             <button data-category="shared" class="etl-sync-category py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull shared dictionaries</button>
