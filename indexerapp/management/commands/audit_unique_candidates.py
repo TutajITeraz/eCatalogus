@@ -272,9 +272,10 @@ class Command(BaseCommand):
             self.stdout.write(f'{entry["name"]} ({entry["rows"]} rows)')
 
             for column in shown:
+                length_suffix = f'({column["max_length"]})' if column['max_length'] else ''
                 self.stdout.write(
                     f'  {column["field"]:<28} {column["type"]}'
-                    f'{f"({column['max_length']})" if column["max_length"] else ""} '
+                    f'{length_suffix} '
                     f'filled={column["filled"]}/{column["rows"]} '
                     f'distinct={column["distinct"]} ({column["distinct_ratio"]:.0%}) '
                     f'dup_groups={column["duplicate_groups"]} dup_rows={column["duplicate_rows"]} '
