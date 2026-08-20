@@ -57,6 +57,9 @@ class DecorationTypes(models.Model):
         #managed = False
         db_table = 'decoration_types'
         verbose_name_plural = 'Decoration Types'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='decorationtypes_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -70,6 +73,9 @@ class DecorationTechniques(models.Model):
         #managed = False
         db_table = 'decoration_techniques'
         verbose_name_plural = 'Decoration Techniques'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='decorationtechniques_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -83,6 +89,9 @@ class Characteristics(models.Model):
         #managed = False
         db_table = 'characteristics'
         verbose_name_plural = 'Characteristics'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='characteristics_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -96,6 +105,9 @@ class Subjects(models.Model):
         #managed = False
         db_table = 'subjects'
         verbose_name_plural = 'Subjects'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='subjects_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -113,6 +125,10 @@ class Colours(models.Model):
         #managed = False
         db_table = 'colours'
         verbose_name_plural = 'Colours'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='colours_name_uniq'),
+            models.UniqueConstraint(fields=['rgb'], name='colours_rgb_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -126,6 +142,9 @@ class FeastRanks(models.Model):
         #managed = False
         db_table = 'feast_ranks'
         verbose_name_plural = 'Feast Ranks'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='feastranks_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -464,6 +483,9 @@ class Sections(models.Model):
         #managed = False
         db_table = 'sections'
         verbose_name_plural = 'Sections'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='sections_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -478,6 +500,9 @@ class ContentFunctions(models.Model):
         #managed = False
         db_table = 'content_functions'
         verbose_name_plural = 'Content functions'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='contentfunctions_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -663,6 +688,9 @@ class TimeReference(models.Model):
         #managed = False
         db_table = 'time_reference'
         verbose_name_plural = 'Time References'
+        constraints = [
+            models.UniqueConstraint(fields=['time_description'], name='timereference_time_description_uniq'),
+        ]
 
     def __str__(self):
         txt = self.time_description
@@ -682,6 +710,9 @@ class LiturgicalGenres(models.Model):
         #managed = False
         db_table = 'liturgical_genres'
         verbose_name_plural = 'Liturgical Genres'
+        constraints = [
+            models.UniqueConstraint(fields=['title'], name='liturgicalgenres_title_uniq'),
+        ]
 
     def __str__(self):
         txt = self.title
@@ -809,6 +840,9 @@ class ScriptNames(models.Model):
         #managed = False
         db_table = 'names'
         verbose_name_plural = 'Script Names'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='scriptnames_name_uniq'),
+        ]
 
     def __str__(self):
         txt = self.name
@@ -1004,6 +1038,7 @@ class Projects(models.Model):
         verbose_name_plural = 'Projects'
         constraints = [
             models.UniqueConstraint(fields=['uuid'], name='uq_projects_uuid'),
+            models.UniqueConstraint(fields=['name'], name='projects_name_uniq'),
         ]
 
     def __str__(self): 
@@ -1294,6 +1329,9 @@ class MusicNotationNames(models.Model):
         #managed = False
         db_table = 'music_notation_names'
         verbose_name_plural = 'Music Notation Names'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='musicnotationnames_name_uniq'),
+        ]
 
     def __str__(self): 
         txt = self.name
@@ -1400,6 +1438,9 @@ class BindingTypes(models.Model):
     class Meta:
         db_table = 'binding_types'
         verbose_name_plural = 'Binding Types'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='bindingtypes_name_uniq'),
+        ]
 
     def __str__(self): 
         return self.name
@@ -1412,6 +1453,9 @@ class BindingStyles(models.Model):
     class Meta:
         db_table = 'binding_styles'
         verbose_name_plural = 'Binding Styles'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='bindingstyles_name_uniq'),
+        ]
 
     def __str__(self): 
         return self.name
@@ -1424,6 +1468,9 @@ class BindingMaterials(models.Model):
     class Meta:
         db_table = 'binding_materials'
         verbose_name_plural = 'Binding Materials'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='bindingmaterials_name_uniq'),
+        ]
 
     def __str__(self): 
         return self.name
@@ -1451,6 +1498,9 @@ class BindingDecorationTypes(models.Model):
     class Meta:
         db_table = 'binding_decoration_types'
         verbose_name_plural = 'Binding Decoration Types'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='bindingdecorationtypes_name_uniq'),
+        ]
 
     def __str__(self): 
         return self.name
@@ -1476,6 +1526,9 @@ class BindingComponents(models.Model):
     class Meta:
         db_table = 'binding_components'
         verbose_name_plural = 'Binding Components'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='bindingcomponents_name_uniq'),
+        ]
 
     def __str__(self): 
         return self.name
@@ -1621,6 +1674,9 @@ class Traditions(models.Model):
     class Meta:
         db_table = 'traditions'
         verbose_name_plural = 'Traditions'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='traditions_name_uniq'),
+        ]
 
     def __str__(self): 
         return self.name
@@ -1685,6 +1741,9 @@ class RiteNames(models.Model):
         #managed = False
         db_table = 'rite_names'
         verbose_name_plural = 'Rite Names Standarized'
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='ritenames_name_uniq'),
+        ]
 
     def __str__(self):
         return self.name
@@ -1747,6 +1806,10 @@ class Type(models.Model):
         #managed = False
         db_table = 'type'
         verbose_name_plural = 'Types'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='type_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='type_name_uniq'),
+        ]
 
 
 # Column C
@@ -1767,6 +1830,10 @@ class SeasonMonth(models.Model):
         #managed = False
         db_table = 'season_month'
         verbose_name_plural = 'Seasons/Months'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='seasonmonth_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='seasonmonth_name_uniq'),
+        ]
 
 # Column D
 class Week(models.Model):
@@ -1783,6 +1850,10 @@ class Week(models.Model):
         #managed = False
         db_table = 'week'
         verbose_name_plural = 'Weeks'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='week_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='week_name_uniq'),
+        ]
 
 # Column E
 class Day(models.Model):
@@ -1800,6 +1871,10 @@ class Day(models.Model):
         #managed = False
         db_table = 'day'
         verbose_name_plural = 'Days'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='day_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='day_name_uniq'),
+        ]
 
 
 # Column H
@@ -1817,6 +1892,10 @@ class MassHour(models.Model):
         #managed = False
         db_table = 'mass_hour'
         verbose_name_plural = 'Mass/Hours'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='masshour_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='masshour_name_uniq'),
+        ]
 
 # Column L
 class Layer(models.Model):
@@ -1832,6 +1911,10 @@ class Layer(models.Model):
         #managed = False
         db_table = 'layer'
         verbose_name_plural = 'Layers'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='layer_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='layer_name_uniq'),
+        ]
 
 # Column I
 class Genre(models.Model):
@@ -1849,6 +1932,10 @@ class Genre(models.Model):
         #managed = False
         db_table = 'genre'
         verbose_name_plural = 'Genres'
+        constraints = [
+            models.UniqueConstraint(fields=['short_name'], name='genre_short_name_uniq'),
+            models.UniqueConstraint(fields=['name'], name='genre_name_uniq'),
+        ]
 
 
 class Topic(models.Model):
@@ -1866,6 +1953,9 @@ class Topic(models.Model):
         db_table = 'topic'
         verbose_name = "Topic"
         verbose_name_plural = "Topics"
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='topic_name_uniq'),
+        ]
 
 # Column I
 class Ceremony(models.Model):
@@ -1882,6 +1972,9 @@ class Ceremony(models.Model):
         db_table = 'ceremony'
         verbose_name = "Ceremony"
         verbose_name_plural = "Ceremonies"
+        constraints = [
+            models.UniqueConstraint(fields=['name'], name='ceremony_name_uniq'),
+        ]
 
 
 class ContentTopic(models.Model):
@@ -1910,6 +2003,12 @@ class TextStandarization(models.Model):
     standard_full_text = models.TextField(blank=True, null=True)
 
     entry_date = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['usu_id'], name='textstandarization_usu_id_uniq'),
+            models.UniqueConstraint(fields=['standard_incipit'], name='textstandarization_standard_incipit_uniq'),
+        ]
 
 
 UUID_RELATION_COMPAT_ALIASES = {

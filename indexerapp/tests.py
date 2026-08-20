@@ -7,12 +7,13 @@ from uuid import uuid4
 from unittest.mock import patch
 
 from django.apps import apps
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.contrib import admin
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -24,7 +25,7 @@ from dal import autocomplete
 from etlapp.model_categories import get_sync_model_names
 from etlapp.services import _serialize_instance
 from indexerapp.ai_tools import get_all_manuscript_names
-from indexerapp.models import AttributeDebate, Bibliography, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
+from indexerapp.models import AttributeDebate, Bibliography, Ceremony, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
 from indexerapp.models import DeletedRecord
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.zotero_service import import_zotero_items, list_zotero_collection_items
@@ -1981,21 +1982,17 @@ class AuditMainDriftCommandTests(TestCase):
 		self.assertIsNone(report['peer'])
 
 	def test_flags_a_local_row_that_duplicates_an_upstream_name(self):
-		upstream = TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
-		)
+		upstream = Places.objects.create(country_today_eng='Germany')
 		upstream_record = _serialize_instance(upstream)
-		duplicate = TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
-		)
+		duplicate = Places.objects.create(country_today_eng='Germany')
 
 		with patch(
 			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
-			return_value={'models': [{'model': 'indexerapp.TimeReference', 'results': [upstream_record]}]},
+			return_value={'models': [{'model': 'indexerapp.Places', 'results': [upstream_record]}]},
 		):
-			report = self._run('--model', 'TimeReference')
+			report = self._run('--model', 'Places')
 
-		entry = next(item for item in report['models'] if item['name'] == 'TimeReference')
+		entry = next(item for item in report['models'] if item['name'] == 'Places')
 		local_row = next(row for row in entry['local_only'] if row['uuid'] == str(duplicate.uuid))
 
 		self.assertEqual([match['uuid'] for match in local_row['upstream_matches']], [str(upstream.uuid)])
@@ -2078,27 +2075,21 @@ class AuditMainDriftCommandTests(TestCase):
 		self.assertNotIn(str(twin.uuid), exported)
 
 	def test_promotion_bundle_keeps_uuids_and_can_skip_duplicates(self):
-		upstream = TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
-		)
+		upstream = Places.objects.create(country_today_eng='Germany')
 		upstream_record = _serialize_instance(upstream)
 		# Identical to the upstream row in every field, so nothing is lost by
 		# leaving it out of the bundle.
-		TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
-		)
-		genuinely_new = TimeReference.objects.create(
-			time_description='XIV-XVI', century_from=14, century_to=16, year_from=1301, year_to=1600,
-		)
+		Places.objects.create(country_today_eng='Germany')
+		genuinely_new = Places.objects.create(country_today_eng='Hungary')
 
 		bundle_path = os.path.join(tempfile.mkdtemp(), 'promote.json')
 		with patch(
 			'indexerapp.management.commands.audit_main_drift.fetch_remote_etl_json',
-			return_value={'models': [{'model': 'indexerapp.TimeReference', 'results': [upstream_record]}]},
+			return_value={'models': [{'model': 'indexerapp.Places', 'results': [upstream_record]}]},
 		):
 			call_command(
 				'audit_main_drift',
-				'--model', 'TimeReference',
+				'--model', 'Places',
 				'--export-local-only', bundle_path,
 				'--skip-duplicate-candidates',
 				stdout=StringIO(),
@@ -2116,13 +2107,13 @@ class MergeMainDuplicatesCommandTests(TestCase):
 	"""Folding a local twin into the canonical row, references and all."""
 
 	def setUp(self):
-		self.canonical = TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
+		# Places carries no unique constraint and never will, so it stays the
+		# table where duplicates can still appear and need folding together.
+		self.canonical = Places.objects.create(country_today_eng='Germany', latitude=51.16)
+		self.duplicate = Places.objects.create(country_today_eng='Germany')
+		self.manuscript = Manuscripts.objects.create(
+			name='Located MS', place_of_origin_uuid=self.duplicate,
 		)
-		self.duplicate = TimeReference.objects.create(
-			time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
-		)
-		self.manuscript = Manuscripts.objects.create(name='Dated MS', dating_uuid=self.duplicate)
 
 	def _run(self, *args):
 		stdout = StringIO()
@@ -2135,31 +2126,33 @@ class MergeMainDuplicatesCommandTests(TestCase):
 		self.assertFalse(result['applied'])
 		self.assertEqual(result['merges'][0]['reference_count'], 1)
 		self.manuscript.refresh_from_db()
-		self.assertEqual(self.manuscript.dating_uuid, self.duplicate)
-		self.assertTrue(TimeReference.objects.filter(pk=self.duplicate.pk).exists())
+		self.assertEqual(self.manuscript.place_of_origin_uuid, self.duplicate)
+		self.assertTrue(Places.objects.filter(pk=self.duplicate.pk).exists())
 
 	def test_apply_repoints_references_and_deletes_the_duplicate(self):
 		result = self._run('--pair', f'{self.duplicate.uuid}={self.canonical.uuid}', '--apply')
 
 		self.assertTrue(result['applied'])
 		self.manuscript.refresh_from_db()
-		self.assertEqual(self.manuscript.dating_uuid, self.canonical)
-		self.assertFalse(TimeReference.objects.filter(pk=self.duplicate.pk).exists())
+		self.assertEqual(self.manuscript.place_of_origin_uuid, self.canonical)
+		self.assertFalse(Places.objects.filter(pk=self.duplicate.pk).exists())
 
 	def test_deleting_the_duplicate_is_recorded_for_the_etl(self):
 		self._run('--pair', f'{self.duplicate.uuid}={self.canonical.uuid}', '--apply')
 
 		self.assertTrue(
 			DeletedRecord.objects.filter(
-				model_label='indexerapp.TimeReference', object_uuid=self.duplicate.uuid
+				model_label='indexerapp.Places', object_uuid=self.duplicate.uuid
 			).exists()
 		)
 
 	def test_refuses_to_merge_across_tables(self):
-		place = Places.objects.create(city_today_eng='Krakow')
+		dating = TimeReference.objects.create(
+			time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
+		)
 
 		with self.assertRaises(CommandError):
-			self._run('--pair', f'{self.duplicate.uuid}={place.uuid}')
+			self._run('--pair', f'{self.duplicate.uuid}={dating.uuid}')
 
 	def test_refuses_an_unknown_uuid(self):
 		with self.assertRaises(CommandError):
@@ -2196,16 +2189,18 @@ class AuditUniqueCandidatesCommandTests(TestCase):
 		self.assertTrue(column['feasible'])
 
 	def test_a_duplicated_value_blocks_the_constraint_and_is_listed(self):
-		self._time_reference('XII 3/4')
-		self._time_reference('XII 3/4', year_from=0, year_to=0)
-		self._time_reference('XIII')
+		# latin_keywords is one of the two columns deliberately left unconstrained,
+		# so it is still a place where duplicates can be observed.
+		Ceremony.objects.create(name='A', latin_keywords='commune sanctorum')
+		Ceremony.objects.create(name='B', latin_keywords='commune sanctorum')
+		Ceremony.objects.create(name='C', latin_keywords='vigilia unius apostoli')
 
-		column = self._column(self._run('--model', 'TimeReference'), 'TimeReference', 'time_description')
+		column = self._column(self._run('--model', 'Ceremony'), 'Ceremony', 'latin_keywords')
 
 		self.assertEqual(column['verdict'], 'needs-cleanup')
 		self.assertEqual(column['duplicate_groups'], 1)
 		self.assertEqual(column['duplicate_rows'], 2)
-		self.assertEqual(column['examples'][0], {'value': 'XII 3/4', 'count': 2})
+		self.assertEqual(column['examples'][0], {'value': 'commune sanctorum', 'count': 2})
 
 	def test_a_column_that_repeats_by_design_is_reported_as_categorical(self):
 		# "Poland" over and over is the data being right, not duplicated. The
@@ -2229,14 +2224,84 @@ class AuditUniqueCandidatesCommandTests(TestCase):
 
 	def test_empty_strings_block_the_constraint_even_without_duplicates(self):
 		# A unique index tolerates many NULLs but not many empty strings.
-		self._time_reference('XII 3/4')
-		self._time_reference('')
-		self._time_reference('')
+		Ceremony.objects.create(name='A', latin_keywords='commune sanctorum')
+		Ceremony.objects.create(name='B', latin_keywords='')
+		Ceremony.objects.create(name='C', latin_keywords='')
 
 		column = self._column(
-			self._run('--model', 'TimeReference', '--min-fill', '0'),
-			'TimeReference', 'time_description',
+			self._run('--model', 'Ceremony', '--min-fill', '0'),
+			'Ceremony', 'latin_keywords',
 		)
 
 		self.assertEqual(column['blanks'], 2)
 		self.assertEqual(column['verdict'], 'needs-cleanup')
+
+
+class MainVocabularyUniquenessTests(TestCase):
+		"""The constraints that stop a third "XII 3/4" from ever being typed in."""
+
+		def test_a_duplicate_name_is_refused_by_the_database(self):
+			RiteNames.objects.create(name='Ad complendum')
+
+			with self.assertRaises(IntegrityError):
+				with transaction.atomic():
+					RiteNames.objects.create(name='Ad complendum')
+
+		def test_a_duplicate_reaches_the_editor_as_a_validation_error(self):
+			# Django validates constraints during full_clean, so the admin shows a
+			# form error instead of a 500 from the IntegrityError.
+			TimeReference.objects.create(
+				time_description='XII 3/4', century_from=12, century_to=12, year_from=1150, year_to=1175,
+			)
+			duplicate = TimeReference(
+				time_description='XII 3/4', century_from=12, century_to=12, year_from=0, year_to=0,
+			)
+
+			with self.assertRaises(ValidationError):
+				duplicate.full_clean()
+
+		def test_both_columns_of_a_two_constraint_model_are_covered(self):
+			Type.objects.create(short_name='A', name='Alpha')
+
+			with self.assertRaises(IntegrityError):
+				with transaction.atomic():
+					Type.objects.create(short_name='A', name='Beta')
+
+			with self.assertRaises(IntegrityError):
+				with transaction.atomic():
+					Type.objects.create(short_name='B', name='Alpha')
+
+		def test_nulls_still_repeat_freely(self):
+			# A unique index tolerates many NULLs, which is what keeps optional
+			# columns like these usable at all.
+			TextStandarization.objects.create(usu_id=None, standard_incipit=None)
+			TextStandarization.objects.create(usu_id=None, standard_incipit=None)
+
+			self.assertEqual(TextStandarization.objects.filter(usu_id__isnull=True).count(), 2)
+
+		def test_every_surveyed_ready_column_actually_carries_a_constraint(self):
+			# Guards the list against a model being edited later and quietly losing
+			# its constraint.
+			expected = {
+				('DecorationTypes', 'name'), ('DecorationTechniques', 'name'), ('Characteristics', 'name'),
+				('Subjects', 'name'), ('Colours', 'name'), ('Colours', 'rgb'), ('FeastRanks', 'name'),
+				('Sections', 'name'), ('ContentFunctions', 'name'), ('TimeReference', 'time_description'),
+				('LiturgicalGenres', 'title'), ('ScriptNames', 'name'), ('Projects', 'name'),
+				('MusicNotationNames', 'name'), ('BindingTypes', 'name'), ('BindingStyles', 'name'),
+				('BindingMaterials', 'name'), ('BindingDecorationTypes', 'name'), ('BindingComponents', 'name'),
+				('Traditions', 'name'), ('RiteNames', 'name'), ('Type', 'short_name'), ('Type', 'name'),
+				('SeasonMonth', 'short_name'), ('SeasonMonth', 'name'), ('Week', 'short_name'), ('Week', 'name'),
+				('Day', 'short_name'), ('Day', 'name'), ('MassHour', 'short_name'), ('MassHour', 'name'),
+				('Layer', 'short_name'), ('Layer', 'name'), ('Genre', 'short_name'), ('Genre', 'name'),
+				('Topic', 'name'), ('Ceremony', 'name'), ('TextStandarization', 'usu_id'),
+				('TextStandarization', 'standard_incipit'),
+			}
+
+			found = set()
+			for model in apps.get_app_config('indexerapp').get_models():
+				for constraint in model._meta.constraints:
+					fields = getattr(constraint, 'fields', ())
+					if len(fields) == 1:
+						found.add((model.__name__, fields[0]))
+
+			self.assertEqual(expected - found, set())
