@@ -23,11 +23,11 @@ from rest_framework.test import APIClient
 
 from etlapp.views import ETLAdminSyncView, ETLUIPullCategoryView, ETLUIPullManuscriptView
 from etlapp.main_guard import main_read_only_message, main_read_only_payload, main_writes_allowed
-from etlapp.services import ETLImportConflictError, _serialize_value, build_manuscript_export_payload, get_etl_peer_configs, import_delta_payload, import_manuscript_payload, pull_remote_category
+from etlapp.services import ETLImportConflictError, _serialize_value, build_deleted_records_payload, build_delta_export_payload, build_manuscript_export_payload, expand_category_model_selection, get_etl_peer_configs, import_delta_payload, import_manuscript_payload, normalize_category_model_selection, pull_remote_category
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Places, Topic, Traditions, Type, Watermarks
 
 
 @contextmanager
@@ -151,6 +151,7 @@ class ETLTaskQueueRoutingTests(SimpleTestCase):
                 'since': None,
                 'force_remote_uuids': [],
                 'keep_local_uuids': [],
+                'models': None,
             },
             queue='etl_corpus-liturgicum',
         )
@@ -496,6 +497,7 @@ class ETLUIAsyncFallbackTests(SimpleTestCase):
             since=None,
             force_remote_uuids=[],
             keep_local_uuids=[],
+            models=None,
         )
         user_can_manage_etl_mock.assert_called_once_with(request.user)
 
@@ -2339,3 +2341,180 @@ class MainPullDirectionTests(TestCase):
         result = pull_remote_category('https://limbo.example.pl', 'shared')
 
         self.assertEqual(result['category'], 'shared')
+
+
+@override_settings(
+    SITE_NAME='Liturgica Poloniae',
+    ETL_ROLE='slave',
+    ETL_SELF_PEER_ID='mpl',
+    ETL_CANONICAL_MASTER_ID='ecatalogus',
+    ETL_MAIN_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_MASTER_URL='https://ecatalogus.ispan.pl',
+    ETL_API_TOKEN='test-token',
+)
+class SingleTableSelectionTests(TestCase):
+    """Pulling one dictionary table instead of a whole category."""
+
+    def test_selection_accepts_names_labels_and_comma_separated_strings(self):
+        self.assertEqual(normalize_category_model_selection('main', ['Places']), ['Places'])
+        self.assertEqual(normalize_category_model_selection('main', 'Places,indexerapp.TimeReference'), ['Places', 'TimeReference'])
+        self.assertEqual(normalize_category_model_selection('main', 'places'), ['Places'])
+        self.assertIsNone(normalize_category_model_selection('main', None))
+        self.assertIsNone(normalize_category_model_selection('main', []))
+
+    def test_selection_rejects_a_table_from_another_category(self):
+        with self.assertRaises(ValueError) as raised:
+            normalize_category_model_selection('main', ['Bibliography'])
+
+        self.assertIn('Bibliography', str(raised.exception))
+
+    def test_selection_carries_same_category_dependencies(self):
+        # RiteNames would fail to import without the rows its FKs point at.
+        self.assertEqual(
+            expand_category_model_selection('main', ['RiteNames']),
+            ['Ceremony', 'RiteNames', 'Sections'],
+        )
+        self.assertEqual(expand_category_model_selection('main', ['Places']), ['Places'])
+
+    def test_export_payload_is_limited_to_the_selected_table(self):
+        Places.objects.create(city_today_eng='Kraków')
+        Type.objects.create(short_name='T', name='Temporale')
+
+        payload = build_delta_export_payload('main', models=['Places'])
+
+        self.assertEqual(payload['models_filter'], ['Places'])
+        self.assertEqual([entry['model'] for entry in payload['models']], ['indexerapp.Places'])
+        self.assertEqual(payload['record_count'], 1)
+
+    def test_deleted_records_payload_is_limited_to_the_selected_table(self):
+        DeletedRecord.objects.create(
+            model_label='indexerapp.Places',
+            category='main',
+            object_uuid=uuid4(),
+            source_pk='1',
+        )
+        DeletedRecord.objects.create(
+            model_label='indexerapp.Type',
+            category='main',
+            object_uuid=uuid4(),
+            source_pk='2',
+        )
+
+        payload = build_deleted_records_payload('main', models=['Places'])
+
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['results'][0]['model_label'], 'indexerapp.Places')
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_single_table_pull_asks_the_peer_for_that_table_only(self, fetch_remote_etl_json_mock):
+        place_uuid = str(uuid4())
+        fetch_remote_etl_json_mock.side_effect = [
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Places',
+                        'results': [
+                            {
+                                'uuid': place_uuid,
+                                'city_today_eng': 'Gniezno',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    }
+                ]
+            },
+            {'category': 'main', 'results': []},
+        ]
+
+        result = pull_remote_category('https://ecatalogus.ispan.pl', 'main', models=['Places'])
+
+        # Places has no shared references, so the shared preload is skipped and
+        # only the two main requests are made.
+        self.assertEqual(fetch_remote_etl_json_mock.call_count, 2)
+        self.assertIsNone(result['shared_dependency_sync'])
+        for call in fetch_remote_etl_json_mock.call_args_list:
+            self.assertEqual(call.kwargs['query'], {'models': 'Places'})
+
+        self.assertEqual(result['requested_models'], ['Places'])
+        self.assertEqual(result['models'], ['Places'])
+        self.assertEqual(result['import_summary']['created'], 1)
+        self.assertTrue(Places.objects.filter(uuid=place_uuid).exists())
+
+    @patch('etlapp.services.fetch_remote_etl_json')
+    def test_single_table_pull_drops_rows_an_older_peer_kept_sending(self, fetch_remote_etl_json_mock):
+        # A peer that does not know the `models` query param answers with the
+        # whole category; the selection still has to be honoured locally.
+        place_uuid = str(uuid4())
+        type_uuid = str(uuid4())
+        fetch_remote_etl_json_mock.side_effect = [
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.Places',
+                        'results': [
+                            {
+                                'uuid': place_uuid,
+                                'city_today_eng': 'Płock',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.Type',
+                        'results': [
+                            {
+                                'uuid': type_uuid,
+                                'short_name': 'S',
+                                'name': 'Sanctorale',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                ]
+            },
+            {'category': 'main', 'results': []},
+        ]
+
+        result = pull_remote_category('https://ecatalogus.ispan.pl', 'main', models=['Places'])
+
+        self.assertEqual(result['import_summary']['created'], 1)
+        self.assertTrue(Places.objects.filter(uuid=place_uuid).exists())
+        self.assertFalse(Type.objects.filter(uuid=type_uuid).exists())
+
+
+@override_settings(ETL_USE_CELERY=True)
+class SingleTablePullViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _post(self, body):
+        request = self.factory.post(
+            reverse('etl:etl-ui-pull-category'),
+            data=json.dumps(body),
+            content_type='application/json',
+        )
+        request.user = DummyAdminUser()
+        return ETLUIPullCategoryView.as_view()(request)
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    @patch('etlapp.views.pull_category_task.apply_async')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_selected_table_reaches_the_queued_task(self, resolve_etl_peer_mock, apply_async_mock, user_can_manage_etl_mock):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+        apply_async_mock.return_value.id = 'task-123'
+
+        response = self._post({'peer': 'peer-1', 'category': 'main', 'models': ['Places']})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(apply_async_mock.call_args[0][1]['models'], ['Places'])
+
+    @patch('etlapp.views.user_can_manage_etl', return_value=True)
+    @patch('etlapp.views.pull_category_task.apply_async')
+    @patch('etlapp.views.resolve_etl_peer')
+    def test_unknown_table_is_rejected_before_queueing(self, resolve_etl_peer_mock, apply_async_mock, user_can_manage_etl_mock):
+        resolve_etl_peer_mock.return_value = {'id': 'peer-1', 'label': 'Peer 1', 'url': 'http://peer'}
+
+        response = self._post({'peer': 'peer-1', 'category': 'main', 'models': ['Nonexistent']})
+
+        self.assertEqual(response.status_code, 400)
+        apply_async_mock.assert_not_called()

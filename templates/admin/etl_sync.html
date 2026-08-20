@@ -56,6 +56,7 @@
     #content .etl-admin-shell button,
     #content .etl-admin-shell .etl-sync-category,
     #content .etl-admin-shell #etl-load-manuscripts,
+    #content .etl-admin-shell #etl-pull-model,
     #content .etl-admin-shell #etl-refresh-overview,
     #content .etl-admin-shell #etl-conflict-keep-local,
     #content .etl-admin-shell #etl-conflict-apply-remote,
@@ -192,6 +193,18 @@ document.addEventListener('DOMContentLoaded', function () {
         <div class="flex flex-col sm:flex-row gap-3 mt-4">
             <button data-category="main" class="etl-sync-category py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull main dictionaries</button>
             <button data-category="shared" class="etl-sync-category py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull shared dictionaries</button>
+        </div>
+
+        <div class="border-t border-[#e3d5ca] mt-5 pt-4">
+            <h3 class="text-[13pt] text-[#0d1b2a] caudex-bold mb-1">Pull a single table</h3>
+            <p class="text-sm text-[#3d4b5c] mb-3">Pulling a whole category can take a long time. Pick one table to transfer only that dictionary; tables it refers to are added automatically.</p>
+            <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div class="w-full sm:max-w-[420px]">
+                    <label for="etl-model-select" class="block text-sm font-semibold text-[#3d4b5c] mb-2">Table</label>
+                    <select id="etl-model-select" class="w-full border border-[#d9c8bb] rounded px-3 py-2 bg-white"></select>
+                </div>
+                <button id="etl-pull-model" class="py-2 px-4 text-[#0d1b2a] font-semibold shadow drop-shadow-md bg-[#e8d3c3] rounded hover:bg-[#dec5b2] text-center">Pull selected table</button>
+            </div>
         </div>
     </section>
 

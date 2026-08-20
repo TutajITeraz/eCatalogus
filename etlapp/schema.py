@@ -34,6 +34,7 @@ class ETLDeletedRecordsResponseSerializer(serializers.Serializer):
     site_name = serializers.CharField()
     category = serializers.CharField()
     since = serializers.DateTimeField(allow_null=True)
+    models_filter = serializers.ListField(child=serializers.CharField(), allow_null=True, required=False)
     count = serializers.IntegerField()
     results = ETLDeletedRecordSerializer(many=True)
 
@@ -47,6 +48,7 @@ class ETLDeltaExportResponseSerializer(serializers.Serializer):
     site_name = serializers.CharField()
     category = serializers.CharField()
     since = serializers.DateTimeField(allow_null=True)
+    models_filter = serializers.ListField(child=serializers.CharField(), allow_null=True, required=False)
     model_count = serializers.IntegerField()
     record_count = serializers.IntegerField()
     models = ETLDeltaModelSerializer(many=True)
@@ -73,6 +75,7 @@ class ETLStatusResponseSerializer(serializers.Serializer):
     slave_urls = serializers.ListField(child=serializers.CharField())
     has_api_token = serializers.BooleanField()
     model_category_counts = serializers.DictField(child=serializers.IntegerField())
+    sync_models = serializers.ListField(child=serializers.DictField(child=serializers.CharField()), required=False)
 
 
 class ETLManuscriptListItemSerializer(serializers.Serializer):

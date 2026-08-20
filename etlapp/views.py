@@ -46,6 +46,7 @@ from .services import (
     get_etl_peer_configs,
     import_delta_payload,
     import_manuscript_payload,
+    normalize_category_model_selection,
     pull_remote_category,
     pull_remote_manuscript,
     resolve_shared_conflict,
@@ -105,6 +106,13 @@ class ETLDeletedRecordsView(ETLAPIView):
                 description='Optional ISO 8601 date or datetime filter.',
                 required=False,
             ),
+            OpenApiParameter(
+                name='models',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description='Optional comma-separated model names to restrict the response to, e.g. Places,TimeReference.',
+                required=False,
+            ),
         ],
         responses={200: ETLDeletedRecordsResponseSerializer, 400: ETLErrorSerializer, 404: ETLErrorSerializer},
     )
@@ -124,7 +132,11 @@ class ETLDeletedRecordsView(ETLAPIView):
                 )
 
         try:
-            payload = build_deleted_records_payload(category=category, since=since)
+            payload = build_deleted_records_payload(
+                category=category,
+                since=since,
+                models=request.query_params.get('models') or None,
+            )
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -142,6 +154,13 @@ class ETLDeltaExportView(ETLAPIView):
                 type=str,
                 location=OpenApiParameter.QUERY,
                 description='Optional ISO 8601 date or datetime filter.',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='models',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description='Optional comma-separated model names to export, e.g. Places,TimeReference.',
                 required=False,
             ),
         ],
@@ -164,7 +183,11 @@ class ETLDeltaExportView(ETLAPIView):
                 )
 
         try:
-            payload = build_delta_export_payload(category=category, since=since)
+            payload = build_delta_export_payload(
+                category=category,
+                since=since,
+                models=request.query_params.get('models') or None,
+            )
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -373,6 +396,7 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
         since = body.get('since') or None
         force_remote_uuids = body.get('force_remote_uuids') or []
         keep_local_uuids = body.get('keep_local_uuids') or []
+        models = body.get('models') or None
         async_mode = body.get('async', True)  # Default to async for UI
 
         if not peer_id or not category:
@@ -380,6 +404,9 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
 
         try:
             peer = resolve_etl_peer(peer_id)
+            # Rejected here rather than inside the worker, so a typo in the table
+            # selection fails the request instead of a queued task.
+            models = normalize_category_model_selection(category, models)
         except ValueError as exc:
             return JsonResponse({'detail': str(exc)}, status=400)
 
@@ -392,12 +419,14 @@ class ETLUIPullCategoryView(ETLUIAccessMixin, View):
                     'since': since,
                     'force_remote_uuids': force_remote_uuids,
                     'keep_local_uuids': keep_local_uuids,
+                    'models': models,
                 },
                 sync_callable=pull_remote_category,
                 sync_kwargs={
                     'since': since,
                     'force_remote_uuids': force_remote_uuids,
                     'keep_local_uuids': keep_local_uuids,
+                    'models': models,
                 },
             )
         except ETLImportConflictError as exc:
@@ -498,6 +527,7 @@ class ETLUIResolveConflictView(ETLUIAccessMixin, View):
         since = body.get('since') or None
         force_remote_uuids = body.get('force_remote_uuids') or []
         keep_local_uuids = body.get('keep_local_uuids') or []
+        models = body.get('models') or None
 
         try:
             if not peer_id or not category:
@@ -512,6 +542,7 @@ class ETLUIResolveConflictView(ETLUIAccessMixin, View):
                 since=since,
                 force_remote_uuids=force_remote_uuids,
                 keep_local_uuids=keep_local_uuids,
+                models=models,
             )
         except ETLImportConflictError as exc:
             return JsonResponse(exc.to_payload(), status=409)

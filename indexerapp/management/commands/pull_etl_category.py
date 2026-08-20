@@ -19,6 +19,12 @@ class Command(BaseCommand):
             help='UUID to force from remote side when resolving shared conflicts. Can be passed multiple times.',
         )
         parser.add_argument(
+            '--model',
+            action='append',
+            dest='models',
+            help='Pull only this table instead of the whole category, e.g. --model Places. Can be passed multiple times.',
+        )
+        parser.add_argument(
             '--keep-local-uuid',
             action='append',
             dest='keep_local_uuids',
@@ -34,6 +40,7 @@ class Command(BaseCommand):
                 since=options.get('since') or None,
                 force_remote_uuids=options.get('force_remote_uuids') or [],
                 keep_local_uuids=options.get('keep_local_uuids') or [],
+                models=options.get('models') or None,
             )
         except ETLImportConflictError as exc:
             raise CommandError(json.dumps(exc.to_payload(), ensure_ascii=False, indent=2)) from exc

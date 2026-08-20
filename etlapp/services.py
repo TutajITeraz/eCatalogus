@@ -21,7 +21,13 @@ from indexerapp.models import DeletedRecord, Manuscripts
 from ecatalogus.instance_settings import build_registry_peer_token_map, infer_instance_slug
 
 from .main_guard import main_master_label, main_master_url, main_writes_allowed
-from .model_categories import SYNC_CATEGORIES, get_model_category, get_sync_model_names, summarize_categories
+from .model_categories import (
+    SYNC_CATEGORIES,
+    get_category_model_names,
+    get_model_category,
+    get_sync_model_names,
+    summarize_categories,
+)
 
 
 IMPORT_LOGGER = logging.getLogger('etlapp.import')
@@ -68,6 +74,9 @@ def build_status_payload():
         'peer_ids': [peer['id'] for peer in peers],
         'has_api_token': bool(getattr(settings, 'ETL_API_TOKEN', '')),
         'model_category_counts': dict(summarize_categories(model_names)),
+        # Tables a peer may be asked to export one at a time, so the UI can offer
+        # a per-table pull instead of the whole dictionary category.
+        'sync_models': build_sync_model_options(),
         # Whether the main vocabularies may be edited here, and where they are
         # curated if not. Lets an operator see the policy without having to
         # trigger a refusal first.
@@ -75,6 +84,135 @@ def build_status_payload():
         'main_master': main_master_label(),
         'main_master_url': main_master_url(),
     }
+
+
+def build_sync_model_options(categories=('main', 'shared')):
+    """Tables that can be pulled selectively, in import (dependency) order."""
+    options = []
+    for category in categories:
+        for model in _get_category_models_in_dependency_order(category):
+            options.append({
+                'category': category,
+                'model': model.__name__,
+                'label': str(model._meta.verbose_name_plural),
+            })
+    return options
+
+
+def normalize_category_model_selection(category, models):
+    """Validate a per-table pull selection.
+
+    Returns a sorted list of model names, or None when the whole category was
+    requested. Accepts names ('Places'), labels ('indexerapp.Places') or a
+    comma-separated string, so query params and JSON bodies can share the code.
+    """
+    if models is None:
+        return None
+
+    if isinstance(models, str):
+        raw_entries = models.split(',')
+    else:
+        raw_entries = list(models)
+
+    allowed = {model_name.lower(): model_name for model_name in get_category_model_names(category)}
+    selected = set()
+    for entry in raw_entries:
+        name = str(entry or '').strip()
+        if not name:
+            continue
+        if '.' in name:
+            name = name.rsplit('.', 1)[-1]
+        resolved = allowed.get(name.lower())
+        if resolved is None:
+            raise ValueError(f'Model {entry} does not belong to ETL category {category}.')
+        selected.add(resolved)
+
+    if not selected:
+        return None
+
+    return sorted(selected)
+
+
+def expand_category_model_selection(category, selected_models):
+    """Add the same-category tables a selection references through foreign keys.
+
+    Importing only `RiteNames` would fail on its Ceremony/Sections references, so
+    the dependencies travel with the selection instead of aborting the pull.
+    """
+    if selected_models is None:
+        return None
+
+    expanded = set(selected_models)
+    pending = list(expanded)
+    while pending:
+        model_name = pending.pop()
+        model = apps.get_model('indexerapp', model_name)
+        for dependency in _get_same_category_dependencies(model, category):
+            if dependency not in expanded:
+                expanded.add(dependency)
+                pending.append(dependency)
+
+    return sorted(expanded)
+
+
+def _selection_needs_shared_dependencies(category, selected_models):
+    if category == 'shared':
+        return False
+    if selected_models is None:
+        return True
+
+    for model_name in selected_models:
+        model = apps.get_model('indexerapp', model_name)
+        for field in list(model._meta.concrete_fields) + list(model._meta.many_to_many):
+            if not field.is_relation:
+                continue
+            related_model = field.related_model
+            if related_model is None or related_model._meta.app_label != 'indexerapp':
+                continue
+            if get_model_category(related_model.__name__) == 'shared':
+                return True
+
+    return False
+
+
+def _filter_export_payload_models(payload, selected_models):
+    """Drop non-selected tables from a peer export payload.
+
+    The peer already filters when it understands the `models` query param; this
+    keeps a per-table pull honest against an older peer that ignores it.
+    """
+    if selected_models is None or not isinstance(payload, dict):
+        return payload
+
+    selected_labels = {f'indexerapp.{model_name}' for model_name in selected_models}
+    model_payloads = [
+        model_payload for model_payload in payload.get('models', []) or []
+        if isinstance(model_payload, dict) and model_payload.get('model') in selected_labels
+    ]
+
+    filtered = dict(payload)
+    filtered['models'] = model_payloads
+    filtered['model_count'] = len(model_payloads)
+    filtered['record_count'] = sum(len(model_payload.get('results') or []) for model_payload in model_payloads)
+    filtered['models_filter'] = list(selected_models)
+    return filtered
+
+
+def _filter_deleted_payload_models(payload, selected_models):
+    if selected_models is None or not isinstance(payload, dict):
+        return payload
+
+    selected_labels = {f'indexerapp.{model_name}' for model_name in selected_models}
+    results = [
+        record for record in payload.get('results', []) or []
+        if isinstance(record, dict) and record.get('model_label') in selected_labels
+    ]
+
+    filtered = dict(payload)
+    filtered['results'] = results
+    filtered['count'] = len(results)
+    filtered['models_filter'] = list(selected_models)
+    return filtered
 
 
 def _load_registry_peer_configs():
@@ -233,11 +371,17 @@ def fetch_remote_etl_json(peer_url, path, query=None, method='GET', payload=None
         raise ValueError(f'Remote ETL response from {url} is not valid JSON.') from exc
 
 
-def build_deleted_records_payload(category, since=None):
+def build_deleted_records_payload(category, since=None, models=None):
     if category not in SYNC_CATEGORIES:
         raise ValueError(f'Unsupported ETL category: {category}')
 
+    selected_models = normalize_category_model_selection(category, models)
+
     queryset = DeletedRecord.objects.filter(category=category)
+    if selected_models is not None:
+        queryset = queryset.filter(
+            model_label__in=[f'indexerapp.{model_name}' for model_name in selected_models]
+        )
     if since is not None:
         if timezone.is_naive(since):
             since = timezone.make_aware(since, timezone.get_current_timezone())
@@ -257,6 +401,7 @@ def build_deleted_records_payload(category, since=None):
         'site_name': getattr(settings, 'SITE_NAME', ''),
         'category': category,
         'since': since.isoformat() if since is not None else None,
+        'models_filter': selected_models,
         'count': len(records),
         'results': [
             {
@@ -330,9 +475,11 @@ def apply_deleted_records_payload(category, payload):
     return summary
 
 
-def build_delta_export_payload(category, since=None):
+def build_delta_export_payload(category, since=None, models=None):
     if category not in {'main', 'shared'}:
         raise ValueError(f'Unsupported delta export category: {category}')
+
+    selected_models = normalize_category_model_selection(category, models)
 
     if since is not None and timezone.is_naive(since):
         since = timezone.make_aware(since, timezone.get_current_timezone())
@@ -341,6 +488,9 @@ def build_delta_export_payload(category, since=None):
     total_records = 0
 
     for model in _get_category_models_in_dependency_order(category):
+        if selected_models is not None and model.__name__ not in selected_models:
+            continue
+
         entry_date_field = _get_concrete_field(model, 'entry_date')
         if entry_date_field is None:
             continue
@@ -375,6 +525,7 @@ def build_delta_export_payload(category, since=None):
         'site_name': getattr(settings, 'SITE_NAME', ''),
         'category': category,
         'since': since.isoformat() if since is not None else None,
+        'models_filter': selected_models,
         'model_count': len(exported_models),
         'record_count': total_records,
         'models': exported_models,
@@ -447,32 +598,50 @@ def build_manuscript_export_payload(manuscript_uuid):
     }
 
 
-def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None, keep_local_uuids=None):
+def pull_remote_category(
+    peer_url,
+    category,
+    since=None,
+    force_remote_uuids=None,
+    keep_local_uuids=None,
+    models=None,
+):
     if category not in {'main', 'shared'}:
         raise ValueError(f'Unsupported delta import category: {category}')
 
     if category == 'main':
         _assert_main_pull_direction(peer_url)
 
+    requested_models = normalize_category_model_selection(category, models)
+    selected_models = expand_category_model_selection(category, requested_models)
+
     query = {}
     if since:
         query['since'] = since
+    if selected_models is not None:
+        query['models'] = ','.join(selected_models)
 
     shared_dependency_summary = None
-    if category != 'shared':
+    if _selection_needs_shared_dependencies(category, selected_models):
         shared_dependency_summary = _sync_shared_dependency_payload(peer_url)
 
-    export_payload = fetch_remote_etl_json(
-        peer_url,
-        f'/api/etl/{category}/export/',
-        query=query or None,
-        api_token=_get_peer_api_token(peer_url),
+    export_payload = _filter_export_payload_models(
+        fetch_remote_etl_json(
+            peer_url,
+            f'/api/etl/{category}/export/',
+            query=query or None,
+            api_token=_get_peer_api_token(peer_url),
+        ),
+        selected_models,
     )
-    deleted_payload = fetch_remote_etl_json(
-        peer_url,
-        f'/api/etl/{category}/deleted/',
-        query=query or None,
-        api_token=_get_peer_api_token(peer_url),
+    deleted_payload = _filter_deleted_payload_models(
+        fetch_remote_etl_json(
+            peer_url,
+            f'/api/etl/{category}/deleted/',
+            query=query or None,
+            api_token=_get_peer_api_token(peer_url),
+        ),
+        selected_models,
     )
 
     with transaction.atomic():
@@ -492,6 +661,8 @@ def pull_remote_category(peer_url, category, since=None, force_remote_uuids=None
         'peer_url': _normalize_peer_url(peer_url),
         'category': category,
         'since': since,
+        'requested_models': requested_models,
+        'models': selected_models,
         'shared_dependency_sync': shared_dependency_summary['summary'] if shared_dependency_summary is not None else None,
         'import_summary': import_summary,
         'delete_summary': delete_summary,
@@ -625,6 +796,7 @@ def resolve_shared_conflict(
     since=None,
     force_remote_uuids=None,
     keep_local_uuids=None,
+    models=None,
 ):
     if resolution == 'close':
         return {
@@ -667,6 +839,7 @@ def resolve_shared_conflict(
             since=since,
             force_remote_uuids=force_remote_uuids,
             keep_local_uuids=keep_local_uuids,
+            models=models,
         )
     except ETLImportConflictError as exc:
         raise ETLImportConflictError(

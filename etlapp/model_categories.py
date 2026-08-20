@@ -101,3 +101,12 @@ def get_shared_model_names():
         for model_name, category in MODEL_CATEGORIES.items()
         if category in SHARED_CATEGORIES
     )
+
+
+def get_category_model_names(category):
+    """Model names assigned to one ETL category, e.g. every `main` dictionary."""
+    return sorted(
+        model_name
+        for model_name, model_category in MODEL_CATEGORIES.items()
+        if model_category == category
+    )

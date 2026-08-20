@@ -238,6 +238,24 @@ Minimal end-to-end local ETL verification:
 5. verify that related media files appear in `media_instances/ecatalogus/`
 6. verify that `/media/...` URLs work on both instances
 
+## Pulling a single dictionary table
+
+`Pull main dictionaries` and `Pull shared dictionaries` transfer the whole
+category, which can run for a long time. When only one vocabulary changed, the
+`Pull a single table` control in ETL sync (dropdown + `Pull selected table`)
+pulls just that table — e.g. `Places` or `Time References`. The tables the
+selection refers to through foreign keys are added automatically, and the
+`shared` preload is skipped when the selection does not need it.
+
+The same selection is available outside the GUI:
+
+```
+python manage.py pull_etl_category --peer ecatalogus --category main --model Places
+```
+
+and on the export endpoints as a comma-separated query param,
+`/api/etl/main/export/?models=Places,TimeReference`.
+
 
 
 ### Every time you want to run the project, you have to activate the environment first:

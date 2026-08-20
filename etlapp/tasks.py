@@ -38,7 +38,15 @@ def get_database_stats():
 
 
 @shared_task(bind=True)
-def pull_category_task(self, peer_url, category, since=None, force_remote_uuids=None, keep_local_uuids=None):
+def pull_category_task(
+    self,
+    peer_url,
+    category,
+    since=None,
+    force_remote_uuids=None,
+    keep_local_uuids=None,
+    models=None,
+):
     """Background task for pulling a category from remote peer."""
     try:
         result = pull_remote_category(
@@ -46,7 +54,8 @@ def pull_category_task(self, peer_url, category, since=None, force_remote_uuids=
             category=category,
             since=since,
             force_remote_uuids=force_remote_uuids,
-            keep_local_uuids=keep_local_uuids
+            keep_local_uuids=keep_local_uuids,
+            models=models,
         )
         stats = get_database_stats()
         return {

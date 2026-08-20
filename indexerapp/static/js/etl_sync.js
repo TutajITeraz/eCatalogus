@@ -27,6 +27,7 @@ function bindETLSyncEvents() {
         peerSelect.addEventListener('change', (event) => {
             etlSelectedPeerId = event.target.value || null;
             renderSelectedPeerStatus();
+            renderETLModelOptions();
         });
     }
 
@@ -36,6 +37,23 @@ function bindETLSyncEvents() {
             await triggerCategoryPull(category);
         });
     });
+
+    const pullModelButton = document.getElementById('etl-pull-model');
+    if (pullModelButton) {
+        pullModelButton.addEventListener('click', async () => {
+            const select = document.getElementById('etl-model-select');
+            const option = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
+            if (!option || !option.value) {
+                appendETLLog('Select a table before starting a single-table pull.');
+                return;
+            }
+
+            await triggerCategoryPull(option.dataset.category, {
+                models: [option.value],
+                label: option.textContent,
+            });
+        });
+    }
 
     const loadManuscriptsButton = document.getElementById('etl-load-manuscripts');
     if (loadManuscriptsButton) {
@@ -84,6 +102,7 @@ async function loadETLOverview() {
         renderLocalSummary();
         renderPeerOptions();
         renderSelectedPeerStatus();
+        renderETLModelOptions();
         appendETLLog('ETL overview loaded.');
     } catch (error) {
         appendETLLog(`Overview error: ${error.message}`);
@@ -149,6 +168,62 @@ function renderPeerOptions() {
     });
 }
 
+function getETLSyncModelOptions() {
+    // The peer is what gets exported, so prefer the table list it advertises.
+    // An older peer without `sync_models` falls back to the local one, which is
+    // the same model registry in practice.
+    const peer = getSelectedPeer();
+    const peerModels = peer && peer.status && Array.isArray(peer.status.sync_models)
+        ? peer.status.sync_models
+        : null;
+    if (peerModels && peerModels.length) {
+        return peerModels;
+    }
+
+    const local = (etlOverview && etlOverview.local) || {};
+    return Array.isArray(local.sync_models) ? local.sync_models : [];
+}
+
+function renderETLModelOptions() {
+    const select = document.getElementById('etl-model-select');
+    if (!select) {
+        return;
+    }
+
+    const previousValue = select.value;
+    const options = getETLSyncModelOptions();
+    select.innerHTML = '';
+
+    if (!options.length) {
+        select.innerHTML = '<option value="">No tables available</option>';
+        return;
+    }
+
+    const groupLabels = { main: 'Main dictionaries', shared: 'Shared dictionaries' };
+    const groups = {};
+
+    options.forEach((entry) => {
+        const category = entry.category || 'main';
+        if (!groups[category]) {
+            const group = document.createElement('optgroup');
+            group.label = groupLabels[category] || category;
+            groups[category] = group;
+            select.appendChild(group);
+        }
+
+        const option = document.createElement('option');
+        option.value = entry.model;
+        option.dataset.category = category;
+        option.textContent = entry.label && entry.label !== entry.model
+            ? `${entry.label} (${entry.model})`
+            : entry.model;
+        if (entry.model === previousValue) {
+            option.selected = true;
+        }
+        groups[category].appendChild(option);
+    });
+}
+
 function renderSelectedPeerStatus() {
     const container = document.getElementById('etl-peer-status');
     if (!container) {
@@ -178,12 +253,15 @@ function renderSelectedPeerStatus() {
     `;
 }
 
-async function triggerCategoryPull(category) {
+async function triggerCategoryPull(category, options) {
     const peer = getSelectedPeer();
     if (!peer) {
         appendETLLog('Select a peer before starting synchronization.');
         return;
     }
+
+    const models = (options && Array.isArray(options.models) && options.models.length) ? options.models : null;
+    const scopeLabel = models ? ((options && options.label) || models.join(', ')) : `${category} dictionaries`;
 
     const sinceValue = (document.getElementById('etl-since') || {}).value || '';
     etlConflictWorkflow = {
@@ -191,12 +269,14 @@ async function triggerCategoryPull(category) {
         peerUrl: peer.url,
         category,
         since: sinceValue,
+        models,
+        scopeLabel,
         forceRemoteDecisions: [],
         keepLocalDecisions: [],
     };
     clearActiveConflict();
-    appendETLLog(`Pulling ${category} from ${peer.url}${sinceValue ? ` since ${sinceValue}` : ''}...`);
-    beginETLBusyState(`Pulling ${category} data...`, 12);
+    appendETLLog(`Pulling ${scopeLabel} from ${peer.url}${sinceValue ? ` since ${sinceValue}` : ''}...`);
+    beginETLBusyState(`Pulling ${scopeLabel}...`, 12);
     await waitForNextPaint();
 
     try {
@@ -206,24 +286,25 @@ async function triggerCategoryPull(category) {
                 peer: peer.id,
                 category: category,
                 since: sinceValue,
+                models: models,
                 force_remote_uuids: buildDecisionUuidList(etlConflictWorkflow.forceRemoteDecisions),
                 keep_local_uuids: buildDecisionUuidList(etlConflictWorkflow.keepLocalDecisions),
             }),
         });
 
-        await handleCategoryPullResponse(category, payload);
+        await handleCategoryPullResponse(scopeLabel, payload);
     } catch (error) {
         if (error.status === 409 && error.payload && error.payload.conflict) {
             updateConflictWorkflowFromPayload(error.payload);
             etlActiveConflict = error.payload.conflict;
             renderActiveConflict();
             appendETLLog(
-                `${category} pull stopped on conflict for ${etlActiveConflict.model} uuid=${etlActiveConflict.object_uuid}. Choose keep-local or apply-remote to continue.`
+                `${scopeLabel} pull stopped on conflict for ${etlActiveConflict.model} uuid=${etlActiveConflict.object_uuid}. Choose keep-local or apply-remote to continue.`
             );
             return;
         }
         clearActiveConflict({ resetWorkflow: true });
-        appendETLLog(`${category} pull failed: ${error.message}`);
+        appendETLLog(`${scopeLabel} pull failed: ${error.message}`);
     } finally {
         endETLBusyState();
     }
@@ -421,6 +502,15 @@ function logCategoryPullSummary(category, result) {
     clearActiveConflict({ resetWorkflow: true });
     updateETLBusyProgress(100, `${capitalize(category)} pull completed.`);
 
+    // A single-table pull carries whatever same-category tables its foreign keys
+    // point at, so say which ones actually came along.
+    const requestedModels = summary.requested_models || null;
+    const effectiveModels = summary.models || null;
+    if (requestedModels && effectiveModels) {
+        const addedModels = effectiveModels.filter((model) => requestedModels.indexOf(model) === -1);
+        appendETLLog(`Pulled tables: ${effectiveModels.join(', ')}${addedModels.length ? ` (dependencies added: ${addedModels.join(', ')})` : ''}.`);
+    }
+
     if (sharedSummary) {
         appendETLLog(
             `shared dependency preload completed: created=${sharedSummary.export_record_count || 0}, deleted=${sharedSummary.deleted_count || 0}.`
@@ -521,6 +611,7 @@ async function resolveActiveConflict(resolution) {
                 peer: etlConflictWorkflow.peerId,
                 category: etlConflictWorkflow.category,
                 since: etlConflictWorkflow.since,
+                models: etlConflictWorkflow.models || null,
                 force_remote_uuids: buildDecisionUuidList(etlConflictWorkflow.forceRemoteDecisions),
                 keep_local_uuids: buildDecisionUuidList(etlConflictWorkflow.keepLocalDecisions),
             }),
@@ -653,7 +744,8 @@ function buildConflictWorkflowContext() {
     }
 
     const sinceLabel = etlConflictWorkflow.since || 'full pull';
-    return `Workflow: peer=${etlConflictWorkflow.peerId || 'n/a'} | category=${etlConflictWorkflow.category || 'n/a'} | since=${sinceLabel}`;
+    const modelsLabel = (etlConflictWorkflow.models || []).join(', ') || 'all tables';
+    return `Workflow: peer=${etlConflictWorkflow.peerId || 'n/a'} | category=${etlConflictWorkflow.category || 'n/a'} | tables=${modelsLabel} | since=${sinceLabel}`;
 }
 
 function mergeDecisionEntries(payloadUuids, existingEntries) {
@@ -759,7 +851,7 @@ function renderETLBusyState(message) {
     const text = document.getElementById('etl-busy-text');
     const progressBar = document.getElementById('etl-busy-progress-bar');
     const progressLabel = document.getElementById('etl-busy-progress-label');
-    const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-peer-select, #etl-since, .etl-import-manuscript, #etl-conflict-keep-local, #etl-conflict-apply-remote, #etl-conflict-close, #etl-conflict-reset-workflow');
+    const controls = document.querySelectorAll('#etl-refresh-overview, #etl-load-manuscripts, .etl-sync-category, #etl-pull-model, #etl-model-select, #etl-peer-select, #etl-since, .etl-import-manuscript, #etl-conflict-keep-local, #etl-conflict-apply-remote, #etl-conflict-close, #etl-conflict-reset-workflow');
     const isBusy = etlPendingOperations > 0;
 
     if (panel) {
