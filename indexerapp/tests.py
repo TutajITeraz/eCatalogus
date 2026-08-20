@@ -2164,3 +2164,79 @@ class MergeMainDuplicatesCommandTests(TestCase):
 	def test_refuses_an_unknown_uuid(self):
 		with self.assertRaises(CommandError):
 			self._run('--pair', f'{uuid4()}={self.canonical.uuid}')
+
+
+class AuditUniqueCandidatesCommandTests(TestCase):
+	"""The decision sheet for where a unique constraint would hold."""
+
+	def _run(self, *args):
+		stdout = StringIO()
+		call_command('audit_unique_candidates', '--json', *args, stdout=stdout)
+		return json.loads(stdout.getvalue())
+
+	def _column(self, report, model_name, field_name):
+		entry = next(item for item in report if item['name'] == model_name)
+		return next(column for column in entry['columns'] if column['field'] == field_name)
+
+	def _time_reference(self, description, year_from=1150, year_to=1175):
+		return TimeReference.objects.create(
+			time_description=description,
+			century_from=12, century_to=12, year_from=year_from, year_to=year_to,
+		)
+
+	def test_a_distinct_fully_filled_column_is_ready(self):
+		self._time_reference('XII 1/4')
+		self._time_reference('XII 2/4')
+		self._time_reference('XII 3/4')
+
+		column = self._column(self._run('--model', 'TimeReference'), 'TimeReference', 'time_description')
+
+		self.assertEqual(column['verdict'], 'ready')
+		self.assertEqual(column['duplicate_groups'], 0)
+		self.assertTrue(column['feasible'])
+
+	def test_a_duplicated_value_blocks_the_constraint_and_is_listed(self):
+		self._time_reference('XII 3/4')
+		self._time_reference('XII 3/4', year_from=0, year_to=0)
+		self._time_reference('XIII')
+
+		column = self._column(self._run('--model', 'TimeReference'), 'TimeReference', 'time_description')
+
+		self.assertEqual(column['verdict'], 'needs-cleanup')
+		self.assertEqual(column['duplicate_groups'], 1)
+		self.assertEqual(column['duplicate_rows'], 2)
+		self.assertEqual(column['examples'][0], {'value': 'XII 3/4', 'count': 2})
+
+	def test_a_column_that_repeats_by_design_is_reported_as_categorical(self):
+		# "Poland" over and over is the data being right, not duplicated. The
+		# ratio test only applies once the table is big enough to mean anything.
+		for index in range(24):
+			Places.objects.create(country_today_eng='Poland', city_today_eng=f'City {index}')
+
+		column = self._column(self._run('--model', 'Places'), 'Places', 'country_today_eng')
+
+		self.assertEqual(column['verdict'], 'categorical')
+		self.assertLess(column['distinct_ratio'], 0.9)
+
+	def test_a_text_column_cannot_carry_a_plain_unique_constraint(self):
+		Formulas.objects.create(text='Te igitur clementissime Pater')
+
+		column = self._column(self._run('--model', 'Formulas'), 'Formulas', 'text')
+
+		self.assertEqual(column['verdict'], 'not-indexable')
+		self.assertFalse(column['feasible'])
+		self.assertIn('prefix index', column['reason'])
+
+	def test_empty_strings_block_the_constraint_even_without_duplicates(self):
+		# A unique index tolerates many NULLs but not many empty strings.
+		self._time_reference('XII 3/4')
+		self._time_reference('')
+		self._time_reference('')
+
+		column = self._column(
+			self._run('--model', 'TimeReference', '--min-fill', '0'),
+			'TimeReference', 'time_description',
+		)
+
+		self.assertEqual(column['blanks'], 2)
+		self.assertEqual(column['verdict'], 'needs-cleanup')
