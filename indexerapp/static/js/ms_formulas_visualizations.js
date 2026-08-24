@@ -1,6 +1,5 @@
 (function() {
     const LOCAL_CHART_MIN_WIDTH = 720;
-    const LOCAL_CHART_STEP_WIDTH = 28;
 
     function ensureTooltip() {
         let tooltip = d3.select('#formulas-chart-tooltip');
@@ -131,14 +130,15 @@
             .text(message);
     }
 
-    function getContainerDimensions(containerSelector, data, valueAccessor, margin) {
+    function getContainerDimensions(containerSelector, margin) {
         const chartElement = document.querySelector(containerSelector);
         const bounds = chartElement?.getBoundingClientRect();
-        const containerWidth = Math.max(bounds?.width || 0, LOCAL_CHART_MIN_WIDTH + margin.left + margin.right);
         const chartHeight = Math.max(chartElement?.clientHeight || 0, 420);
-        const uniquePositions = new Set(data.map(valueAccessor)).size || 1;
-        const preferredWidth = Math.max(LOCAL_CHART_MIN_WIDTH, uniquePositions * LOCAL_CHART_STEP_WIDTH);
-        const width = Math.max(LOCAL_CHART_MIN_WIDTH, Math.min(preferredWidth, containerWidth - margin.left - margin.right));
+        // The container drives the plot size, so the chart grows and shrinks
+        // with the viewport. LOCAL_CHART_MIN_WIDTH is only a floor for very
+        // narrow screens; #chart scrolls horizontally when it applies.
+        const availableWidth = (bounds?.width || 0) - margin.left - margin.right;
+        const width = Math.max(LOCAL_CHART_MIN_WIDTH, availableWidth);
         const height = Math.max(320, chartHeight - margin.top - margin.bottom);
 
         return { width, height };
@@ -216,7 +216,7 @@
 
         const tooltip = ensureTooltip();
         const margin = { top: 20, right: 30, bottom: 40, left: 300 };
-        const { width, height } = getContainerDimensions(containerSelector, data, item => item.sequence_in_ms, margin);
+        const { width, height } = getContainerDimensions(containerSelector, margin);
         const svg = d3.select(containerSelector)
             .append('svg')
             .attr('width', width + margin.left + margin.right)
@@ -443,7 +443,7 @@
             return;
         }
 
-        const { width, height } = getContainerDimensions(containerSelector, pairData, item => item.left.sequence_in_ms, margin);
+        const { width, height } = getContainerDimensions(containerSelector, margin);
         const svg = d3.select(containerSelector)
             .append('svg')
             .attr('width', width + margin.left + margin.right)
@@ -540,7 +540,12 @@
 
         const tooltip = ensureTooltip();
         const container = document.querySelector(containerSelector);
-        const size = Math.max(Math.min(container?.clientWidth || 800, 900), 520);
+        // Circos is square, so track the container but stay inside the
+        // available height too, instead of a fixed 900px cap that both
+        // wasted width on wide screens and overflowed short ones.
+        const availableWidth = container?.clientWidth || 800;
+        const availableHeight = container?.clientHeight || 0;
+        const size = Math.max(520, Math.min(availableWidth, availableHeight || availableWidth));
         const svg = d3.select(containerSelector)
             .append('svg')
             .attr('width', size)
@@ -694,7 +699,7 @@
 
         const tooltip = ensureTooltip();
         const margin = { top: 20, right: 30, bottom: 20, left: 20 };
-        const { width, height } = getContainerDimensions(containerSelector, data, item => item.sequence_in_ms, margin);
+        const { width, height } = getContainerDimensions(containerSelector, margin);
         const sankeyHeight = Math.max(height, 520);
         const svg = d3.select(containerSelector)
             .append('svg')

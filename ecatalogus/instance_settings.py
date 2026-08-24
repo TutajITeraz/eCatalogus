@@ -189,7 +189,11 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
     )
 
     database_config = {
-        'ENGINE': 'django.db.backends.mysql',
+        # Custom backend (ecatalogus/db_backends/mysql) forces
+        # has_native_uuid_field off so UUID lookups behave the same on
+        # MariaDB 10.6 (production) and MariaDB >=10.7/12.x (local dev),
+        # matching the dash-less CHAR(32) uuid columns used everywhere.
+        'ENGINE': 'ecatalogus.db_backends.mysql',
         'CONN_MAX_AGE': 0,
         'NAME': os.getenv(f'{env_prefix}_DATABASE_NAME', os.getenv('DATABASE_NAME', default_database_name)),
         'USER': os.getenv(f'{env_prefix}_DATABASE_USER', os.getenv('DATABASE_USER', default_database_user)),

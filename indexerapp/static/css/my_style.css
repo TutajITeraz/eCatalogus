@@ -1292,3 +1292,44 @@ ul.decoration_comment {
 .filter-tag-x:hover {
     color: #e53e3e;
 }
+
+/* Automatic comparison graphs (ms_formulas_graph / ms_edition_graph):
+   let the stats panel and chart shrink below their content size so the
+   flex row can respond to the viewport instead of forcing an early wrap. */
+#ms_stats,
+#chart {
+    min-width: 0;
+}
+
+/* Keep the stats panel and chart side by side down to real mobile widths.
+   Rather than wrapping the chart below the stats panel when it doesn't fit,
+   let it scroll horizontally within its own column (#chart already has
+   overflow-x: auto). */
+.ms-compare-row {
+    flex-wrap: nowrap;
+}
+
+/* The prebuilt tailwind_style.css does not contain flex-1 or max-w-[300px],
+   so the two columns are sized here instead: a fixed stats panel and a chart
+   that takes all remaining width (which is what lets the graph grow and
+   shrink with the viewport). */
+.ms-compare-row #ms_stats {
+    flex: 0 0 300px;
+    max-width: 300px;
+}
+
+.ms-compare-row #chart {
+    flex: 1 1 0%;
+}
+
+@media (max-width: 768px) {
+    .ms-compare-row {
+        flex-wrap: wrap;
+    }
+
+    .ms-compare-row #ms_stats,
+    .ms-compare-row #chart {
+        flex-basis: 100%;
+        max-width: 100%;
+    }
+}

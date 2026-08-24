@@ -357,8 +357,19 @@ ms_formulas_graph_init = function() {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    let resizeRedrawTimeout = null;
+    function handleWindowResize() {
+        clearTimeout(resizeRedrawTimeout);
+        resizeRedrawTimeout = setTimeout(function() {
+            if (originalData.length) {
+                renderFilteredChart();
+            }
+        }, 200);
+    }
+
     setTableHeight();
     $(window).resize(setTableHeight);
+    $(window).resize(handleWindowResize);
     selectInitialGenre();
 
     $('.manuscript_filter_left').select2({

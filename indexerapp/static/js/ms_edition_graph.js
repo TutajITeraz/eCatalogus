@@ -89,8 +89,19 @@ ms_edition_graph_init = function() {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    let resizeRedrawTimeout = null;
+    function handleWindowResize() {
+        clearTimeout(resizeRedrawTimeout);
+        resizeRedrawTimeout = setTimeout(function() {
+            if (originalData.length) {
+                renderActiveChart(originalData);
+            }
+        }, 200);
+    }
+
     setTableHeight();
     $(window).resize(setTableHeight);
+    $(window).resize(handleWindowResize);
 
     $('#editionChartTypeSelect').select2({
         minimumResultsForSearch: Infinity,
