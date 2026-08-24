@@ -90,9 +90,19 @@ ms_edition_graph_init = function() {
     }
 
     let resizeRedrawTimeout = null;
+    let lastChartWidth = null;
     function handleWindowResize() {
         clearTimeout(resizeRedrawTimeout);
         resizeRedrawTimeout = setTimeout(function() {
+            // A redraw is a full teardown of the SVG (and it drops the current
+            // zoom/pan), so only do it when the chart column actually changed
+            // width. This also stops a scrollbar appearing/disappearing from
+            // bouncing the layout back and forth on every resize.
+            const chartWidth = Math.round(document.querySelector('#chart')?.getBoundingClientRect().width || 0);
+            if (chartWidth === lastChartWidth) {
+                return;
+            }
+            lastChartWidth = chartWidth;
             if (originalData.length) {
                 renderActiveChart(originalData);
             }

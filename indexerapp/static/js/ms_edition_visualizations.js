@@ -292,16 +292,35 @@
             }
         });
 
+        // Pointer events fire faster than the browser paints, so the redraw is
+        // coalesced into one animation frame per repaint. The selections, the
+        // axis and the line generator are resolved once instead of per event.
+        const xAxisGroup = chart.select('.x.axis');
+        const xAxisGenerator = d3.axisBottom(x);
+        const pointCircles = chart.selectAll('circle.parallel-point');
+        const linePaths = chart.selectAll('path.data-line');
+        let zoomedX = x;
+        const zoomedLine = d3.line()
+            .x(item => zoomedX(item.rubric_sequence))
+            .y(item => y(item.Table));
+        let pendingTransform = null;
+        let zoomFramePending = false;
+
+        function applyZoomTransform() {
+            zoomFramePending = false;
+            zoomedX = pendingTransform.rescaleX(x);
+            xAxisGroup.call(xAxisGenerator.scale(zoomedX));
+            pointCircles.attr('cx', item => zoomedX(item.rubric_sequence));
+            linePaths.attr('d', group => zoomedLine(group.items));
+        }
+
         svg.call(
-            d3.zoom().on('zoom', function(event) {
-                const newX = event.transform.rescaleX(x);
-                chart.select('.x.axis').call(d3.axisBottom(newX));
-                chart.selectAll('circle.parallel-point')
-                    .attr('cx', item => newX(item.rubric_sequence));
-                chart.selectAll('path.data-line')
-                    .attr('d', group => d3.line()
-                        .x(item => newX(item.rubric_sequence))
-                        .y(item => y(item.Table))(group.items));
+            d3.zoom().scaleExtent([0.5, 12]).on('zoom', function(event) {
+                pendingTransform = event.transform;
+                if (!zoomFramePending) {
+                    zoomFramePending = true;
+                    requestAnimationFrame(applyZoomTransform);
+                }
             })
         );
     }

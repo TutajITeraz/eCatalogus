@@ -253,7 +253,11 @@
         };
         const groupedData = d3.group(data, item => item.formula_id, item => item.Table);
 
-        function buildConnections(formulaId, xScale) {
+        // Segments and points are built once: only their x positions depend on
+        // the zoom transform, so panning updates attributes on the existing
+        // nodes instead of tearing down and rebuilding the whole layer.
+        function buildConnections(group) {
+            const formulaId = group.formulaId;
             if (!groupedData.has(formulaId)) {
                 return [];
             }
@@ -278,12 +282,7 @@
                     continue;
                 }
 
-                segments.push({
-                    formulaId,
-                    source,
-                    target,
-                    path: `M${xScale(source.sequence_in_ms)} ${y(source.Table)} L${xScale(target.sequence_in_ms)} ${y(target.Table)}`
-                });
+                segments.push({ formulaId, group, source, target });
             }
 
             return segments;
@@ -292,76 +291,75 @@
         const lineLayer = chart.append('g').attr('class', 'parallel-lines');
         const pointLayer = chart.append('g').attr('class', 'parallel-points');
 
+        const allSegments = [];
+        const allPoints = [];
+        formulaGroups.forEach(group => {
+            const color = resolveColor(group);
+            group.resolvedColor = color;
+            buildConnections(group).forEach(segment => allSegments.push(segment));
+            group.items.forEach(item => allPoints.push({ item, group, color }));
+        });
+
         let selectedFormulaId = null;
 
         function highlightFormula(formulaId) {
             selectedFormulaId = formulaId;
-            lineLayer.selectAll('path.connection-line')
-                .classed('selected-line', segment => segment.formulaId === formulaId);
-            pointLayer.selectAll('circle.parallel-point')
-                .classed('selected-circle', point => point.formula_id === formulaId);
+            linePaths.classed('selected-line', segment => segment.formulaId === formulaId);
+            pointCircles.classed('selected-circle', point => point.item.formula_id === formulaId);
         }
 
-        function renderParallelMarks(xScale) {
-            lineLayer.selectAll('*').remove();
-            pointLayer.selectAll('*').remove();
-
-            formulaGroups.forEach(group => {
-                const color = resolveColor(group);
-                const segments = buildConnections(group.formulaId, xScale);
-
-                lineLayer.selectAll(null)
-                    .data(segments)
-                    .enter()
-                    .append('path')
-                    .attr('class', 'connection-line')
-                    .attr('fill', 'none')
-                    .attr('stroke', color)
-                    .attr('stroke-width', 3)
-                    .attr('d', segment => segment.path)
-                    .on('mouseover', function(event) {
-                        const first = group.items[0];
-                        const last = group.items[group.items.length - 1];
-                        tooltip.transition().duration(150).style('opacity', 0.95);
-                        tooltip.html(`Formula: ${first.formula}<br>Tradition: ${(first.formula_traditions || []).join(', ') || 'Unattributed'}<br>Sequence: ${first.sequence_in_ms} -> ${last.sequence_in_ms}<br>${formatPrayerTooltip(first)}`)
-                            .style('left', `${event.pageX + 5}px`)
-                            .style('top', `${event.pageY - 28}px`);
-                    })
-                    .on('mouseout', function() {
-                        tooltip.transition().duration(250).style('opacity', 0);
-                    })
-                    .on('click', function(event) {
-                        highlightFormula(group.formulaId);
-                        event.stopPropagation();
-                    });
-
-                pointLayer.selectAll(null)
-                    .data(group.items)
-                    .enter()
-                    .append('circle')
-                    .attr('class', 'parallel-point')
-                    .attr('r', 7)
-                    .attr('cx', item => xScale(item.sequence_in_ms))
-                    .attr('cy', item => y(item.Table))
-                    .attr('fill', color)
-                    .on('mouseover', function(event, item) {
-                        tooltip.transition().duration(150).style('opacity', 0.95);
-                        tooltip.html(`Formula: ${item.formula_id}<br>Tradition: ${(group.items[0].formula_traditions || []).join(', ') || 'Unattributed'}<br>Sequence: ${item.sequence_in_ms}<br>${item.rubric_name}<br>${formatPrayerTooltip(item)}`)
-                            .style('left', `${event.pageX + 5}px`)
-                            .style('top', `${event.pageY - 28}px`);
-                    })
-                    .on('mouseout', function() {
-                        tooltip.transition().duration(250).style('opacity', 0);
-                    })
-                    .on('click', function(event) {
-                        highlightFormula(group.formulaId);
-                        event.stopPropagation();
-                    });
+        const linePaths = lineLayer.selectAll('path.connection-line')
+            .data(allSegments)
+            .enter()
+            .append('path')
+            .attr('class', 'connection-line')
+            .attr('fill', 'none')
+            .attr('stroke', segment => segment.group.resolvedColor)
+            .attr('stroke-width', 3)
+            .on('mouseover', function(event, segment) {
+                const items = segment.group.items;
+                const first = items[0];
+                const last = items[items.length - 1];
+                tooltip.transition().duration(150).style('opacity', 0.95);
+                tooltip.html(`Formula: ${first.formula}<br>Tradition: ${(first.formula_traditions || []).join(', ') || 'Unattributed'}<br>Sequence: ${first.sequence_in_ms} -> ${last.sequence_in_ms}<br>${formatPrayerTooltip(first)}`)
+                    .style('left', `${event.pageX + 5}px`)
+                    .style('top', `${event.pageY - 28}px`);
+            })
+            .on('mouseout', function() {
+                tooltip.transition().duration(250).style('opacity', 0);
+            })
+            .on('click', function(event, segment) {
+                highlightFormula(segment.formulaId);
+                event.stopPropagation();
             });
 
-            if (selectedFormulaId) {
-                highlightFormula(selectedFormulaId);
-            }
+        const pointCircles = pointLayer.selectAll('circle.parallel-point')
+            .data(allPoints)
+            .enter()
+            .append('circle')
+            .attr('class', 'parallel-point')
+            .attr('r', 7)
+            .attr('cy', point => y(point.item.Table))
+            .attr('fill', point => point.color)
+            .on('mouseover', function(event, point) {
+                const item = point.item;
+                tooltip.transition().duration(150).style('opacity', 0.95);
+                tooltip.html(`Formula: ${item.formula_id}<br>Tradition: ${(point.group.items[0].formula_traditions || []).join(', ') || 'Unattributed'}<br>Sequence: ${item.sequence_in_ms}<br>${item.rubric_name}<br>${formatPrayerTooltip(item)}`)
+                    .style('left', `${event.pageX + 5}px`)
+                    .style('top', `${event.pageY - 28}px`);
+            })
+            .on('mouseout', function() {
+                tooltip.transition().duration(250).style('opacity', 0);
+            })
+            .on('click', function(event, point) {
+                highlightFormula(point.item.formula_id);
+                event.stopPropagation();
+            });
+
+        function renderParallelMarks(xScale) {
+            linePaths.attr('d', segment =>
+                `M${xScale(segment.source.sequence_in_ms)} ${y(segment.source.Table)} L${xScale(segment.target.sequence_in_ms)} ${y(segment.target.Table)}`);
+            pointCircles.attr('cx', point => xScale(point.item.sequence_in_ms));
         }
 
         renderParallelMarks(x);
@@ -387,11 +385,27 @@
             }
         });
 
+        // Pointer events fire faster than the browser paints, so the redraw is
+        // coalesced into one animation frame per repaint.
+        const xAxisGroup = chart.select('.x.axis');
+        const xAxisGenerator = d3.axisBottom(x);
+        let pendingTransform = null;
+        let zoomFramePending = false;
+
+        function applyZoomTransform() {
+            zoomFramePending = false;
+            const newX = pendingTransform.rescaleX(x);
+            xAxisGroup.call(xAxisGenerator.scale(newX));
+            renderParallelMarks(newX);
+        }
+
         svg.call(
-            d3.zoom().on('zoom', function(event) {
-                const newX = event.transform.rescaleX(x);
-                chart.select('.x.axis').call(d3.axisBottom(newX));
-                renderParallelMarks(newX);
+            d3.zoom().scaleExtent([0.5, 12]).on('zoom', function(event) {
+                pendingTransform = event.transform;
+                if (!zoomFramePending) {
+                    zoomFramePending = true;
+                    requestAnimationFrame(applyZoomTransform);
+                }
             })
         );
     }
