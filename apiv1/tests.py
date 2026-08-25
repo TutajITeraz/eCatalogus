@@ -6,13 +6,16 @@ from django.contrib.auth.models import Group, Permission
 from django.test import TestCase
 from django.urls import reverse
 
+from etlapp.uuid_utils import build_deterministic_sync_uuid
 from indexerapp.api_access import API_IMPORTER_GROUP
 from indexerapp.models import (
     Content,
     ContentFunctions,
     Contributors,
     LiturgicalGenres,
+    ManuscriptMusicNotations,
     Manuscripts,
+    MusicNotationNames,
     Places,
     RiteNames,
     ScriptNames,
@@ -868,3 +871,162 @@ class GrantApiAccessCommandTests(TestCase):
         self.assertFalse(user.groups.filter(name=API_IMPORTER_GROUP).exists())
         self.assertTrue(get_user_model().objects.filter(username='akowalska').exists())
         self.assertTrue(user.check_password('Original!pass1'))
+
+
+class DictionarySelectorTests(TestCase):
+    """The ``?uuids=`` / ``?legacy_ids=`` / ``?fields=`` selectors, and the
+    deliberate absence of the local ``id`` column."""
+
+    def setUp(self):
+        self.rubric = RiteNames.objects.create(name='Ad complendum')
+        self.other = RiteNames.objects.create(name='Ad populum')
+        self.manuscript = Manuscripts.objects.create(name='Target MS', display_as_main=True)
+
+    def dictionary(self, params=None, slug='rite-names'):
+        return self.client.get(
+            reverse('apiv1:dictionary-detail', kwargs={'slug': slug}), params or {}
+        )
+
+    def test_local_id_is_not_published(self):
+        # Each instance numbers its own rows, so publishing `id` next to `uuid`
+        # invites a caller to key on a value that means something else elsewhere.
+        response = self.dictionary()
+
+        self.assertEqual(response.status_code, 200)
+        for record in response.json()['results']:
+            self.assertNotIn('id', record)
+            self.assertIn('uuid', record)
+
+    def test_package_does_not_publish_local_ids_either(self):
+        response = self.client.get(
+            reverse('apiv1:manuscript-package', kwargs={'manuscript_uuid': self.manuscript.uuid})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for block in response.json()['models']:
+            for record in block['results']:
+                self.assertNotIn('id', record)
+
+    def test_selects_named_uuids_only(self):
+        response = self.dictionary({'uuids': str(self.rubric.uuid)})
+
+        payload = response.json()
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['results'][0]['uuid'], str(self.rubric.uuid))
+
+    def test_malformed_uuid_is_a_bad_request_not_an_empty_page(self):
+        response = self.dictionary({'uuids': f'{self.rubric.uuid},not-a-uuid'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not-a-uuid', response.json()['detail'])
+
+    def test_resolves_legacy_ids_and_names_the_ones_it_cannot(self):
+        migrated = RiteNames.objects.create(name='Ad missam')
+        RiteNames.objects.filter(pk=migrated.pk).update(
+            uuid=build_deterministic_sync_uuid('indexerapp.RiteNames', 4242)
+        )
+
+        response = self.dictionary({'legacy_ids': '4242,999999'})
+
+        payload = response.json()
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['results'][0]['name'], 'Ad missam')
+        self.assertEqual(payload['results'][0]['legacy_id'], 4242)
+        self.assertEqual(payload['unresolved_legacy_ids'], [999999])
+
+    def test_legacy_ids_rejects_non_numeric_values(self):
+        response = self.dictionary({'legacy_ids': '1,abc'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('abc', response.json()['detail'])
+
+    def test_fields_projection_always_keeps_uuid(self):
+        response = self.dictionary({'fields': 'name'})
+
+        record = response.json()['results'][0]
+        self.assertEqual(sorted(record), ['name', 'uuid'])
+
+    def test_unknown_query_parameter_is_rejected(self):
+        # Answering 200 to ?ids=1 is how a caller convinces itself that a filter
+        # it invented is being applied.
+        response = self.dictionary({'ids': '1'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('ids', response.json()['detail'])
+
+    def test_documented_parameters_are_still_accepted(self):
+        response = self.dictionary({'search': 'complend', 'limit': 10, 'offset': 0})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['count'], 1)
+
+
+class MusicNotationImportTests(TestCase):
+    """``music_notation_id`` points at one manuscript's notation record, so a
+    notation *name* can only be resolved within the manuscript being imported."""
+
+    def setUp(self):
+        self.password = 'Secret123!pass'
+        self.importer = get_user_model().objects.create_user('ritus-bot', password=self.password)
+        group, _ = Group.objects.get_or_create(name=API_IMPORTER_GROUP)
+        self.importer.groups.add(group)
+
+        self.manuscript = Manuscripts.objects.create(name='Notated MS', display_as_main=True)
+        self.bare = Manuscripts.objects.create(name='Unnotated MS', display_as_main=True)
+        self.square = MusicNotationNames.objects.create(name='Square notation')
+        self.block = ManuscriptMusicNotations.objects.create(
+            manuscript_uuid=self.manuscript,
+            music_notation_name_uuid=self.square,
+            sequence_in_ms=1,
+            where_in_ms_from='1r',
+        )
+
+    def post_bulk(self, manuscript, payload):
+        return self.client.post(
+            reverse('apiv1:manuscript-content-bulk', kwargs={'manuscript_uuid': manuscript.uuid}),
+            data=json.dumps(payload),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=basic_auth('ritus-bot', self.password),
+        )
+
+    def test_notation_name_resolves_to_this_manuscripts_record(self):
+        response = self.post_bulk(self.manuscript, {
+            'items': [{'formula_text_from_ms': 'Deus qui nos', 'music_notation_id': 'Square notation'}],
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(Content.objects.get().music_notation_uuid_id, self.block.uuid)
+
+    def test_notation_name_is_case_insensitive(self):
+        response = self.post_bulk(self.manuscript, {
+            'items': [{'formula_text_from_ms': 'x', 'music_notation_id': 'square NOTATION'}],
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_known_notation_the_manuscript_does_not_use_is_reported_precisely(self):
+        response = self.post_bulk(self.bare, {
+            'items': [{'formula_text_from_ms': 'x', 'music_notation_id': 'Square notation'}],
+        })
+
+        self.assertEqual(response.status_code, 400)
+        error = response.json()['errors'][0]
+        self.assertEqual(error['field'], 'music_notation_id')
+        self.assertIn('Unnotated MS', error['detail'])
+        self.assertEqual(Content.objects.count(), 0)
+
+    def test_unknown_notation_name_is_rejected(self):
+        response = self.post_bulk(self.manuscript, {
+            'items': [{'formula_text_from_ms': 'x', 'music_notation_id': 'Cistercian neumes'}],
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Content.objects.count(), 0)
+
+    def test_notation_record_uuid_still_works(self):
+        response = self.post_bulk(self.manuscript, {
+            'items': [{'formula_text_from_ms': 'x', 'music_notation_id': str(self.block.uuid)}],
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(Content.objects.get().music_notation_uuid_id, self.block.uuid)

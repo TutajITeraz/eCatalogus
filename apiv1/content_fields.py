@@ -71,6 +71,9 @@ RELATION_FIELDS = (
                   lookups=('name',), label_fields=('name',)),
     RelationField('subfunction_id', 'subfunction_uuid', 'ContentFunctions',
                   lookups=('name',), label_fields=('name',)),
+    # Manuscript-scoped, like quires: one notated stretch of one manuscript. A
+    # MusicNotationNames name is accepted too and resolved against the target
+    # manuscript's own notation records — see _resolve_music_notation.
     RelationField('music_notation_id', 'music_notation_uuid', 'ManuscriptMusicNotations',
                   lookups=(), label_fields=()),
     RelationField('layer', 'layer_uuid', 'Layer',

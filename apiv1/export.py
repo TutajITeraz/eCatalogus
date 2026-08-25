@@ -118,12 +118,35 @@ def add_labels(payload):
     return payload
 
 
+def strip_local_ids(payload):
+    """Remove every instance-local primary key from an ETL package, in place.
+
+    Each instance assigns its own autoincrement ids — replication matches rows by
+    UUID and never copies the primary key — so `id` means something different on
+    every server. Publishing it next to `uuid` invites a foreign system to key on
+    it and silently resolve to the wrong row elsewhere, which is exactly what
+    happened. The UUID forms carry the same information and travel.
+
+    Raw many-to-many primary-key lists go too, wherever the `*_uuids` companion
+    is present to replace them. Run this after :func:`add_labels`, which reads
+    those lists to build `*_labels`.
+    """
+    for model_block in payload.get('models', []):
+        for record in model_block.get('results', []):
+            record.pop('id', None)
+            for key in [name for name in record if f'{name}_uuids' in record]:
+                record.pop(key, None)
+
+    return payload
+
+
 def build_manuscript_package(manuscript_uuid, with_labels=True):
     """Full manuscript export — everything the manuscript tab displays."""
     payload = build_manuscript_export_payload(manuscript_uuid)
     payload['api_version'] = 'v1'
     if with_labels:
         add_labels(payload)
+    strip_local_ids(payload)
     return payload
 
 

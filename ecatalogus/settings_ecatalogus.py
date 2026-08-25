@@ -40,6 +40,7 @@ apply_instance_settings(
         # Override per deployment with API_INTEGRATION_ORIGINS.
         'api_integration_origins': [
             'https://ritus-indexer.ispan.pl',
+            'http://localhost:5173',
         ],
     },
 )

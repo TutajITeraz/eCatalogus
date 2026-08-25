@@ -9,15 +9,21 @@ The registry is an explicit allow-list rather than a sweep over
 accidentally publish it.
 """
 
+import uuid as uuid_module
+
 from django.apps import apps
 
 from etlapp.services import _serialize_instance
+from etlapp.uuid_utils import build_deterministic_sync_uuid
 
-from .export import add_labels
+from .export import add_labels, strip_local_ids
 
 
 DEFAULT_PAGE_SIZE = 200
 MAX_PAGE_SIZE = 1000
+
+#: Most a caller may name in one ``?uuids=`` / ``?legacy_ids=`` request.
+MAX_SELECTED_KEYS = 1000
 
 
 #: slug -> (model name, columns searched by ?search=)
@@ -82,12 +88,115 @@ def list_dictionaries(request_build_uri=None):
     return {'api_version': 'v1', 'count': len(results), 'results': results}
 
 
-def build_dictionary_page(slug, search=None, since=None, limit=None, offset=0):
+class DictionaryQueryError(ValueError):
+    """A malformed selector — reported as 400, not 404."""
+
+
+def parse_uuid_list(raw):
+    """Parse a ``?uuids=`` value into UUIDs, rejecting anything malformed."""
+    wanted, invalid = [], []
+    for token in str(raw).split(','):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            wanted.append(uuid_module.UUID(token))
+        except (ValueError, AttributeError, TypeError):
+            invalid.append(token)
+
+    if invalid:
+        raise DictionaryQueryError(
+            f'"uuids" contains {len(invalid)} value(s) that are not UUIDs: '
+            + ', '.join(f'"{token}"' for token in invalid[:5])
+        )
+    if len(wanted) > MAX_SELECTED_KEYS:
+        raise DictionaryQueryError(
+            f'"uuids" names {len(wanted)} entries; at most {MAX_SELECTED_KEYS} per request.'
+        )
+    return wanted
+
+
+def parse_legacy_id_list(raw):
+    """Parse a ``?legacy_ids=`` value into integers, rejecting anything malformed."""
+    wanted, invalid = [], []
+    for token in str(raw).split(','):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            wanted.append(int(token))
+        except (TypeError, ValueError):
+            invalid.append(token)
+
+    if invalid:
+        raise DictionaryQueryError(
+            f'"legacy_ids" contains {len(invalid)} value(s) that are not whole numbers: '
+            + ', '.join(f'"{token}"' for token in invalid[:5])
+        )
+    if len(wanted) > MAX_SELECTED_KEYS:
+        raise DictionaryQueryError(
+            f'"legacy_ids" names {len(wanted)} entries; at most {MAX_SELECTED_KEYS} per request.'
+        )
+    return wanted
+
+
+def legacy_uuid_map(model, legacy_ids):
+    """Map each legacy primary key to the UUID the migration derived from it.
+
+    Rows carried over from the legacy database were given a UUID derived from
+    their old primary key, which is the numbering foreign systems still hold.
+    Entries created after that migration have random UUIDs and cannot be found
+    this way — they come back in ``unresolved_legacy_ids`` instead.
+    """
+    label = model._meta.label
+    return {
+        legacy_id: build_deterministic_sync_uuid(label, legacy_id)
+        for legacy_id in dict.fromkeys(legacy_ids)
+    }
+
+
+def project_fields(records, fields, always_keep=()):
+    """Narrow each record to the requested columns."""
+    if not fields:
+        return records
+
+    wanted = [name.strip() for name in str(fields).split(',') if name.strip()]
+    if not wanted:
+        return records
+
+    keep = list(dict.fromkeys(list(always_keep) + wanted))
+    return [
+        {name: record[name] for name in keep if name in record}
+        for record in records
+    ]
+
+
+def build_dictionary_page(
+    slug, search=None, since=None, limit=None, offset=0,
+    uuids=None, legacy_ids=None, fields=None,
+):
     model, search_fields = get_dictionary_model(slug)
     if model is None:
         raise LookupError(f'Unknown dictionary "{slug}".')
 
     queryset = model.objects.all()
+
+    uuid_to_legacy_id = {}
+    unresolved_legacy_ids = []
+    if legacy_ids is not None:
+        derived = legacy_uuid_map(model, legacy_ids)
+        uuid_to_legacy_id = {str(value): key for key, value in derived.items()}
+        found = set(
+            str(value) for value in
+            model.objects.filter(uuid__in=derived.values()).values_list('uuid', flat=True)
+        )
+        unresolved_legacy_ids = [
+            legacy_id for legacy_id, value in derived.items() if str(value) not in found
+        ]
+        queryset = queryset.filter(uuid__in=derived.values())
+
+    if uuids is not None:
+        queryset = queryset.filter(uuid__in=uuids)
 
     if search and search_fields:
         from django.db.models import Q
@@ -115,7 +224,19 @@ def build_dictionary_page(slug, search=None, since=None, limit=None, offset=0):
     }
     add_labels(payload)
 
-    return {
+    # Labels are resolved from the raw many-to-many primary keys, so the local
+    # ids can only be dropped once add_labels has run.
+    strip_local_ids(payload)
+
+    always_keep = ['uuid']
+    if uuid_to_legacy_id:
+        for record in records:
+            record['legacy_id'] = uuid_to_legacy_id.get(str(record.get('uuid')))
+        always_keep.append('legacy_id')
+
+    records = project_fields(records, fields, always_keep=always_keep)
+
+    result = {
         'api_version': 'v1',
         'slug': slug,
         'model': model._meta.label,
@@ -125,3 +246,8 @@ def build_dictionary_page(slug, search=None, since=None, limit=None, offset=0):
         'next_offset': offset + limit if offset + limit < total else None,
         'results': records,
     }
+
+    if legacy_ids is not None:
+        result['unresolved_legacy_ids'] = unresolved_legacy_ids
+
+    return result

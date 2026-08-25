@@ -54,10 +54,16 @@ def _looks_like_uuid(value):
 
 
 class _RelationResolver:
-    """Resolves dictionary references, caching every lookup for the batch."""
+    """Resolves dictionary references, caching every lookup for the batch.
 
-    def __init__(self):
+    ``manuscript`` is needed only by the manuscript-scoped relations — a content
+    row's music notation is one of *that manuscript's* notation blocks, not an
+    entry in a shared vocabulary.
+    """
+
+    def __init__(self, manuscript=None):
         self._cache = {}
+        self._manuscript = manuscript
 
     def resolve(self, spec, raw_value):
         """Return the related row's UUID, or raise ``LookupError``."""
@@ -75,6 +81,9 @@ class _RelationResolver:
         if instance is None and spec.key == 'edition_index':
             instance = self._resolve_edition_index(model, text)
 
+        if instance is None and spec.key == 'music_notation_id':
+            instance = self._resolve_music_notation(model, text)
+
         if instance is None:
             for lookup in spec.lookups:
                 instance = model.objects.filter(**{f'{lookup}__iexact': text}).only('uuid').first()
@@ -90,6 +99,46 @@ class _RelationResolver:
 
         self._cache[cache_key] = instance.uuid
         return instance.uuid
+
+    def _resolve_music_notation(self, model, text):
+        """Accept a notation *name* and find this manuscript's block using it.
+
+        ``Content.music_notation_uuid`` points at a ManuscriptMusicNotations row —
+        one notated stretch of one manuscript, with its own folio range — while a
+        foreign system typically records only which notation the item is written
+        in. Translating between the two is possible exactly once the manuscript's
+        notation has been described here, and never by inventing the description.
+        """
+        if self._manuscript is None:
+            return None
+
+        names = apps.get_model('indexerapp', 'MusicNotationNames')
+        name_row = None
+        if _looks_like_uuid(text):
+            name_row = names.objects.filter(uuid=uuid_module.UUID(text)).only('uuid').first()
+        if name_row is None:
+            name_row = names.objects.filter(name__iexact=text).only('uuid').first()
+        if name_row is None:
+            return None
+
+        block = (
+            model.objects
+            .filter(
+                manuscript_uuid=self._manuscript,
+                music_notation_name_uuid_id=name_row.uuid,
+            )
+            .order_by('sequence_in_ms', 'pk')
+            .only('uuid')
+            .first()
+        )
+        if block is None:
+            raise LookupError(
+                f'"{text}" is a known music notation, but "{self._manuscript.name}" has no '
+                'notation described with it. A content row can only point at one of the '
+                "manuscript's own notation records — add the notation to the manuscript "
+                'first, or omit music_notation_id.'
+            )
+        return block
 
     @staticmethod
     def _resolve_edition_index(model, text):
@@ -234,7 +283,7 @@ def import_content_bulk(manuscript, rows, mode='append', dry_run=False, strict_k
     if not rows:
         raise ImportValidationError('"items" is empty — nothing to import.')
 
-    resolver = _RelationResolver()
+    resolver = _RelationResolver(manuscript=manuscript)
     prepared, errors = _validate_rows(rows, resolver, strict_keys)
 
     if errors:

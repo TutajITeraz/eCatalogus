@@ -173,6 +173,11 @@ class DictionaryPageSerializer(serializers.Serializer):
     offset = serializers.IntegerField()
     next_offset = serializers.IntegerField(allow_null=True)
     results = serializers.ListField(child=serializers.JSONField())
+    unresolved_legacy_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text='Only present when ?legacy_ids= was given: the ids with no entry here.',
+    )
 
 
 class WhoAmISerializer(serializers.Serializer):

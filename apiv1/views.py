@@ -43,6 +43,12 @@ from .importers import ImportValidationError, create_manuscript, import_content_
 
 V1_TAG = 'Public API v1'
 
+#: Everything ``/api/v1/dictionaries/{slug}/`` understands. Anything else is a
+#: typo or a wrong assumption, and answering 200 to it hides both.
+DICTIONARY_QUERY_PARAMS = frozenset({
+    'search', 'since', 'uuids', 'legacy_ids', 'fields', 'limit', 'offset', 'format',
+})
+
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 2000
 
@@ -460,12 +466,48 @@ class DictionaryDetailView(V1View):
         parameters=[
             OpenApiParameter('search', str, description='Substring match on the vocabulary\'s name columns.'),
             OpenApiParameter('since', str, description='ISO-8601 timestamp; only entries changed since then.'),
+            OpenApiParameter(
+                'uuids', str,
+                description=(
+                    'Comma-separated UUIDs; returns only those entries. '
+                    f'At most {dictionaries_module.MAX_SELECTED_KEYS} per request.'
+                ),
+            ),
+            OpenApiParameter(
+                'legacy_ids', str,
+                description=(
+                    'Comma-separated ids from the legacy database, for systems that still '
+                    'hold that numbering. Each record gains a "legacy_id" key, and ids with '
+                    'no entry are listed in "unresolved_legacy_ids". Never the local "id" '
+                    'column, which differs per instance.'
+                ),
+            ),
+            OpenApiParameter(
+                'fields', str,
+                description='Comma-separated columns to return. "uuid" is always included.',
+            ),
             OpenApiParameter('limit', int, description=f'Max {dictionaries_module.MAX_PAGE_SIZE}.'),
             OpenApiParameter('offset', int),
         ],
-        responses={200: api_serializers.DictionaryPageSerializer, 404: api_serializers.ErrorSerializer},
+        responses={
+            200: api_serializers.DictionaryPageSerializer,
+            400: api_serializers.ErrorSerializer,
+            404: api_serializers.ErrorSerializer,
+        },
     )
     def get(self, request, slug):
+        unknown = sorted(set(request.query_params) - DICTIONARY_QUERY_PARAMS)
+        if unknown:
+            return Response(
+                {
+                    'detail': (
+                        f'Unknown query parameter(s): {", ".join(unknown)}. '
+                        f'This endpoint accepts: {", ".join(sorted(DICTIONARY_QUERY_PARAMS))}.'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         since_raw = request.query_params.get('since')
         since = parse_datetime(since_raw) if since_raw else None
         if since_raw and since is None:
@@ -474,9 +516,27 @@ class DictionaryDetailView(V1View):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        uuids_raw = request.query_params.get('uuids')
+        legacy_ids_raw = request.query_params.get('legacy_ids')
+        try:
+            uuids = dictionaries_module.parse_uuid_list(uuids_raw) if uuids_raw is not None else None
+            legacy_ids = (
+                dictionaries_module.parse_legacy_id_list(legacy_ids_raw)
+                if legacy_ids_raw is not None else None
+            )
+        except dictionaries_module.DictionaryQueryError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Naming entries explicitly is a request for all of them, not for the
+        # first page of them — a caller resolving 400 formulas wants 400 back.
+        default_page_size = (
+            dictionaries_module.MAX_PAGE_SIZE
+            if (uuids is not None or legacy_ids is not None)
+            else dictionaries_module.DEFAULT_PAGE_SIZE
+        )
         limit, offset = _paging(
             request,
-            default=dictionaries_module.DEFAULT_PAGE_SIZE,
+            default=default_page_size,
             maximum=dictionaries_module.MAX_PAGE_SIZE,
         )
 
@@ -484,6 +544,8 @@ class DictionaryDetailView(V1View):
             payload = dictionaries_module.build_dictionary_page(
                 slug, search=request.query_params.get('search'),
                 since=since, limit=limit, offset=offset,
+                uuids=uuids, legacy_ids=legacy_ids,
+                fields=request.query_params.get('fields'),
             )
         except LookupError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)

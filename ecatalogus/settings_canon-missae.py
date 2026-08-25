@@ -24,5 +24,11 @@ apply_instance_settings(
         "allowed_hosts": ['canon-missae.ispan.pl', '127.0.0.1', 'localhost'],
         "csrf_trusted_origins": ['https://canon-missae.ispan.pl', 'http://canon-missae.ispan.pl', 'https://127.0.0.1', 'http://127.0.0.1'],
         "cors_allowed_origins": ['http://localhost:3000', 'http://localhost:8000', 'https://canon-missae.ispan.pl', 'http://canon-missae.ispan.pl'],
+        # Partner sites allowed to call /api/v1/ from their users' browsers.
+        # Override per deployment with API_INTEGRATION_ORIGINS.
+        "api_integration_origins": [
+            "https://ritus-indexer.ispan.pl",
+            "http://localhost:5173",
+        ],
     },
 )

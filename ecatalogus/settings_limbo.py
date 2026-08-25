@@ -24,5 +24,11 @@ apply_instance_settings(
         "allowed_hosts": ['limbo.monumenta-poloniae-liturgica.ispan.pl', '127.0.0.1', 'localhost'],
         "csrf_trusted_origins": ['https://limbo.monumenta-poloniae-liturgica.ispan.pl', 'http://limbo.monumenta-poloniae-liturgica.ispan.pl', 'https://127.0.0.1', 'http://127.0.0.1'],
         "cors_allowed_origins": ['http://localhost:3000', 'http://localhost:8000', 'https://limbo.monumenta-poloniae-liturgica.ispan.pl', 'http://limbo.monumenta-poloniae-liturgica.ispan.pl'],
+        # Partner sites allowed to call /api/v1/ from their users' browsers.
+        # Override per deployment with API_INTEGRATION_ORIGINS.
+        "api_integration_origins": [
+            "https://ritus-indexer.ispan.pl",
+            "http://localhost:5173",
+        ],
     },
 )
