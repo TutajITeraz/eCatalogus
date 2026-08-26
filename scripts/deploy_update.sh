@@ -427,6 +427,7 @@ render_instance_settings_files() {
   local default_allowed_hosts="${DOMAIN},127.0.0.1,localhost"
   local default_csrf_origins="https://${DOMAIN},http://${DOMAIN},https://127.0.0.1,http://127.0.0.1"
   local default_cors_origins="https://${DOMAIN},http://${DOMAIN},http://localhost:3000,http://localhost:8000"
+  local default_api_integration_origins="https://ritus-indexer.ispan.pl"
 
   if [[ "$module_name" != settings_* ]]; then
     warn "No managed instance settings template for ${DJANGO_SETTINGS_MODULE}; skipping settings file rendering"
@@ -466,6 +467,9 @@ apply_instance_settings(
     'allowed_hosts': ${default_allowed_hosts@Q}.split(','),
     'csrf_trusted_origins': ${default_csrf_origins@Q}.split(','),
     'cors_allowed_origins': ${default_cors_origins@Q}.split(','),
+    # Partner sites allowed to call /api/v1/ from their users' browsers.
+    # Override per deployment with API_INTEGRATION_ORIGINS.
+    'api_integration_origins': ${default_api_integration_origins@Q}.split(','),
   },
 )
 EOF
