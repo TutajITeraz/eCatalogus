@@ -1140,6 +1140,14 @@ def _import_models_payload(category, payload, force_remote_uuids=None, keep_loca
     return summary
 
 
+#: `main`-category models whose numeric id is published over the API
+#: (see apiv1.dictionaries.EXPOSE_LOCAL_ID_SLUGS) and therefore must stay
+#: identical across instances instead of being locally autoincremented.
+#: main_guard.py already stops these models being edited anywhere but the
+#: canonical master; this is the matching piece on the receiving end.
+MODELS_WITH_STABLE_ID = {'Formulas', 'RiteNames'}
+
+
 def _import_model_records(model, category, records, force_remote_uuids=None, keep_local_uuids=None):
     model_summary = {
         'model': model._meta.label,
@@ -1196,7 +1204,10 @@ def _import_model_records(model, category, records, force_remote_uuids=None, kee
                 )
 
             if existing is None:
-                instance = model.objects.create(**_get_create_values(model, attrs))
+                create_values = _get_create_values(model, attrs)
+                if model.__name__ in MODELS_WITH_STABLE_ID and record.get('id') is not None:
+                    create_values['id'] = record['id']
+                instance = model.objects.create(**create_values)
                 for attname, target_attname in self_referential_attnames:
                     attrs[attname] = getattr(instance, target_attname)
                 if attrs:

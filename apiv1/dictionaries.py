@@ -25,6 +25,14 @@ MAX_PAGE_SIZE = 1000
 #: Most a caller may name in one ``?uuids=`` / ``?legacy_ids=`` request.
 MAX_SELECTED_KEYS = 1000
 
+#: Dictionaries that also publish the local numeric ``id`` alongside ``uuid``.
+#: Safe only for ``main``-category models whose id is kept identical across
+#: instances by etlapp.services.MODELS_WITH_STABLE_ID and whose local editing
+#: is blocked everywhere but the canonical master by etlapp/main_guard.py —
+#: every other dictionary keeps the general "id means something different on
+#: every instance" policy from strip_local_ids().
+EXPOSE_LOCAL_ID_SLUGS = {'rite-names', 'formulas'}
+
 
 #: slug -> (model name, columns searched by ?search=)
 DICTIONARIES = {
@@ -222,13 +230,24 @@ def build_dictionary_page(
         'slug': slug,
         'models': [{'model': model._meta.label, 'results': records}],
     }
+    preserved_ids = (
+        [(record, record.get('id')) for record in records]
+        if slug in EXPOSE_LOCAL_ID_SLUGS else None
+    )
+
     add_labels(payload)
 
     # Labels are resolved from the raw many-to-many primary keys, so the local
     # ids can only be dropped once add_labels has run.
     strip_local_ids(payload)
 
+    if preserved_ids is not None:
+        for record, id_value in preserved_ids:
+            record['id'] = id_value
+
     always_keep = ['uuid']
+    if slug in EXPOSE_LOCAL_ID_SLUGS:
+        always_keep.append('id')
     if uuid_to_legacy_id:
         for record in records:
             record['legacy_id'] = uuid_to_legacy_id.get(str(record.get('uuid')))

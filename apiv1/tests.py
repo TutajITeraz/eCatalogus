@@ -12,6 +12,7 @@ from indexerapp.models import (
     Content,
     ContentFunctions,
     Contributors,
+    Formulas,
     LiturgicalGenres,
     ManuscriptMusicNotations,
     Manuscripts,
@@ -890,12 +891,34 @@ class DictionarySelectorTests(TestCase):
     def test_local_id_is_not_published(self):
         # Each instance numbers its own rows, so publishing `id` next to `uuid`
         # invites a caller to key on a value that means something else elsewhere.
-        response = self.dictionary()
+        # rite-names/formulas are the deliberate exception — see the next test.
+        Sections.objects.create(name='Test Section')
+        response = self.dictionary(slug='sections')
 
+        payload = response.json()
         self.assertEqual(response.status_code, 200)
-        for record in response.json()['results']:
+        self.assertTrue(payload['results'])
+        for record in payload['results']:
             self.assertNotIn('id', record)
             self.assertIn('uuid', record)
+
+    def test_rite_names_and_formulas_publish_local_id(self):
+        # These two are `main`-category vocabularies: etlapp.main_guard blocks
+        # local edits everywhere but the canonical master, and
+        # etlapp.services.MODELS_WITH_STABLE_ID keeps their id identical across
+        # instances, so publishing it here doesn't reintroduce the drift risk.
+        formula = Formulas.objects.create(co_no='Formula co_no')
+
+        response = self.dictionary(slug='rite-names')
+        self.assertEqual(response.status_code, 200)
+        by_uuid = {record['uuid']: record for record in response.json()['results']}
+        self.assertEqual(by_uuid[str(self.rubric.uuid)]['id'], self.rubric.pk)
+        self.assertEqual(by_uuid[str(self.other.uuid)]['id'], self.other.pk)
+
+        response = self.dictionary(slug='formulas')
+        self.assertEqual(response.status_code, 200)
+        by_uuid = {record['uuid']: record for record in response.json()['results']}
+        self.assertEqual(by_uuid[str(formula.uuid)]['id'], formula.pk)
 
     def test_package_does_not_publish_local_ids_either(self):
         response = self.client.get(
@@ -944,7 +967,9 @@ class DictionarySelectorTests(TestCase):
         response = self.dictionary({'fields': 'name'})
 
         record = response.json()['results'][0]
-        self.assertEqual(sorted(record), ['name', 'uuid'])
+        # rite-names also always keeps `id` — see
+        # test_rite_names_and_formulas_publish_local_id.
+        self.assertEqual(sorted(record), ['id', 'name', 'uuid'])
 
     def test_unknown_query_parameter_is_rejected(self):
         # Answering 200 to ?ids=1 is how a caller convinces itself that a filter

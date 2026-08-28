@@ -444,6 +444,14 @@ which is how you keep a local mirror up to date cheaply.
 
 Vocabularies are read-only. They are curated inside eCatalogus.
 
+**`rite-names` and `formulas` also carry a numeric `id`** alongside `uuid`.
+Every other dictionary publishes only `uuid`, because each eCatalogus instance
+otherwise numbers its own rows independently. These two are the exception:
+they're curated exclusively on the canonical eCatalogus instance, and every
+other instance adopts that same `id` when it receives the row through ETL
+sync rather than assigning its own — so `id` is safe to key on for these two
+vocabularies specifically.
+
 ### A manuscript's content
 
 ```bash

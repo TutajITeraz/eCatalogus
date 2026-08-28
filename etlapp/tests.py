@@ -27,7 +27,7 @@ from etlapp.services import ETLImportConflictError, ETLRemoteRequestError, _seri
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Places, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Places, RiteNames, Topic, Traditions, Type, Watermarks
 
 
 @contextmanager
@@ -713,6 +713,55 @@ class ETLDeltaImportViewTests(TestCase):
         self.assertEqual(imported_type.name, 'Imported Type')
         self.assertEqual(imported_mass_hour.type_uuid_id, imported_type.uuid)
         self.assertEqual(response.json()['created'], 2)
+
+    def test_main_import_honors_incoming_id_for_stable_id_models(self):
+        # RiteNames/Formulas are the two models whose local id is published
+        # over the API (apiv1.dictionaries.EXPOSE_LOCAL_ID_SLUGS), so a
+        # non-master instance pulling one via ETL must adopt the master's id
+        # instead of autoincrementing its own — see
+        # etlapp.services.MODELS_WITH_STABLE_ID.
+        imported_rite_uuid = str(uuid4())
+        imported_type_uuid = str(uuid4())
+
+        client = APIClient()
+        response = client.post(
+            reverse('etl:etl-delta-import', kwargs={'category': 'main'}),
+            {
+                'models': [
+                    {
+                        'model': 'indexerapp.RiteNames',
+                        'results': [
+                            {
+                                'id': 999001,
+                                'uuid': imported_rite_uuid,
+                                'name': 'Imported Rite',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                    {
+                        'model': 'indexerapp.Type',
+                        'results': [
+                            {
+                                'id': 999002,
+                                'uuid': imported_type_uuid,
+                                'short_name': 'TP2',
+                                'name': 'Imported Type 2',
+                                'entry_date': timezone.now().isoformat(),
+                            }
+                        ],
+                    },
+                ],
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Token test-token',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        imported_rite = RiteNames.objects.get(uuid=imported_rite_uuid)
+        imported_type = Type.objects.get(uuid=imported_type_uuid)
+        self.assertEqual(imported_rite.pk, 999001)
+        self.assertNotEqual(imported_type.pk, 999002)
 
     def test_main_import_reorders_models_to_satisfy_m2m_dependencies(self):
         imported_type_uuid = str(uuid4())
