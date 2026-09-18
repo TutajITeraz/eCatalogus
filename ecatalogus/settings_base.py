@@ -167,6 +167,7 @@ INSTALLED_APPS = [
     'indexerapp.apps.IndexerappConfig',
     'etlapp.apps.EtlappConfig',
     'apiv1.apps.ApiV1Config',
+    'analysisapp.apps.AnalysisappConfig',
     'data_browser',
     'admin_searchable_dropdown',
     # 'jquery',

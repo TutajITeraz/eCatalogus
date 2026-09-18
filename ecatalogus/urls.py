@@ -278,6 +278,7 @@ urlpatterns = [
     path('compare_edition_graph/', views.contentCompareEditionGraph.as_view(), name='compare_edition_graph'),
     path('compare_edition_json/', views.contentCompareEditionJSON.as_view(), name='compare_edition_json'),
     path('compare_formulas_json/', views.contentCompareJSON.as_view(), name='compare_formulas_json'),
+    path('analysis/', include('analysisapp.urls')),
     path('rites_index/', views.RiteNamesIndexViewSet.as_view({'get': 'list'}), name='rites_index'),
     path('subjects_index/', views.SubjectsIndexViewSet.as_view({'get': 'list'}), name='subjects_index'),
 

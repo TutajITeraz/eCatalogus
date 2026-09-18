@@ -74,3 +74,5 @@ celery==5.3.4
 redis==5.0.1
 django-import-export==4.4.1
 tomli
+scipy==1.11.4
+scikit-learn==1.5.2

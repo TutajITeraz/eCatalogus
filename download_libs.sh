@@ -47,7 +47,7 @@ fetch() {
                   if [ ! -s "$map_target" ]; then
                         echo "[get ] $(basename \"$map_target\")  ←  $map_url" >&2
                         if curl -L --show-error --silent "$map_url" -o "$map_target"; then
-                              if head -c 200 "$map_target" | grep -qi '<!doctype\|not found\|404'; then
+                              if head -c 512 "$map_target" | grep -qiE '<!doctype html|<html|<head|<body|not found|couldn.t find the requested file|error 404'; then
                                     echo "[warn] Got error page for $(basename \"$map_target\"), removing." >&2
                                     rm -f "$map_target"
                               fi
@@ -178,6 +178,31 @@ fetch "https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js" \
 fetch "https://raw.githubusercontent.com/wasikuss/select2-multi-checkboxes/refs/heads/master/select2.multi-checkboxes.js" \
       "$JS_LIB_DIR/select2.multi-checkboxes.js"
 
+###########################
+# three.js (ES modules)
+###########################
+
+# Used by static/corpus_3d/index.html and static/formulas_visualizer/index.html
+# through an <script type="importmap">. Both the build and the addons must live
+# under js/lib/three/ so the importmap can stay fully local (no CDN).
+THREE_VERSION="0.166.1"
+
+fetch "https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.min.js" \
+      "$JS_LIB_DIR/three/three.module.min.js"
+
+# Addons imported by the pages. `three/addons/` in the importmap maps onto this
+# directory, so the path below must mirror examples/jsm/ exactly.
+fetch "https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/examples/jsm/controls/OrbitControls.js" \
+      "$JS_LIB_DIR/three/addons/controls/OrbitControls.js"
+
+##################
+# es-module-shims
+##################
+
+# Import-map fallback for browsers without native importmap support.
+fetch "https://cdn.jsdelivr.net/npm/es-module-shims@1.8.3/dist/es-module-shims.min.js" \
+      "$JS_LIB_DIR/es-module-shims.min.js"
+
 ##########
 # Zoomist
 ##########
@@ -289,8 +314,67 @@ fetch "https://cdn.jsdelivr.net/npm/lightgallery@2.9.0/fonts/lg.ttf" \
 cp -a "$JS_LIB_DIR/lightgallery/fonts"/* "$CSS_LIB_DIR/fonts/" 2>/dev/null || true
 cp -a "$JS_LIB_DIR/lightgallery/fonts"/* "$CSS_LIB_DIR/lightgallery/fonts/" 2>/dev/null || true
 
+##############
+# Google Fonts
+##############
+
+# page.html used to pull its webfonts from fonts.googleapis.com. Google serves a
+# different stylesheet per browser, so the request needs a modern User-Agent to
+# get woff2 rather than the ttf fallback; the .woff2 files it points at are then
+# downloaded and the stylesheet rewritten to reference them locally.
+FONT_DIR="$CSS_LIB_DIR/webfonts"
+FONT_UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+fetch_google_font() {
+      local url="$1"; shift
+      local target="$1"; shift
+
+      mkdir -p "$FONT_DIR"
+      if [ -s "$target" ]; then
+            echo "[skip] $target already exists" >&2
+            return 0
+      fi
+
+      echo "[get ] $(basename "$target")  ←  $url" >&2
+      if ! curl -L --show-error --silent -A "$FONT_UA" "$url" -o "$target"; then
+            echo "[warn] curl failed for $(basename "$target")" >&2
+            rm -f "$target"
+            return 0
+      fi
+      if head -c 512 "$target" | grep -qiE '<!doctype html|<html|error 404'; then
+            echo "[warn] Got error page for $(basename "$target"), removing." >&2
+            rm -f "$target"
+            return 0
+      fi
+
+      # Pull every font file the stylesheet points at, naming it after its remote
+      # path so that two families cannot collide on the same basename.
+      grep -oE 'https://fonts\.gstatic\.com/[^)]+' "$target" | sort -u | while read -r font_url; do
+            local_name="$(echo "${font_url#https://fonts.gstatic.com/}" | tr '/' '_')"
+            if [ ! -s "$FONT_DIR/$local_name" ]; then
+                  echo "[get ] webfonts/$local_name" >&2
+                  curl -L --show-error --silent -A "$FONT_UA" "$font_url" -o "$FONT_DIR/$local_name" \
+                        || rm -f "$FONT_DIR/$local_name"
+            fi
+            # The stylesheet lives in css/lib/, the fonts in css/lib/webfonts/.
+            sed -i.bak "s#$font_url#webfonts/$local_name#g" "$target" && rm -f "$target.bak"
+      done
+
+      echo "[ok  ] $(basename "$target") rewritten to local webfonts" >&2
+}
+
+# Roboto 300/400/500 (the old ?family=Roboto link in page.html)
+fetch_google_font \
+      "https://fonts.googleapis.com/css?family=Roboto:300,400,500" \
+      "$CSS_LIB_DIR/google-roboto.css"
+
+# Caudex / Fira Sans / Roboto Condensed / Young Serif (the css2 link in page.html)
+fetch_google_font \
+      "https://fonts.googleapis.com/css2?family=Caudex:ital,wght@0,400;0,700;1,400;1,700&family=Fira+Sans:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&family=Young+Serif&display=swap" \
+      "$CSS_LIB_DIR/google-fonts.css"
+
 ##############################################
-# js/cdn  (used by page_local.html and others)
+# js/cdn  (used by page.html and others)
 ##############################################
 
 echo "" >&2
@@ -336,24 +420,24 @@ fetch "https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" \
 fetch "https://use.fontawesome.com/releases/v6.3.0/js/all.js" \
       "$JS_CDN_DIR/all.js"
 
-# Select2 (copy for page_local.html)
+# Select2 (copy for the js/cdn tree)
 fetch "https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js" \
       "$JS_CDN_DIR/select2.min.js"
 
-# Bootstrap (copy for page_local.html)
+# Bootstrap (copy for the js/cdn tree)
 fetch "https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" \
       "$JS_CDN_DIR/bootstrap.bundle.min.js"
 
-# Mirador (copy for page_local.html)
+# Mirador (copy for the js/cdn tree)
 fetch "https://unpkg.com/mirador@latest/dist/mirador.min.js" \
       "$JS_CDN_DIR/mirador.min.js"
 
-# Leaflet (copy for page_local.html)
+# Leaflet (copy for the js/cdn tree)
 fetch "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" \
       "$JS_CDN_DIR/leaflet.js"
 
 ##############################################
-# css/cdn  (used by page_local.html and others)
+# css/cdn  (used by page.html and others)
 ##############################################
 
 echo "" >&2
@@ -371,7 +455,7 @@ fetch "https://cdn.datatables.net/fixedheader/4.0.1/css/fixedHeader.dataTables.m
 fetch "https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/style.min.css" \
       "$CSS_CDN_DIR/simple-datatables.style.min.css"
 
-# Select2 CSS (copy for page_local.html)
+# Select2 CSS (copy for the css/cdn tree)
 fetch "https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" \
       "$CSS_CDN_DIR/select2.min.css"
 

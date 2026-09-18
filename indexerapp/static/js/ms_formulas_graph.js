@@ -424,6 +424,34 @@ ms_formulas_graph_init = function() {
         rightId = window.getManuscriptSelectorValue(event.params.data);
         fetchDataAndDrawChart(leftId, rightId);
     });
+
+    preselectFromUrl();
+
+    // Lets other pages link straight to a specific comparison, which is how the
+    // corpus analysis heatmap hands a pair of manuscripts over to this view.
+    function preselectFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const left = params.get('left');
+        const right = params.get('right');
+        if (!window.isUuidLike(left) || !window.isUuidLike(right)) {
+            return;
+        }
+
+        applyPreselection('.manuscript_filter_left', left, params.get('leftLabel') || left);
+        applyPreselection('.manuscript_filter_right', right, params.get('rightLabel') || right);
+
+        leftId = left;
+        rightId = right;
+        fetchDataAndDrawChart(leftId, rightId);
+    }
+
+    function applyPreselection(selector, uuid, label) {
+        const element = $(selector);
+        if (!element.find("option[value='" + uuid + "']").length) {
+            element.append(new Option(label, uuid, true, true));
+        }
+        element.val(uuid).trigger('change.select2');
+    }
 };
 
 window.exportFormulasSvg = function() {

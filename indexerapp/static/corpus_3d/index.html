@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prayer map</title>
+    <!--
+      Loaded in an iframe rather than inline in the page.
+
+      page.html re-creates the <script> tags of a page fragment but does not copy
+      script.type, so a type="module" or type="importmap" tag would silently become
+      a classic script and three.js would never load. An iframe is its own document
+      and keeps both working.
+    -->
+    <script async src="/static/js/lib/es-module-shims.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/static/js/lib/three/three.module.min.js",
+          "three/addons/": "/static/js/lib/three/addons/"
+        }
+      }
+    </script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #111;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      canvas { display: block; }
+      .point-label {
+        position: absolute;
+        color: #fff;
+        padding: 2px 6px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 4px;
+        pointer-events: none;
+        white-space: nowrap;
+        font-size: 13px;
+        transform: translate(-50%, -140%);
+        z-index: 100;
+        display: none;
+      }
+      .panel {
+        position: absolute;
+        bottom: 10px;
+        background: rgba(0, 0, 0, 0.78);
+        color: #fff;
+        padding: 10px 12px;
+        border-radius: 5px;
+        width: 44%;
+        max-height: 34%;
+        overflow-y: auto;
+        font-size: 13px;
+        line-height: 1.45;
+        z-index: 100;
+        display: none;
+      }
+      .panel-hover { left: 10px; }
+      .panel-pinned { right: 10px; }
+      .panel h3 { margin: 0 0 6px; font-size: 14px; }
+      .meta { color: #cfd8dc; font-size: 12px; margin-bottom: 6px; }
+      .different-text { color: #5cffaf; }
+      .distance-info {
+        margin-top: 8px;
+        padding-top: 5px;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        color: #ffcc00;
+      }
+      .controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.72);
+        color: #fff;
+        padding: 10px 12px;
+        border-radius: 5px;
+        font-size: 13px;
+        z-index: 100;
+        max-width: 260px;
+      }
+      .controls select { width: 100%; margin-top: 4px; padding: 3px; }
+      .controls p { margin: 8px 0 0; color: #b0bec5; font-size: 11.5px; }
+      .legend {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.72);
+        color: #fff;
+        padding: 10px 12px;
+        border-radius: 5px;
+        font-size: 12px;
+        z-index: 100;
+        max-height: 60%;
+        overflow-y: auto;
+      }
+      .legend div { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+      .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+      .loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: #fff;
+        padding: 14px 20px;
+        border-radius: 8px;
+        z-index: 1000;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label for="colorBy"><strong>Colour by</strong></label>
+      <select id="colorBy">
+        <option value="agglomerative">Discovered cluster</option>
+        <option value="hdbscan">Density cluster (with outliers)</option>
+        <option value="tradition">Known tradition</option>
+        <option value="layer">Repertoire layer</option>
+        <option value="df">Number of witnesses</option>
+      </select>
+      <p>Left drag orbits · scroll zooms · shift-drag or middle drag pans.
+         Click a prayer to pin it, then hover another to compare.</p>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="point-label" id="label"></div>
+    <div class="panel panel-hover" id="hoverPanel"></div>
+    <div class="panel panel-pinned" id="pinnedPanel"></div>
+    <div class="loading" id="loading">Loading prayer map…</div>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+      const params = new URLSearchParams(window.location.search);
+      const runUuid = params.get('run');
+      const cohort = params.get('cohort') || 'all';
+      const apiRoot = (params.get('api') || window.location.origin).replace(/\/$/, '');
+
+      const PALETTE = [
+        '#e6194B', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
+        '#42d4f4', '#f032e6', '#bfef45', '#469990', '#9A6324',
+        '#ffe119', '#808000', '#aaffc3', '#fabed4', '#dcbeff'
+      ];
+      const OUTLIER_COLOR = new THREE.Color('#5c6670');
+      const HOVER_COLOR = new THREE.Color('#ffffff');
+      const PINNED_COLOR = new THREE.Color('#00e5ff');
+      const SPHERE_RADIUS = 0.16;
+
+      const labelDiv = document.getElementById('label');
+      const hoverPanel = document.getElementById('hoverPanel');
+      const pinnedPanel = document.getElementById('pinnedPanel');
+      const legendDiv = document.getElementById('legend');
+      const loadingDiv = document.getElementById('loading');
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#111111');
+      const camera = new THREE.PerspectiveCamera(
+        70, window.innerWidth / window.innerHeight, 0.1, 2000
+      );
+      camera.position.set(0, 0, 58);
+
+      // preserveDrawingBuffer keeps the frame readable after it has been composited,
+      // which is what lets the parent page snapshot this canvas for printing.
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.screenSpacePanning = true;
+      controls.keyPanSpeed = 10;
+
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(), new THREE.Vector3()
+      ]);
+      const distanceLine = new THREE.Line(
+        lineGeometry, new THREE.LineBasicMaterial({ color: 0xffcc00 })
+      );
+      distanceLine.visible = false;
+      scene.add(distanceLine);
+
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
+      let formulas = [];
+      let coordinates = [];
+      let instancedMesh = null;
+      let baseColors = [];
+      let hoveredIndex = -1;
+      let pinnedIndex = -1;
+      let legendEntries = [];
+
+      async function fetchArtifact(kind) {
+        const response = await fetch(
+          `${apiRoot}/analysis/runs/${runUuid}/${cohort}/${kind}/`,
+          { credentials: 'include' }
+        );
+        if (!response.ok) throw new Error(`${kind}: HTTP ${response.status}`);
+        return response.json();
+      }
+
+      async function load() {
+        if (!runUuid) {
+          loadingDiv.textContent = 'No run selected.';
+          return;
+        }
+        try {
+          const [embedding, formulaData] = await Promise.all([
+            fetchArtifact('formula_embedding'),
+            fetchArtifact('formulas')
+          ]);
+          coordinates = (embedding.dimensions && embedding.dimensions['3d']) || [];
+          formulas = formulaData.formulas || [];
+
+          if (!coordinates.length || coordinates.length !== formulas.length) {
+            loadingDiv.textContent = 'This run has no prayer map for the chosen cohort.';
+            return;
+          }
+
+          buildPoints();
+          applyColouring(document.getElementById('colorBy').value);
+          loadingDiv.style.display = 'none';
+        } catch (error) {
+          loadingDiv.textContent = 'Could not load the prayer map: ' + error.message;
+        }
+      }
+
+      function buildPoints() {
+        const geometry = new THREE.IcosahedronGeometry(SPHERE_RADIUS, 1);
+        const material = new THREE.MeshBasicMaterial({ vertexColors: false });
+        instancedMesh = new THREE.InstancedMesh(geometry, material, coordinates.length);
+
+        const dummy = new THREE.Object3D();
+        coordinates.forEach(function (point, index) {
+          dummy.position.set(point[0], point[1], point[2] || 0);
+          dummy.updateMatrix();
+          instancedMesh.setMatrixAt(index, dummy.matrix);
+        });
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        instancedMesh.computeBoundingSphere();
+        scene.add(instancedMesh);
+      }
+
+      /* ---------------- colouring ---------------- */
+
+      function applyColouring(mode) {
+        if (!instancedMesh) return;
+        const assignment = colourAssignment(mode);
+        baseColors = assignment.colors;
+        legendEntries = assignment.legend;
+
+        baseColors.forEach(function (color, index) {
+          instancedMesh.setColorAt(index, color);
+        });
+        instancedMesh.instanceColor.needsUpdate = true;
+
+        if (pinnedIndex >= 0) instancedMesh.setColorAt(pinnedIndex, PINNED_COLOR);
+        if (hoveredIndex >= 0) instancedMesh.setColorAt(hoveredIndex, HOVER_COLOR);
+        instancedMesh.instanceColor.needsUpdate = true;
+
+        renderLegend();
+      }
+
+      function colourAssignment(mode) {
+        const colors = [];
+        const legend = [];
+
+        if (mode === 'tradition') {
+          const names = [];
+          formulas.forEach(function (formula) {
+            (formula.traditions || []).forEach(function (name) {
+              if (names.indexOf(name) === -1) names.push(name);
+            });
+          });
+          formulas.forEach(function (formula) {
+            const first = (formula.traditions || [])[0];
+            colors.push(first
+              ? new THREE.Color(PALETTE[names.indexOf(first) % PALETTE.length])
+              : OUTLIER_COLOR.clone());
+          });
+          names.forEach(function (name, index) {
+            legend.push({ label: name, color: PALETTE[index % PALETTE.length] });
+          });
+          legend.push({ label: 'No attribution', color: '#5c6670' });
+          return { colors: colors, legend: legend };
+        }
+
+        if (mode === 'df') {
+          const maximum = formulas.reduce(function (best, f) {
+            return Math.max(best, f.df || 0);
+          }, 1);
+          formulas.forEach(function (formula) {
+            const t = (formula.df || 1) / maximum;
+            colors.push(new THREE.Color().setHSL(0.62 - 0.62 * t, 0.75, 0.35 + 0.2 * t));
+          });
+          legend.push({ label: 'In one witness', color: '#2b4bd8' });
+          legend.push({ label: 'In every witness', color: '#d8b52b' });
+          return { colors: colors, legend: legend };
+        }
+
+        const key = mode === 'layer' ? 'layer' : mode;
+        const seen = [];
+        formulas.forEach(function (formula) {
+          const value = formula[key];
+          if (value === undefined || value === null || value < 0) {
+            colors.push(OUTLIER_COLOR.clone());
+            return;
+          }
+          if (seen.indexOf(value) === -1) seen.push(value);
+          colors.push(new THREE.Color(PALETTE[value % PALETTE.length]));
+        });
+
+        seen.sort(function (a, b) { return a - b; });
+        seen.slice(0, 24).forEach(function (value) {
+          legend.push({
+            label: (mode === 'layer' ? 'Layer ' : 'Cluster ') + (value + 1),
+            color: PALETTE[value % PALETTE.length]
+          });
+        });
+        if (colors.some(function (c) { return c.equals(OUTLIER_COLOR); })) {
+          legend.push({ label: 'Unassigned', color: '#5c6670' });
+        }
+        return { colors: colors, legend: legend };
+      }
+
+      function renderLegend() {
+        legendDiv.innerHTML = legendEntries.map(function (entry) {
+          return '<div><span class="swatch" style="background:' + entry.color +
+            '"></span><span>' + escapeHtml(entry.label) + '</span></div>';
+        }).join('');
+      }
+
+      /* ---------------- interaction ---------------- */
+
+      function escapeHtml(value) {
+        return String(value === null || value === undefined ? '' : value)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      function positionOf(index) {
+        const matrix = new THREE.Matrix4();
+        instancedMesh.getMatrixAt(index, matrix);
+        return new THREE.Vector3().setFromMatrixPosition(matrix);
+      }
+
+      /** Word-by-word diff, carried over from the original prayer visualizer. */
+      function markDifferences(first, second) {
+        const a = (first || '').split(/\s+/);
+        const b = (second || '').split(/\s+/);
+        let left = '';
+        let right = '';
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+          const wordA = i < a.length ? a[i] : '';
+          const wordB = i < b.length ? b[i] : '';
+          if (wordA !== wordB) {
+            if (wordA) left += '<span class="different-text">' + escapeHtml(wordA) + '</span> ';
+            if (wordB) right += '<span class="different-text">' + escapeHtml(wordB) + '</span> ';
+          } else {
+            left += escapeHtml(wordA) + ' ';
+            right += escapeHtml(wordB) + ' ';
+          }
+        }
+        return { left: left.trim(), right: right.trim() };
+      }
+
+      function describe(formula) {
+        const bits = [];
+        bits.push(formula.df + (formula.df === 1 ? ' witness' : ' witnesses'));
+        bits.push(formula.count + ' occurrences');
+        bits.push('position ' + formula.position.toFixed(2) + ' ±' + formula.spread.toFixed(2));
+        if (formula.traditions && formula.traditions.length) {
+          bits.push(formula.traditions.join(', '));
+        }
+        return bits.join(' · ');
+      }
+
+      function panelHtml(formula, text) {
+        return '<h3>' + escapeHtml(formula.co_no || '(no CO number)') + '</h3>' +
+          '<div class="meta">' + escapeHtml(describe(formula)) + '</div>' +
+          '<div>' + (text === undefined ? escapeHtml(formula.incipit) : text) + '</div>';
+      }
+
+      function updatePanels() {
+        if (pinnedIndex >= 0) {
+          const pinned = formulas[pinnedIndex];
+          if (hoveredIndex >= 0 && hoveredIndex !== pinnedIndex) {
+            const hovered = formulas[hoveredIndex];
+            const diff = markDifferences(hovered.incipit, pinned.incipit);
+            const distance = positionOf(pinnedIndex).distanceTo(positionOf(hoveredIndex));
+            hoverPanel.innerHTML = panelHtml(hovered, diff.left) +
+              '<div class="distance-info">Distance on the map: ' + distance.toFixed(2) + '</div>';
+            pinnedPanel.innerHTML = panelHtml(pinned, diff.right);
+          } else {
+            pinnedPanel.innerHTML = panelHtml(pinned);
+          }
+          pinnedPanel.style.display = 'block';
+        } else {
+          pinnedPanel.style.display = 'none';
+          if (hoveredIndex >= 0) {
+            hoverPanel.innerHTML = panelHtml(formulas[hoveredIndex]);
+          }
+        }
+        hoverPanel.style.display = hoveredIndex >= 0 ? 'block' : 'none';
+      }
+
+      function updateDistanceLine() {
+        if (pinnedIndex >= 0 && hoveredIndex >= 0 && pinnedIndex !== hoveredIndex) {
+          lineGeometry.setFromPoints([positionOf(pinnedIndex), positionOf(hoveredIndex)]);
+          distanceLine.visible = true;
+        } else {
+          distanceLine.visible = false;
+        }
+      }
+
+      function restoreColor(index) {
+        if (index < 0 || !baseColors[index]) return;
+        instancedMesh.setColorAt(index, index === pinnedIndex ? PINNED_COLOR : baseColors[index]);
+      }
+
+      function pick(event) {
+        pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const hits = instancedMesh ? raycaster.intersectObject(instancedMesh) : [];
+        return hits.length ? hits[0].instanceId : -1;
+      }
+
+      renderer.domElement.addEventListener('pointermove', function (event) {
+        if (!instancedMesh) return;
+        const index = pick(event);
+        if (index === hoveredIndex) return;
+
+        restoreColor(hoveredIndex);
+        hoveredIndex = index;
+        if (index >= 0 && index !== pinnedIndex) {
+          instancedMesh.setColorAt(index, HOVER_COLOR);
+        }
+        instancedMesh.instanceColor.needsUpdate = true;
+
+        if (index >= 0) {
+          const screen = positionOf(index).clone().project(camera);
+          labelDiv.textContent = formulas[index].co_no || formulas[index].incipit.slice(0, 40);
+          labelDiv.style.left = ((screen.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+          labelDiv.style.top = ((-screen.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+          labelDiv.style.display = 'block';
+        } else {
+          labelDiv.style.display = 'none';
+        }
+        updatePanels();
+        updateDistanceLine();
+      });
+
+      renderer.domElement.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0 || !instancedMesh) return;
+        const index = pick(event);
+        if (index < 0) return;
+
+        const previous = pinnedIndex;
+        pinnedIndex = index === pinnedIndex ? -1 : index;
+        if (previous >= 0 && baseColors[previous]) {
+          instancedMesh.setColorAt(previous, baseColors[previous]);
+        }
+        if (pinnedIndex >= 0) instancedMesh.setColorAt(pinnedIndex, PINNED_COLOR);
+        instancedMesh.instanceColor.needsUpdate = true;
+        updatePanels();
+        updateDistanceLine();
+      });
+
+      document.getElementById('colorBy').addEventListener('change', function (event) {
+        applyColouring(event.target.value);
+      });
+
+      window.addEventListener('resize', function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      (function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      })();
+
+      load();
+    </script>
+  </body>
+</html>

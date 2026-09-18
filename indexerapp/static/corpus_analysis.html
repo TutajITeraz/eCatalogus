@@ -1,0 +1,247 @@
+<script src="/static/js/cdn/d3.v7.min.js"></script>
+<script src="/static/js/corpus_analysis_viz.js"></script>
+<script src="/static/js/corpus_analysis.js"></script>
+
+<div id="corpusAnalysisRoot" x-init="corpus_analysis_init()" class="px-2">
+  <h1 class="printIt text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left mt-4 mb-1">
+    Corpus analysis
+  </h1>
+  <p class="text-gray-600 mb-4 max-w-4xl">
+    Every indexed manuscript compared with every other, by the prayers it carries, the order they
+    stand in and the rubrics they fall under. Prayers are clustered first — traditions are a
+    property of prayers, not of books — and manuscript families follow from that. Everything is
+    computed by a background run; this page only displays what a run has already written.
+  </p>
+
+  <!-- Controls: not part of the printed document. -->
+  <div class="corpus-print-skip flex my-2 flex-wrap items-center gap-3">
+    <label for="corpusRunSelect" class="font-semibold">Run:</label>
+    <select id="corpusRunSelect" class="border border-[#e3d5ca] rounded px-2 py-1 min-w-[260px]"></select>
+
+    <label for="corpusCohortSelect" class="font-semibold ml-2">Comparison group:</label>
+    <select id="corpusCohortSelect" class="border border-[#e3d5ca] rounded px-2 py-1 min-w-[220px]"></select>
+
+    <span id="corpusMetricWrapper" class="items-center gap-2" style="display:none">
+      <label for="corpusMetricSelect" class="font-semibold ml-2">Metric:</label>
+      <select id="corpusMetricSelect" class="border border-[#e3d5ca] rounded px-2 py-1"></select>
+    </span>
+
+    <span id="corpusColorWrapper" class="items-center gap-2" style="display:none">
+      <label for="corpusColorSelect" class="font-semibold ml-2">Colour by:</label>
+      <select id="corpusColorSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="tradition">Dominant tradition</option>
+        <option value="cluster">Discovered group</option>
+        <option value="layer">Dominant liturgical cluster</option>
+        <option value="century">Date</option>
+      </select>
+    </span>
+
+    <span class="ml-auto flex items-center gap-2">
+      <label for="corpusMinItems" class="text-sm text-gray-600">Min. items</label>
+      <input id="corpusMinItems" type="number" value="20" min="1" step="1"
+        class="border border-[#e3d5ca] rounded px-2 py-1 w-20" />
+      <button id="corpusStartButton" style="display:none"
+        class="py-1 px-4 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded
+        drop-shadow text-sm">
+        Run analysis
+      </button>
+      <button onclick="printCorpusAnalysis('Corpus analysis')"
+        class="py-1 px-4 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded
+        drop-shadow text-sm">
+        Print
+      </button>
+    </span>
+  </div>
+
+  <div id="corpusStatus" class="corpus-print-skip text-sm text-gray-600 mb-1"></div>
+
+  <div id="corpusProgressWrapper" class="corpus-print-skip mb-3" style="display:none">
+    <div class="w-full bg-[#efe6de] rounded h-3 overflow-hidden">
+      <div id="corpusProgressBar" class="bg-[#795a42] h-3" style="width:0%"></div>
+    </div>
+    <div id="corpusProgressLabel" class="text-xs text-gray-600 mt-1"></div>
+  </div>
+
+  <div class="corpus-print-skip flex flex-wrap gap-2 my-3">
+    <button id="corpusTabButton-report" class="py-1 px-4 rounded font-semibold text-sm drop-shadow">Report</button>
+    <button id="corpusTabButton-prayers3d" class="py-1 px-4 rounded font-semibold text-sm drop-shadow">Prayer map (3D)</button>
+    <button id="corpusTabButton-heatmap" class="py-1 px-4 rounded font-semibold text-sm drop-shadow">Similarity heatmap</button>
+    <button id="corpusTabButton-map" class="py-1 px-4 rounded font-semibold text-sm drop-shadow">Manuscript map</button>
+    <button id="corpusTabButton-seriation" class="py-1 px-4 rounded font-semibold text-sm drop-shadow">Seriation</button>
+    <button id="corpusTabButton-layers" class="py-1 px-4 rounded font-semibold text-sm drop-shadow">Liturgical clusters</button>
+  </div>
+
+  <div id="corpusTab-report" class="mb-8">
+    <div class="corpus-tab-intro max-w-4xl mb-4">
+      <p class="text-gray-700 mb-2">
+        This tab is the whole run written out as prose, for one comparison group at a time. It says
+        how many manuscripts and how many prayers went in; which liturgical clusters were
+        found and what each is made of; which prayers form the shared core of the group and
+        which ones set individual books apart; what the order of the texts, and the runs of
+        text shared between books, suggest about their descent; how the manuscripts fall
+        into groups; and which witnesses refuse to join any group. The closing section,
+        <em>Method and caveats</em>, states plainly what these figures will and will not
+        bear &mdash; it is worth reading before quoting any number from this page.
+      </p>
+      <p class="text-sm text-gray-600">
+        <span class="font-semibold">How it is computed:</span>
+        Every indexed item that is linked to a standardized formula is loaded; manuscripts
+        with fewer such items than the threshold above are set aside as too thin to compare.
+        The corpus is then split into comparison groups &mdash; all manuscripts together, plus one
+        group per liturgical genre. Within each group the prayers are clustered first and
+        the manuscripts compared afterwards, shared runs of text and rubric behaviour are
+        collected on top of that, and the resulting figures are turned into the sections and
+        tables shown here. Nothing is calculated while you read: the page only displays what
+        a completed background run has already written.
+      </p>
+    </div>
+    <div id="corpusReport" class="max-w-6xl"></div>
+  </div>
+
+  <div id="corpusTab-prayers3d" style="display:none" class="mb-8">
+    <div class="corpus-tab-intro max-w-4xl mb-4">
+      <p class="text-gray-700 mb-2">
+        Each point is a single prayer. Points lying close together are prayers that behave
+        alike across the corpus: they are carried by the same manuscripts, stand at a
+        similar place in the book, and keep similar neighbours. A dense group of points is
+        therefore a candidate tradition or liturgical cluster &mdash; in this analysis a
+        tradition is a property of prayers, not of books, and manuscript families are
+        derived from it afterwards. Click a point to pin it, then hover another to compare
+        the two texts. The axes carry no units: read which points cluster with which, not
+        how far apart they are.
+      </p>
+      <p class="text-sm text-gray-600">
+        <span class="font-semibold">How it is computed:</span>
+        Each prayer is described by four things &mdash; which manuscripts carry it and how
+        often, its average position in the book and how much that position varies, a bag of
+        the formulas standing within three occurrences on either side of it, and its rubric
+        where one is recorded. Those blocks are weighted (co-occurrence counts most) and
+        joined into a single descriptor, with the neighbour bag first compressed to 64
+        dimensions. The descriptors are clustered three ways, because they answer different
+        questions: HDBSCAN for hard groups that may also declare a prayer an outlier,
+        non-negative matrix factorization for the soft clusters a book can mix, and agglomerative
+        clustering for a hierarchy. The same descriptors are then projected into the three
+        dimensions you see here with t-SNE, and every clustering is scored against the
+        traditions already recorded in the database.
+      </p>
+    </div>
+    <iframe id="corpusPrayerFrame" class="w-full border border-[#e3d5ca] rounded"
+      style="height:74vh; min-height:480px" title="Prayer map"></iframe>
+  </div>
+
+  <div id="corpusTab-heatmap" style="display:none" class="mb-8">
+    <div class="corpus-tab-intro max-w-4xl mb-4">
+      <p class="text-gray-700 mb-2">
+        Every manuscript of the comparison group set against every other. One cell is one pair, and
+        the darker it is the more the two books have in common by the metric chosen above.
+        The rows and columns are not in catalogue order: they are ordered by the clustering,
+        so groups of related manuscripts appear as dark squares along the diagonal, while a
+        book that belongs with none of the others shows up as a pale row crossing the whole
+        grid. Click a cell to see what that particular pair actually shares.
+      </p>
+      <p class="text-sm text-gray-600">
+        <span class="font-semibold">How it is computed:</span>
+        Each manuscript is reduced to the sequence of its standardized formulas, repetitions
+        kept, since a prayer said three times in one book is three occurrences. Every pair
+        is then compared on content &mdash; Jaccard and weighted Jaccard, containment (is
+        one book largely inside the other?), and a cosine similarity in which rarer prayers
+        weigh more than common ones &mdash; and on order &mdash; longest common subsequence,
+        Kendall's tau-b, breakpoint rate, and the proportion of shared adjacent pairs. The
+        matrix for the metric you select is turned into distances and clustered
+        hierarchically, and that clustering fixes the order of the rows and columns. The
+        rarity-weighted cosine is the default, because two books sharing an uncommon prayer
+        is far stronger evidence than two books sharing a universal one.
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-4">
+      <div id="corpusHeatmap" class="overflow-x-auto flex-1" style="min-height:560px"></div>
+      <div id="corpusPairDetail" class="w-full lg:w-80"></div>
+    </div>
+  </div>
+
+  <div id="corpusTab-map" style="display:none" class="mb-8">
+    <div class="corpus-tab-intro max-w-4xl mb-4">
+      <p class="text-gray-700 mb-2">
+        The same pairwise comparison, drawn as a map rather than a grid. Each point is one
+        manuscript, and the distance between two points approximates how unlike their
+        contents are: neighbours share repertoire, distant points do not. The colouring can
+        be switched between the dominant tradition recorded for the book, the group the
+        analysis itself discovered, the dominant liturgical cluster, and the date &mdash;
+        which is the quickest way to ask whether the groups emerging from the data agree
+        with what is already known about these manuscripts, or cut across it.
+      </p>
+      <p class="text-sm text-gray-600">
+        <span class="font-semibold">How it is computed:</span>
+        The similarity matrix for the chosen metric is converted into distances, and
+        classical multidimensional scaling (principal coordinates analysis) finds the
+        two-dimensional arrangement that preserves those distances as faithfully as two
+        dimensions allow. Each point is then coloured by the attribute selected. Because the
+        flattening is lossy, treat neighbourhoods as meaningful and exact coordinates as
+        not; the dendrogram and the NeighborNet/SplitsTree files written by the same run are
+        the stricter view of the same distances.
+      </p>
+    </div>
+    <div id="corpusMap" style="height:64vh; min-height:420px"></div>
+  </div>
+
+  <div id="corpusTab-seriation" style="display:none" class="mb-8">
+    <div class="corpus-tab-intro max-w-4xl mb-4">
+      <p class="text-gray-700 mb-2">
+        The raw evidence underneath everything else on this page. Every row is one prayer,
+        every column one manuscript, and a mark means that manuscript carries that prayer.
+        Neither rows nor columns stand in their original order: both have been rearranged so
+        that prayers shared by the same witnesses end up next to one another. What then
+        appears are solid blocks &mdash; repertoire that a group of books holds in common
+        &mdash; against ragged edges of material peculiar to a single witness. It is the
+        seriation diagram long used for dating archaeological assemblages, applied to
+        liturgical books, and it shows the evidence itself rather than a summary of it.
+      </p>
+      <p class="text-sm text-gray-600">
+        <span class="font-semibold">How it is computed:</span>
+        A presence/absence table of prayers against manuscripts is built from the indexed
+        content. The columns are put in the order of the hierarchical clustering of the
+        manuscripts, so related books stand side by side. The rows are then sorted by the
+        pattern of witnesses that carry them &mdash; first by the earliest witness, then by
+        the full pattern, then by the prayer's average position in the book &mdash; so that
+        identical patterns become adjacent and block structure emerges without any further
+        processing. The grid is drawn to a canvas because a full corpus reaches millions of
+        cells. Nothing is smoothed or inferred: every mark is one indexed occurrence.
+      </p>
+    </div>
+    <div id="corpusSeriation" style="height:70vh; min-height:480px"></div>
+  </div>
+
+  <div id="corpusTab-layers" style="display:none" class="mb-8">
+    <div class="corpus-tab-intro max-w-4xl mb-4">
+      <p class="text-gray-700 mb-2">
+        A manuscript is rarely one pure tradition. Each bar breaks one book down into the
+        liturgical clusters the analysis discovered, showing how much of its content is
+        drawn from each. This is the measurable form of a statement such as &ldquo;Gregorian
+        with a Gelasian supplement&rdquo;: the clusters are allowed to mix, which is how the
+        sources actually behave, whereas assigning each book to a single family is not. The
+        table below names each cluster by the prayers that weigh most heavily in it &mdash;
+        the analysis finds the clusters but cannot name them, so deciding what a cluster is
+        remains the historian's judgement. Note that a cluster is a set of prayers that
+        travel together, with no regard to the order they stand in: it says what a book
+        draws on, not how it is arranged. Order is treated separately, under Seriation and
+        in the shared runs of text reported on the Report tab.
+      </p>
+      <p class="text-sm text-gray-600">
+        <span class="font-semibold">How it is computed:</span>
+        A table of prayer counts per manuscript is built, each prayer weighted by its
+        rarity, so that widespread texts do not drown out the distinctive ones. Only
+        presence and frequency enter that table &mdash; never position or sequence.
+        Non-negative matrix factorization splits it in two: how much of each cluster every
+        manuscript draws on, and which prayers define every cluster. The number of clusters
+        is not chosen in advance &mdash; factorizations from two upwards (to at most twelve,
+        and never more than the number of manuscripts allows) are compared, and the one at
+        the elbow is kept, that is the point past which extra clusters stop explaining much
+        more. Each manuscript's weights are finally normalised into shares that add up to
+        the whole book, and the clusters are scored against the traditions already recorded
+        in the database.
+      </p>
+    </div>
+    <div id="corpusLayers" class="mb-6" style="min-height:280px"></div>
+    <div id="corpusLayerTable" class="max-w-6xl"></div>
+  </div>
+</div>
