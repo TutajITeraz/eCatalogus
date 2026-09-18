@@ -503,8 +503,10 @@ window.CorpusAnalysisViz = (function () {
     const html = layers.layers.map(function (layer) {
       const rows = layer.top_formulas.slice(0, 12).map(function (f) {
         return '<tr>' +
-          '<td class="pr-3 whitespace-nowrap">' + escapeHtml(f.co_no || '—') + '</td>' +
-          '<td class="pr-3">' + escapeHtml(f.incipit) + '</td>' +
+          '<td class="pr-3 whitespace-nowrap">' +
+          prayerMarkup(f.co_no || '—', f.uuid) + '</td>' +
+          '<td class="pr-3">' +
+          prayerMarkup(f.incipit, f.uuid, { quiet: true }) + '</td>' +
           '<td class="pr-3 whitespace-nowrap">' + escapeHtml((f.traditions || []).join(', ') || '—') + '</td>' +
           '<td class="text-right">' + f.distinctiveness.toFixed(2) + '</td>' +
           '</tr>';
@@ -532,6 +534,70 @@ window.CorpusAnalysisViz = (function () {
       .replace(/"/g, '&quot;');
   }
 
+  /* ------------------------------------------------------------------ *
+   * Prayer references inside report tables
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Columns whose cells name prayers in artifacts written before the report
+   * carried formula uuids. Those cells are plain strings, so the CO number is
+   * all there is to go on — which is ambiguous, but still far better than a
+   * bare number that means nothing. Runs written since carry the uuid and never
+   * reach this path.
+   */
+  const LEGACY_PRAYER_COLUMNS = {
+    'CO no.': null,
+    'Prayers': ' → ',
+    'Characteristic formulas': '; ',
+  };
+
+  /** What a CO number looks like: a number, optionally with a letter suffix. */
+  const CO_NUMBER = /^[0-9]{1,6}(\s?[a-zA-Z]{1,4})?$/;
+
+  /**
+   * @param {{co?: boolean, quiet?: boolean}} [options] see PrayerHover.markup.
+   */
+  function prayerMarkup(text, reference, options) {
+    if (window.PrayerHover) return window.PrayerHover.markup(text, reference, options);
+    return escapeHtml(text);
+  }
+
+  function legacyPrayerCell(value, separator) {
+    if (separator === null) {
+      return CO_NUMBER.test(value.trim())
+        ? prayerMarkup(value, value.trim(), { co: true }) : escapeHtml(value);
+    }
+    return value.split(separator).map(function (part) {
+      const token = part.trim();
+      return CO_NUMBER.test(token)
+        ? prayerMarkup(part, token, { co: true }) : escapeHtml(part);
+    }).join(escapeHtml(separator));
+  }
+
+  /**
+   * One table cell.
+   *
+   * A cell is normally a string or a number. It may also be a prayer reference
+   * — `{t: displayed text, f: formula uuid}` — or a list mixing references with
+   * the plain separators that stand between them, which is how a cell naming
+   * several prayers keeps each one hoverable on its own.
+   */
+  function renderCell(cell, column) {
+    if (Array.isArray(cell)) {
+      return cell.map(function (token) { return renderCell(token, column); }).join('');
+    }
+    if (cell && typeof cell === 'object') {
+      // A bare CO number has to advertise that it can be hovered; a whole incipit
+      // would only be underlined from margin to margin for nothing.
+      return prayerMarkup(cell.t, cell.f, { quiet: !CO_NUMBER.test(String(cell.t).trim()) });
+    }
+    if (typeof cell === 'string' && Object.prototype.hasOwnProperty.call(
+      LEGACY_PRAYER_COLUMNS, column)) {
+      return legacyPrayerCell(cell, LEGACY_PRAYER_COLUMNS[column]);
+    }
+    return escapeHtml(cell);
+  }
+
   function renderReport(selector, report) {
     const node = clear(selector);
     if (!report || !report.sections) {
@@ -557,8 +623,9 @@ window.CorpusAnalysisViz = (function () {
             return '<th class="pr-3 pb-1 text-left">' + escapeHtml(c) + '</th>';
           }).join('');
           const body = table.rows.map(function (row) {
-            return '<tr class="border-t border-[#efe6de]">' + row.map(function (cell) {
-              return '<td class="pr-3 py-1 align-top">' + escapeHtml(cell) + '</td>';
+            return '<tr class="border-t border-[#efe6de]">' + row.map(function (cell, index) {
+              return '<td class="pr-3 py-1 align-top">' +
+                renderCell(cell, table.columns[index]) + '</td>';
             }).join('') + '</tr>';
           }).join('');
           const note = table.note
@@ -616,6 +683,7 @@ window.CorpusAnalysisViz = (function () {
     renderLayers: renderLayers,
     renderLayerTable: renderLayerTable,
     renderReport: renderReport,
+    renderCell: renderCell,
     renderPairDetail: renderPairDetail,
     hideTooltip: hideTooltip
   };

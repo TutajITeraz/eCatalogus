@@ -1,4 +1,5 @@
 <script src="/static/js/cdn/d3.v7.min.js"></script>
+<script src="/static/js/prayer_hover.js"></script>
 <script src="/static/js/corpus_analysis_viz.js"></script>
 <script src="/static/js/corpus_analysis.js"></script>
 
@@ -11,6 +12,8 @@
     stand in and the rubrics they fall under. Prayers are clustered first — traditions are a
     property of prayers, not of books — and manuscript families follow from that. Everything is
     computed by a background run; this page only displays what a run has already written.
+    Wherever a prayer is named by its CO number or its opening words, hover over it &mdash;
+    or tap it, or tab to it &mdash; to read the whole text and what tradition it belongs to.
   </p>
 
   <!-- Controls: not part of the printed document. -->
@@ -40,6 +43,11 @@
       <label for="corpusMinItems" class="text-sm text-gray-600">Min. items</label>
       <input id="corpusMinItems" type="number" value="20" min="1" step="1"
         class="border border-[#e3d5ca] rounded px-2 py-1 w-20" />
+      <button id="corpusSelectionToggle" style="display:none"
+        class="py-1 px-3 bg-[#efe6de] hover:bg-[#e3d5ca] text-[#0d1b2a] font-semibold rounded
+        drop-shadow text-sm">
+        Manuscripts: all
+      </button>
       <button id="corpusStartButton" style="display:none"
         class="py-1 px-4 bg-[#795a42] hover:bg-[#997a62] text-white font-semibold rounded
         drop-shadow text-sm">
@@ -51,6 +59,37 @@
         Print
       </button>
     </span>
+  </div>
+
+  <!-- Which manuscripts go into the next run. Revealed with the Run button,
+       since choosing a corpus is only of use to an account that can start one. -->
+  <div id="corpusSelectionPanel" style="display:none"
+    class="corpus-print-skip border border-[#e3d5ca] rounded bg-[#fffdfb] p-3 mb-3">
+    <p class="text-sm text-gray-600 mb-2">
+      By default every indexed manuscript is compared. Tick a subset here to run the analysis
+      over that alone &mdash; document frequency, rarity weighting and the clusters are all
+      computed relative to what you select, so a narrower corpus is a different analysis, not
+      a filtered view of this one.
+    </p>
+
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <input id="corpusMsSearch" type="search" placeholder="Filter by name or shelf mark…"
+        class="border border-[#e3d5ca] rounded px-2 py-1 flex-1 min-w-[220px]" />
+      <button id="corpusMsAll"
+        class="py-1 px-3 bg-[#efe6de] hover:bg-[#e3d5ca] rounded text-sm font-semibold">
+        Select all</button>
+      <button id="corpusMsNone"
+        class="py-1 px-3 bg-[#efe6de] hover:bg-[#e3d5ca] rounded text-sm font-semibold">
+        Select none</button>
+      <button id="corpusMsInvert"
+        class="py-1 px-3 bg-[#efe6de] hover:bg-[#e3d5ca] rounded text-sm font-semibold">
+        Invert</button>
+    </div>
+
+    <div id="corpusMsGenres" class="flex flex-wrap gap-2 mb-2"></div>
+    <div id="corpusMsList"
+      class="max-h-[340px] overflow-y-auto border-t border-[#efe6de] pt-2"></div>
+    <div id="corpusMsSummary" class="text-sm text-gray-600 mt-2"></div>
   </div>
 
   <div id="corpusStatus" class="corpus-print-skip text-sm text-gray-600 mb-1"></div>

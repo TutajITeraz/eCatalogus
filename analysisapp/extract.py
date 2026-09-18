@@ -448,3 +448,79 @@ def build_cohorts(corpus: Corpus, min_manuscripts: int = 2):
         cohorts.append((f'genre-{genre_uuid}', label, indices))
 
     return cohorts
+
+
+def summarize_manuscripts() -> dict:
+    """Every manuscript that could take part in a run, with the genres it falls under.
+
+    This is what the manuscript picker is drawn from, so it must agree with what a
+    run would actually do: the same eligibility rule (content rows carrying a
+    standardized formula), and the same genre resolution as `_resolve_genres`, so
+    that ticking a genre selects exactly the manuscripts that genre's cohort would
+    contain.
+
+    Counting is done in the database rather than by loading the corpus — the
+    picker needs five numbers per manuscript, not every occurrence in the
+    catalogue. `min_items` is deliberately not applied here: the caller is choosing
+    a threshold at the same time as a selection, so it needs to see the manuscripts
+    that threshold would exclude, not have them silently withheld.
+    """
+    from django.db.models import Count
+
+    rows = list(
+        Content.objects
+        .filter(manuscript_uuid__isnull=False, formula_uuid__isnull=False)
+        .values('manuscript_uuid')
+        .annotate(
+            n_items=Count('id'),
+            n_distinct=Count('formula_uuid', distinct=True),
+        )
+    )
+    counts = {str(row['manuscript_uuid']): row for row in rows}
+    if not counts:
+        return {'manuscripts': [], 'genres': []}
+
+    observed = defaultdict(lambda: defaultdict(int))
+    for row in (
+        Content.objects
+        .filter(manuscript_uuid__in=list(counts.keys()),
+                formula_uuid__isnull=False,
+                liturgical_genre_uuid__isnull=False)
+        .values('manuscript_uuid', 'liturgical_genre_uuid')
+        .annotate(n=Count('id'))
+    ):
+        observed[str(row['manuscript_uuid'])][str(row['liturgical_genre_uuid'])] = row['n']
+
+    meta, declared_genres = _load_manuscript_meta(counts.keys())
+
+    manuscripts = []
+    genre_usage = defaultdict(int)
+    for ms_uuid in sorted(counts.keys()):
+        ms_meta = meta.get(ms_uuid)
+        if ms_meta is None:
+            # Content pointing at a manuscript that no longer exists.
+            continue
+        genres = _resolve_genres(ms_uuid, declared_genres, observed)
+        for genre_uuid in genres:
+            genre_usage[genre_uuid] += 1
+        manuscripts.append({
+            'uuid': ms_uuid,
+            'label': ms_meta['label'],
+            'shelf_mark': ms_meta['shelf_mark'] or '',
+            'n_items': counts[ms_uuid]['n_items'],
+            'n_distinct': counts[ms_uuid]['n_distinct'],
+            'year_from': ms_meta['year_from'],
+            'year_to': ms_meta['year_to'],
+            'genres': genres,
+        })
+
+    manuscripts.sort(key=lambda m: m['label'].lower())
+
+    titles = _load_genre_titles(genre_usage.keys())
+    genres = [
+        {'uuid': uuid, 'title': titles.get(uuid, uuid), 'manuscripts': count}
+        for uuid, count in genre_usage.items()
+    ]
+    genres.sort(key=lambda g: g['title'].lower())
+
+    return {'manuscripts': manuscripts, 'genres': genres}

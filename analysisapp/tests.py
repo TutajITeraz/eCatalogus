@@ -565,3 +565,212 @@ class PipelineTests(TestCase):
         run.refresh_from_db()
         self.assertEqual(run.status, AnalysisRun.STATUS_FAILED)
         self.assertIn('min_items', run.error)
+
+    def test_report_carries_formula_uuids_for_every_prayer_it_names(self):
+        """A CO number alone cannot identify a prayer, so the cell must carry more.
+
+        The same CO number is recorded against genuinely different texts in this
+        database, which is why the page resolves hover cards by uuid and the
+        report has to hand it one.
+        """
+        import json
+
+        from analysisapp.models import AnalysisRun
+        from analysisapp.pipeline import execute_run
+
+        run = AnalysisRun.objects.create(params={'min_items': 5, 'min_block_support': 3})
+        execute_run(run)
+
+        artifact = run.artifacts.get(cohort='all', kind='report')
+        with open(artifact.absolute_path, encoding='utf-8') as handle:
+            report = json.load(handle)
+
+        sections = {section['id']: section for section in report['sections']}
+        core = next(t for t in sections['core']['tables']
+                    if t['title'] == 'Most widely attested formulas')
+        self.assertEqual(core['columns'][0], 'CO no.')
+        cell = core['rows'][0][0]
+        self.assertIsInstance(cell, dict)
+        self.assertTrue(cell['t'].startswith('CO'))
+        self.assertTrue(cell['f'])
+
+        # A cell naming several prayers keeps each one separately addressable.
+        blocks = next(t for t in sections['order']['tables'] if t['title'] == 'Shared blocks')
+        prayers = blocks['rows'][0][blocks['columns'].index('Prayers')]
+        self.assertIsInstance(prayers, list)
+        references = [token for token in prayers if isinstance(token, dict)]
+        self.assertEqual(len(references), len(prayers) - prayers.count(' → '))
+        self.assertTrue(all(token['f'] for token in references))
+
+
+class FormulaLookupTests(TestCase):
+    """The endpoint behind the hover cards."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from indexerapp.models import Content, Formulas, Manuscripts, Traditions
+
+        tradition = Traditions.objects.create(
+            uuid='40000000-0000-4000-8000-000000000001', name='Gelasian')
+
+        cls.first = Formulas.objects.create(
+            uuid='50000000-0000-4000-8000-000000000001', co_no='501',
+            text='Laetatus sum in his quae dicta sunt mihi.', translation_en='I rejoiced.')
+        cls.first.tradition.add(tradition)
+        # The same CO number against a different text: real, and the reason the
+        # page prefers uuids.
+        cls.second = Formulas.objects.create(
+            uuid='50000000-0000-4000-8000-000000000002', co_no='501',
+            text='In convertendo Dominus captivitatem Sion.')
+
+        manuscript = Manuscripts.objects.create(
+            uuid='60000000-0000-4000-8000-000000000001', name='Codex', shelf_mark='MS 1')
+        Content.objects.bulk_create([
+            Content(manuscript_uuid=manuscript, formula_uuid=cls.first,
+                    sequence_in_ms=1, where_in_ms_from=''),
+            Content(manuscript_uuid=manuscript, formula_uuid=cls.first,
+                    sequence_in_ms=2, where_in_ms_from=''),
+        ])
+
+    def test_lookup_by_uuid_returns_full_text_and_traditions(self):
+        response = self.client.get('/analysis/formulas/', {'uuid': str(self.first.uuid)})
+        self.assertEqual(response.status_code, 200)
+
+        formulas = response.json()['formulas']
+        self.assertEqual(len(formulas), 1)
+        self.assertEqual(formulas[0]['text'], 'Laetatus sum in his quae dicta sunt mihi.')
+        self.assertEqual([t['name'] for t in formulas[0]['traditions']], ['Gelasian'])
+        self.assertEqual(formulas[0]['occurrences'], 2)
+        self.assertEqual(formulas[0]['manuscripts'], 1)
+
+    def test_lookup_by_co_number_returns_every_text_recorded_against_it(self):
+        response = self.client.get('/analysis/formulas/', {'co': '501'})
+        self.assertEqual(
+            {f['uuid'] for f in response.json()['formulas']},
+            {str(self.first.uuid), str(self.second.uuid)},
+        )
+
+    def test_a_malformed_uuid_is_ignored_rather_than_raising(self):
+        response = self.client.get('/analysis/formulas/', {'uuid': 'not-a-uuid'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['formulas'], [])
+
+    def test_no_keys_costs_no_queries(self):
+        with self.assertNumQueries(0):
+            response = self.client.get('/analysis/formulas/')
+        self.assertEqual(response.json()['formulas'], [])
+
+    def test_a_batch_is_resolved_in_a_fixed_number_of_queries(self):
+        """Whatever the batch size: one query for the formulas, one for usage.
+
+        Hovering must never turn into a query per prayer, which is the whole
+        reason the page batches its lookups.
+        """
+        keys = ','.join([str(self.first.uuid), str(self.second.uuid)])
+        # Formulas, the traditions prefetch, and the usage aggregate.
+        with self.assertNumQueries(3):
+            self.client.get('/analysis/formulas/', {'uuid': keys})
+
+
+class ManuscriptChoiceTests(TestCase):
+    """What the manuscript picker is drawn from, and what a restricted run does."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from indexerapp.models import (
+            Content,
+            Formulas,
+            LiturgicalGenres,
+            ManuscriptGenres,
+            Manuscripts,
+        )
+
+        cls.genre = LiturgicalGenres.objects.create(
+            uuid='70000000-0000-4000-8000-000000000001', title='Sacramentary')
+
+        formulas = [
+            Formulas.objects.create(uuid=f'80000000-0000-4000-8000-0000000000{i:02d}',
+                                    co_no=f'CO{i}', text=f'Oratio {i}')
+            for i in range(12)
+        ]
+
+        # Two thick witnesses under a declared genre, one thin witness under none.
+        cls.manuscripts = {}
+        plans = [('thick-a', list(range(0, 10)), True),
+                 ('thick-b', list(range(2, 12)), True),
+                 ('thin', [0, 1], False)]
+        rows = []
+        for index, (name, formula_indices, in_genre) in enumerate(plans):
+            manuscript = Manuscripts.objects.create(
+                uuid=f'90000000-0000-4000-8000-00000000000{index}',
+                name=name, shelf_mark=f'MS {index}')
+            cls.manuscripts[name] = manuscript
+            if in_genre:
+                ManuscriptGenres.objects.create(
+                    uuid=f'a0000000-0000-4000-8000-00000000000{index}',
+                    manuscript_uuid=manuscript, genre_uuid=cls.genre)
+            for sequence, formula_index in enumerate(formula_indices):
+                rows.append(Content(
+                    manuscript_uuid=manuscript, formula_uuid=formulas[formula_index],
+                    sequence_in_ms=sequence + 1, where_in_ms_from=''))
+        Content.objects.bulk_create(rows)
+
+    def test_every_eligible_manuscript_is_offered_with_its_counts(self):
+        from analysisapp.extract import summarize_manuscripts
+
+        summary = summarize_manuscripts()
+        by_label = {m['label']: m for m in summary['manuscripts']}
+        self.assertEqual(len(by_label), 3)
+        self.assertEqual(by_label['thick-a / MS 0']['n_items'], 10)
+        self.assertEqual(by_label['thick-a / MS 0']['n_distinct'], 10)
+        self.assertEqual(by_label['thin / MS 2']['n_items'], 2)
+
+    def test_a_thin_witness_is_offered_rather_than_hidden(self):
+        """The reader is choosing a threshold and a selection at the same time.
+
+        Withholding the manuscripts the current threshold would drop makes the
+        threshold impossible to reason about.
+        """
+        from analysisapp.extract import DEFAULT_MIN_ITEMS, summarize_manuscripts
+
+        summary = summarize_manuscripts()
+        thin = next(m for m in summary['manuscripts'] if m['label'].startswith('thin'))
+        self.assertLess(thin['n_items'], DEFAULT_MIN_ITEMS)
+
+    def test_genres_group_exactly_what_their_cohort_would_contain(self):
+        from analysisapp.extract import build_cohorts, load_corpus, summarize_manuscripts
+
+        summary = summarize_manuscripts()
+        self.assertEqual([g['title'] for g in summary['genres']], ['Sacramentary'])
+        self.assertEqual(summary['genres'][0]['manuscripts'], 2)
+
+        picked = {m['uuid'] for m in summary['manuscripts']
+                  if summary['genres'][0]['uuid'] in m['genres']}
+
+        corpus = load_corpus(min_items=1)
+        cohort = next(c for c in build_cohorts(corpus) if c[0].startswith('genre-'))
+        self.assertEqual(picked, {corpus.manuscripts[i].uuid for i in cohort[2]})
+
+    def test_the_endpoint_serves_the_picker(self):
+        response = self.client.get('/analysis/manuscripts/')
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        self.assertEqual(len(payload['manuscripts']), 3)
+        self.assertEqual(len(payload['genres']), 1)
+        self.assertIn('default_min_items', payload)
+
+    def test_a_run_restricted_to_a_selection_covers_only_that_selection(self):
+        from analysisapp.models import AnalysisRun
+        from analysisapp.pipeline import execute_run
+
+        chosen = [str(self.manuscripts['thick-a'].uuid),
+                  str(self.manuscripts['thick-b'].uuid)]
+        run = AnalysisRun.objects.create(
+            params={'min_items': 5, 'min_block_support': 2, 'manuscript_uuids': chosen})
+        manifest = execute_run(run)
+
+        self.assertEqual(manifest['corpus']['manuscripts'], 2)
+        self.assertEqual(manifest['params']['manuscript_uuids'], chosen)
+        # The thin witness was never loaded, so it is not even reported as skipped.
+        self.assertEqual(manifest['corpus']['skipped_manuscripts'], [])

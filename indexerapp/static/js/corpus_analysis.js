@@ -15,8 +15,21 @@ let corpusAnalysisState = {
   colorBy: 'tradition',
   cache: {},
   activeTab: 'report',
-  pollTimer: null
+  pollTimer: null,
+  // Which manuscripts the *next* run will cover. `chosen` holds uuids explicitly
+  // rather than exclusions, so a manuscript indexed after the picker was opened
+  // never joins a selection behind the reader's back.
+  selection: {
+    loaded: false,
+    manuscripts: [],
+    genres: [],
+    chosen: new Set(),
+    filter: ''
+  }
 };
+
+/** Stands for "under no genre at all" wherever a genre uuid is expected. */
+const CORPUS_UNGROUPED = 'ungrouped';
 
 function corpusArtifactUrl(runUuid, cohort, kind) {
   return pageRoot + '/analysis/runs/' + runUuid + '/' + cohort + '/' + kind + '/';
@@ -75,6 +88,11 @@ async function corpusLoadRuns(preferredUuid) {
 
   const startButton = document.getElementById('corpusStartButton');
   if (startButton) startButton.style.display = data.can_start ? 'inline-block' : 'none';
+  // Choosing a corpus is only of use to an account that can then run it.
+  const selectionToggle = document.getElementById('corpusSelectionToggle');
+  if (selectionToggle) {
+    selectionToggle.style.display = data.can_start ? 'inline-block' : 'none';
+  }
 
   const select = document.getElementById('corpusRunSelect');
   select.innerHTML = '';
@@ -136,7 +154,12 @@ async function corpusSelectRun(uuid) {
 
   state.cohort = state.manifest.cohorts[0] ? state.manifest.cohorts[0].slug : null;
   cohortSelect.value = state.cohort;
-  corpusSetStatus('');
+  // A run over a hand-picked corpus is not comparable with one over the whole of
+  // it - every rarity weight differs - so the page has to say which it is showing.
+  const picked = (state.run.params || {}).manuscript_uuids;
+  corpusSetStatus(picked && picked.length
+    ? 'This run was limited to ' + picked.length + ' hand-picked manuscripts.'
+    : '');
   await corpusRenderActiveTab(true);
 }
 
@@ -344,18 +367,261 @@ async function corpusRenderLayers() {
 }
 
 /* ---------------------------------------------------------------- *
+ * Choosing the manuscripts
+ * ---------------------------------------------------------------- */
+
+function corpusMinItems() {
+  return parseInt(document.getElementById('corpusMinItems').value, 10) || 20;
+}
+
+/**
+ * The chosen manuscripts, or null when the whole corpus is in play.
+ *
+ * Null and "every box ticked" mean the same run, but not the same request: sending
+ * no list lets the run take whatever is in the catalogue when it starts, which is
+ * what someone who never opened the picker expects.
+ */
+function corpusSelectedManuscripts() {
+  const selection = corpusAnalysisState.selection;
+  if (!selection.loaded) return null;
+  if (selection.chosen.size === selection.manuscripts.length) return null;
+  return selection.manuscripts.filter(function (ms) {
+    return selection.chosen.has(ms.uuid);
+  });
+}
+
+async function corpusLoadManuscriptChoices() {
+  const selection = corpusAnalysisState.selection;
+  if (selection.loaded) return true;
+
+  const response = await fetch(pageRoot + '/analysis/manuscripts/', { credentials: 'include' });
+  if (!response.ok) {
+    corpusSetStatus('Could not load the list of manuscripts.', 'error');
+    return false;
+  }
+  const data = await response.json();
+  selection.manuscripts = data.manuscripts || [];
+  selection.genres = data.genres || [];
+  // Everything to begin with: the picker narrows a corpus, it does not build one
+  // from nothing, and an empty panel would read as "nothing to analyse".
+  selection.chosen = new Set(selection.manuscripts.map(function (ms) { return ms.uuid; }));
+  selection.loaded = true;
+
+  corpusRenderGenreChips();
+  corpusRenderManuscriptList();
+  corpusSyncSelection();
+  return true;
+}
+
+function corpusGenreMembers(genreUuid) {
+  return corpusAnalysisState.selection.manuscripts.filter(function (ms) {
+    return genreUuid === CORPUS_UNGROUPED
+      ? !ms.genres.length : ms.genres.indexOf(genreUuid) !== -1;
+  });
+}
+
+function corpusRenderGenreChips() {
+  const selection = corpusAnalysisState.selection;
+  const node = document.getElementById('corpusMsGenres');
+  const groups = selection.genres.slice();
+
+  // Manuscripts under no genre form a group of their own, or they would be the
+  // only ones the bulk controls could not reach.
+  const ungrouped = corpusGenreMembers(CORPUS_UNGROUPED).length;
+  if (ungrouped) {
+    groups.push({ uuid: CORPUS_UNGROUPED, title: 'No genre recorded', manuscripts: ungrouped });
+  }
+  if (!groups.length) return (node.innerHTML = '');
+
+  node.innerHTML = '<span class="text-sm text-gray-600 self-center mr-1">By genre:</span>' +
+    groups.map(function (genre) {
+      return '<button type="button" class="corpus-genre-chip py-1 px-3 rounded text-sm ' +
+        'font-semibold border" data-genre="' + corpusEscapeHtml(genre.uuid) + '">' +
+        corpusEscapeHtml(genre.title) + ' (' + genre.manuscripts + ')</button>';
+    }).join('');
+
+  node.querySelectorAll('.corpus-genre-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      corpusToggleGenre(chip.dataset.genre);
+    });
+  });
+}
+
+function corpusToggleGenre(genreUuid) {
+  const chosen = corpusAnalysisState.selection.chosen;
+  const members = corpusGenreMembers(genreUuid);
+  const allIn = members.every(function (ms) { return chosen.has(ms.uuid); });
+  members.forEach(function (ms) {
+    if (allIn) chosen.delete(ms.uuid);
+    else chosen.add(ms.uuid);
+  });
+  corpusSyncSelection();
+}
+
+function corpusManuscriptMatchesFilter(ms, filter) {
+  if (!filter) return true;
+  return (ms.label + ' ' + ms.shelf_mark).toLowerCase().indexOf(filter) !== -1;
+}
+
+function corpusRenderManuscriptList() {
+  const selection = corpusAnalysisState.selection;
+  const node = document.getElementById('corpusMsList');
+  const titles = {};
+  selection.genres.forEach(function (genre) { titles[genre.uuid] = genre.title; });
+
+  const visible = selection.manuscripts.filter(function (ms) {
+    return corpusManuscriptMatchesFilter(ms, selection.filter);
+  });
+
+  if (!visible.length) {
+    node.innerHTML = '<p class="text-sm text-gray-600 py-2">No manuscript matches that filter.</p>';
+    return;
+  }
+
+  // Built as one string and wired with a single delegated listener: the corpus
+  // can reach several hundred rows, and a listener each would be that many.
+  node.innerHTML = visible.map(function (ms) {
+    const dated = ms.year_from ? ms.year_from + '–' + (ms.year_to || ms.year_from) : '';
+    const genres = ms.genres.map(function (uuid) { return titles[uuid] || uuid; }).join(', ');
+    const facts = [
+      ms.n_items + ' items',
+      ms.n_distinct + ' distinct formulas',
+      dated,
+      genres,
+    ].filter(Boolean).join(' · ');
+
+    return '<label class="corpus-ms-row flex items-start gap-2 py-1 px-1 rounded ' +
+      'hover:bg-[#fef9f6] cursor-pointer" data-uuid="' + corpusEscapeHtml(ms.uuid) + '">' +
+      '<input type="checkbox" class="mt-1" data-uuid="' + corpusEscapeHtml(ms.uuid) + '">' +
+      '<span class="flex-1">' +
+      '<span class="font-semibold">' + corpusEscapeHtml(ms.label) + '</span>' +
+      '<span class="block text-xs text-gray-600">' + corpusEscapeHtml(facts) + '</span>' +
+      '<span class="corpus-ms-thin block text-xs text-amber-700" style="display:none">' +
+      'Below the minimum item count — this run would set it aside.</span>' +
+      '</span></label>';
+  }).join('');
+
+  node.onchange = function (event) {
+    const input = event.target;
+    if (!input || input.type !== 'checkbox') return;
+    const chosen = selection.chosen;
+    if (input.checked) chosen.add(input.dataset.uuid);
+    else chosen.delete(input.dataset.uuid);
+    corpusSyncSelection();
+  };
+}
+
+/**
+ * Push the selection back onto everything that displays it.
+ *
+ * One function rather than a re-render, so ticking a box neither rebuilds several
+ * hundred rows nor throws away the reader's scroll position.
+ */
+function corpusSyncSelection() {
+  const selection = corpusAnalysisState.selection;
+  const chosen = selection.chosen;
+  const minItems = corpusMinItems();
+  const byUuid = {};
+  selection.manuscripts.forEach(function (ms) { byUuid[ms.uuid] = ms; });
+
+  document.querySelectorAll('#corpusMsList input[type="checkbox"]').forEach(function (input) {
+    input.checked = chosen.has(input.dataset.uuid);
+  });
+  document.querySelectorAll('#corpusMsList .corpus-ms-row').forEach(function (row) {
+    const ms = byUuid[row.dataset.uuid];
+    const thin = row.querySelector('.corpus-ms-thin');
+    // Only worth flagging on a manuscript the reader has actually asked for.
+    const show = ms && ms.n_items < minItems && chosen.has(ms.uuid);
+    if (thin) thin.style.display = show ? 'block' : 'none';
+  });
+
+  document.querySelectorAll('.corpus-genre-chip').forEach(function (chip) {
+    const members = corpusGenreMembers(chip.dataset.genre);
+    const inside = members.filter(function (ms) { return chosen.has(ms.uuid); }).length;
+    const base = 'corpus-genre-chip py-1 px-3 rounded text-sm font-semibold border ';
+    if (!inside) chip.className = base + 'bg-white border-[#e3d5ca] text-[#0d1b2a]';
+    else if (inside === members.length) chip.className = base + 'bg-[#795a42] border-[#795a42] text-white';
+    else chip.className = base + 'bg-[#efe6de] border-[#795a42] text-[#0d1b2a]';
+  });
+
+  const total = selection.manuscripts.length;
+  const picked = selection.manuscripts.filter(function (ms) { return chosen.has(ms.uuid); });
+  const comparable = picked.filter(function (ms) { return ms.n_items >= minItems; });
+
+  const toggle = document.getElementById('corpusSelectionToggle');
+  if (toggle) {
+    toggle.textContent = 'Manuscripts: ' +
+      (picked.length === total ? 'all (' + total + ')' : picked.length + ' of ' + total);
+  }
+
+  const summary = document.getElementById('corpusMsSummary');
+  if (summary) {
+    const skipped = picked.length - comparable.length;
+    let text = picked.length + ' of ' + total + ' manuscripts selected; ' +
+      comparable.length + ' reach the minimum of ' + minItems + ' items and would be compared';
+    text += skipped ? ', ' + skipped + ' would be set aside as too thinly indexed.' : '.';
+    if (comparable.length < 2) {
+      text += ' At least two are needed to compare anything.';
+    }
+    summary.textContent = text;
+    summary.className = 'text-sm mt-2 ' +
+      (comparable.length < 2 ? 'text-red-600' : 'text-gray-600');
+  }
+}
+
+async function corpusToggleSelectionPanel() {
+  const panel = document.getElementById('corpusSelectionPanel');
+  const opening = panel.style.display === 'none';
+  if (opening && !(await corpusLoadManuscriptChoices())) return;
+  panel.style.display = opening ? 'block' : 'none';
+}
+
+function corpusSetAllManuscripts(mode) {
+  const selection = corpusAnalysisState.selection;
+  const chosen = selection.chosen;
+  // The bulk buttons act on what the filter is showing, so "select all" during a
+  // search means the search, not the catalogue.
+  selection.manuscripts
+    .filter(function (ms) { return corpusManuscriptMatchesFilter(ms, selection.filter); })
+    .forEach(function (ms) {
+      if (mode === 'all') chosen.add(ms.uuid);
+      else if (mode === 'none') chosen.delete(ms.uuid);
+      else if (chosen.has(ms.uuid)) chosen.delete(ms.uuid);
+      else chosen.add(ms.uuid);
+    });
+  corpusSyncSelection();
+}
+
+/* ---------------------------------------------------------------- *
  * Starting a run
  * ---------------------------------------------------------------- */
 
 async function corpusStartRun() {
-  const minItems = parseInt(document.getElementById('corpusMinItems').value, 10) || 20;
+  const state = corpusAnalysisState;
+  const minItems = corpusMinItems();
+
+  const body = { min_items: minItems };
+  const selection = corpusSelectedManuscripts();
+  if (selection) {
+    const comparable = selection.filter(function (ms) { return ms.n_items >= minItems; });
+    if (comparable.length < 2) {
+      return corpusSetStatus(
+        'At least two of the selected manuscripts must reach the minimum item count; ' +
+        comparable.length + ' currently do. Widen the selection or lower the threshold.',
+        'error');
+    }
+    body.manuscript_uuids = selection.map(function (ms) { return ms.uuid; });
+  } else if (state.selection.loaded && !state.selection.chosen.size) {
+    return corpusSetStatus('No manuscript is selected.', 'error');
+  }
+
   corpusSetStatus('Starting…');
 
   const response = await fetch(pageRoot + '/analysis/runs/start/', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ min_items: minItems })
+    body: JSON.stringify(body)
   });
   const data = await response.json().catch(function () { return {}; });
 
@@ -363,6 +629,9 @@ async function corpusStartRun() {
     return corpusSetStatus(data.detail || 'Could not start the run.', 'error');
   }
   corpusSetStatus(data.detail || 'Run started.');
+  // The selection is now the run's, not a pending choice; leaving the panel open
+  // would invite editing something that has already been dispatched.
+  document.getElementById('corpusSelectionPanel').style.display = 'none';
   corpusAnalysisState.cache = {};
   await corpusLoadRuns(data.run && data.run.uuid);
   if (data.run && data.queued) corpusStartPolling(data.run.uuid);
@@ -669,6 +938,13 @@ function corpus_analysis_init() {
   const state = corpusAnalysisState;
   state.cache = {};
 
+  // Prayer references resolve themselves on hover, one batched request at a
+  // time, so a reader can see what a CO number actually is without the page
+  // loading anything it might not need.
+  if (window.PrayerHover) {
+    PrayerHover.init({ endpoint: pageRoot + '/analysis/formulas/' });
+  }
+
   document.getElementById('corpusRunSelect').addEventListener('change', async function (e) {
     state.cache = {};
     await corpusSelectRun(e.target.value);
@@ -692,6 +968,25 @@ function corpus_analysis_init() {
   });
   const startButton = document.getElementById('corpusStartButton');
   if (startButton) startButton.addEventListener('click', corpusStartRun);
+
+  document.getElementById('corpusSelectionToggle')
+    .addEventListener('click', corpusToggleSelectionPanel);
+  document.getElementById('corpusMsAll')
+    .addEventListener('click', function () { corpusSetAllManuscripts('all'); });
+  document.getElementById('corpusMsNone')
+    .addEventListener('click', function () { corpusSetAllManuscripts('none'); });
+  document.getElementById('corpusMsInvert')
+    .addEventListener('click', function () { corpusSetAllManuscripts('invert'); });
+  document.getElementById('corpusMsSearch').addEventListener('input', function (e) {
+    state.selection.filter = e.target.value.trim().toLowerCase();
+    corpusRenderManuscriptList();
+    corpusSyncSelection();
+  });
+  // The threshold decides which of the chosen manuscripts are thick enough to
+  // compare, so the panel has to answer to it as it is typed.
+  document.getElementById('corpusMinItems').addEventListener('input', function () {
+    if (state.selection.loaded) corpusSyncSelection();
+  });
 
   window.addEventListener('resize', function () {
     if (['heatmap', 'map', 'seriation', 'layers'].indexOf(state.activeTab) !== -1) {

@@ -38,6 +38,42 @@ def _table(title, columns, rows, note=None):
     return {'title': title, 'columns': columns, 'rows': rows[:TABLE_LIMIT], 'note': note}
 
 
+def _prayer(formula_uuid, text):
+    """A table cell that names one prayer.
+
+    A CO number on its own tells a reader nothing about which prayer they are
+    looking at, and the incipit is cut short. Carrying the formula uuid alongside
+    the displayed text lets the page fetch the full text on hover — and it has to
+    be the uuid, because the same CO number is recorded against genuinely
+    different texts in this data.
+
+    Cells stay plain strings when there is no uuid to attach, which is also what
+    every artifact written before this existed looks like.
+    """
+    display = '' if text is None else str(text)
+    if not formula_uuid:
+        return display
+    return {'t': display, 'f': str(formula_uuid)}
+
+
+def _prayer_sequence(formulas, separator, label=None):
+    """A cell listing several prayers, each one hoverable on its own.
+
+    Rendered as a list of tokens — plain strings are separators, objects are
+    prayers — so the page can join them back into the same string it used to show.
+    """
+    if label is None:
+        def label(f):
+            return f.get('co_no') or (f.get('incipit') or '')[:24]
+
+    tokens = []
+    for formula in formulas:
+        if tokens:
+            tokens.append(separator)
+        tokens.append(_prayer(formula.get('uuid'), label(formula)))
+    return tokens
+
+
 def build(view: CohortView, formula_space, manuscript_space,
           block_list: List[dict], rubric_analysis: dict,
           exemplars: List[dict], validation: Optional[dict] = None,
@@ -159,11 +195,19 @@ def _layers(view, formula_space):
         share = weights / np.maximum(H.sum(axis=0), 1e-12)
         score = weights * share
         top = np.argsort(score)[::-1][:8]
-        labels = [view.formula_meta(int(f)).co_no or view.formula_meta(int(f)).incipit[:40]
-                  for f in top]
+        characteristic = _prayer_sequence(
+            [
+                {'uuid': view.formula_meta(int(f)).uuid,
+                 'co_no': view.formula_meta(int(f)).co_no,
+                 'incipit': view.formula_meta(int(f)).incipit}
+                for f in top
+            ],
+            '; ',
+            label=lambda f: f['co_no'] or f['incipit'][:40],
+        )
         dominant = [view.manuscripts[i].label for i in np.argsort(shares[:, l])[::-1][:3]
                     if shares[i, l] > 0.15]
-        layer_rows.append([f'Cluster {l + 1}', '; '.join(labels), '; '.join(dominant)])
+        layer_rows.append([f'Cluster {l + 1}', characteristic, '; '.join(dominant)])
 
     return _section(
         'layers', 'Liturgical clusters',
@@ -204,8 +248,8 @@ def _core_repertoire(view, formula_space):
 
     rows = [
         [
-            view.formula_meta(int(f)).co_no,
-            view.formula_meta(int(f)).incipit,
+            _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).co_no),
+            _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).incipit),
             int(df[f]),
             int(formula_space.total_counts[f]),
             round(float(formula_space.mean_position[f]), 3),
@@ -287,8 +331,8 @@ def _distinctive(view, formula_space, manuscript_space):
 
         rows = [
             [
-                view.formula_meta(int(f)).co_no,
-                view.formula_meta(int(f)).incipit,
+                _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).co_no),
+                _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).incipit),
                 round(float(inside_rate[f]), 2),
                 round(float(outside_rate[f]), 2),
                 round(float(lift[f]), 2),
@@ -339,7 +383,13 @@ def _attributions(view, formula_space):
                 unattributed_clusters.append([cluster, count])
 
     rows = [
-        [p['co_no'], p['incipit'], p['tradition'], p['confidence'], p['cluster_known_members']]
+        [
+            _prayer(p.get('formula_uuid'), p['co_no']),
+            _prayer(p.get('formula_uuid'), p['incipit']),
+            p['tradition'],
+            p['confidence'],
+            p['cluster_known_members'],
+        ]
         for p in proposals
     ]
 
@@ -391,8 +441,8 @@ def _order(view, manuscript_space, block_list, formula_space):
     mobile = np.argsort(formula_space.position_spread)[::-1]
     mobile_rows = [
         [
-            view.formula_meta(int(f)).co_no,
-            view.formula_meta(int(f)).incipit,
+            _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).co_no),
+            _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).incipit),
             int(formula_space.df[f]),
             round(float(formula_space.mean_position[f]), 3),
             round(float(formula_space.position_spread[f]), 3),
@@ -405,7 +455,7 @@ def _order(view, manuscript_space, block_list, formula_space):
             b['length'],
             b['support'],
             round(b['mean_position'], 3) if b['mean_position'] is not None else '',
-            ' → '.join((f['co_no'] or f['incipit'][:24]) for f in b['formulas'][:8]),
+            _prayer_sequence(b['formulas'][:8], ' → '),
         ]
         for b in block_list[:TABLE_LIMIT]
     ]
@@ -461,11 +511,15 @@ def _rubrics(rubric_analysis):
         )
 
     anchors = [
-        [r['co_no'], r['incipit'], r['witnesses'], r['modal_rubric']]
+        [_prayer(r.get('formula_uuid'), r['co_no']),
+         _prayer(r.get('formula_uuid'), r['incipit']),
+         r['witnesses'], r['modal_rubric']]
         for r in rubric_analysis['anchors']
     ]
     floaters = [
-        [r['co_no'], r['incipit'], r['witnesses'], r['distinct_rubrics'],
+        [_prayer(r.get('formula_uuid'), r['co_no']),
+         _prayer(r.get('formula_uuid'), r['incipit']),
+         r['witnesses'], r['distinct_rubrics'],
          r['modal_rubric'], r['modal_share'], r['entropy']]
         for r in rubric_analysis['floaters']
     ]
