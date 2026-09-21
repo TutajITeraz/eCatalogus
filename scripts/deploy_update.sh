@@ -333,20 +333,38 @@ guard_unexpected_git_changes() {
     return 0
   fi
 
+  # git fetch/checkout/reset --hard only ever touch tracked files; this script
+  # never runs `git clean`, so untracked files are never destroyed by a deploy.
+  # Only modifications to tracked files are actually at risk from --force-reset,
+  # so only those need to block the deploy. Untracked local files (ad hoc data
+  # dumps, exports, etc.) are safe to leave in place and just get logged.
   local unexpected=()
-  local line
+  local untracked_info=()
+  local line status path
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    line=${line:3}
-    if path_is_preserved "$line" || path_is_managed_generated "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
+    status=${line:0:2}
+    path=${line:3}
+    if [[ "$status" == "??" ]]; then
+      if ! path_is_preserved "$path" && ! path_is_managed_generated "$path" && [[ "$path" != .env && "$path" != .env.* ]]; then
+        untracked_info+=("$path")
+      fi
       continue
     fi
-    unexpected+=("$line")
+    if path_is_preserved "$path" || path_is_managed_generated "$path" || [[ "$path" == .env || "$path" == .env.* ]]; then
+      continue
+    fi
+    unexpected+=("$path")
   done < <(git status --porcelain --untracked-files=all)
+
+  if ((${#untracked_info[@]})); then
+    log "Local untracked files present (left in place, not touched by deploy):"
+    printf '%s\n' "${untracked_info[@]}" | sed 's/^/ - /'
+  fi
 
   if ((${#unexpected[@]})); then
     printf '%s\n' "${unexpected[@]}" | sed 's/^/ - /'
-    die "Repository has unexpected local changes. Resolve them or rerun with --force-reset to discard them."
+    die "Repository has unexpected local changes to tracked files. Resolve them or rerun with --force-reset to discard them."
   fi
 }
 
