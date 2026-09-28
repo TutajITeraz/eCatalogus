@@ -572,7 +572,14 @@ def build_manuscript_list_payload():
     }
 
 
-def build_manuscript_export_payload(manuscript_uuid):
+def build_manuscript_export_payload(manuscript_uuid, inline_media=True):
+    """Everything attached to one manuscript, ready for another instance.
+
+    ``inline_media`` embeds each media file as base64, which replication needs
+    to copy the files across. Public readers pass False and get each file's
+    path, size and URL instead: the web server already serves the files, and
+    inlining every scan makes a single manuscript weigh gigabytes.
+    """
     manuscript = Manuscripts.objects.filter(uuid=manuscript_uuid).first()
     if manuscript is None:
         raise ValueError(f'Unknown manuscript uuid: {manuscript_uuid}')
@@ -597,7 +604,9 @@ def build_manuscript_export_payload(manuscript_uuid):
             continue
 
         included_records[model.__name__] = records
-        _collect_media_files_for_records(model, records, media_files, seen_media_paths)
+        _collect_media_files_for_records(
+            model, records, media_files, seen_media_paths, inline=inline_media,
+        )
         serialized = [_serialize_instance(record) for record in records]
         total_records += len(serialized)
         exported_models.append({
@@ -1681,7 +1690,7 @@ def _serialize_instance(instance):
     return payload
 
 
-def _collect_media_files_for_records(model, records, media_files, seen_media_paths):
+def _collect_media_files_for_records(model, records, media_files, seen_media_paths, inline=True):
     file_fields = [
         field for field in model._meta.concrete_fields
         if field.get_internal_type() in {'FileField', 'ImageField'}
@@ -1696,6 +1705,15 @@ def _collect_media_files_for_records(model, records, media_files, seen_media_pat
             if not file_name or file_name in seen_media_paths:
                 continue
             if not field_file.storage.exists(file_name):
+                continue
+
+            if not inline:
+                media_files.append({
+                    'path': file_name,
+                    'size': field_file.storage.size(file_name),
+                    'url': field_file.storage.url(file_name),
+                })
+                seen_media_paths.add(file_name)
                 continue
 
             with field_file.storage.open(file_name, 'rb') as handle:

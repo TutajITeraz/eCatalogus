@@ -219,10 +219,11 @@ request is a normal, expected payload.
       "sequence_in_ms": 1,
       "where_in_ms_from": "1r",
       "where_in_ms_to": "1v",
-      "formula_text_from_ms": "Deus qui nos patrem et matrem",
-      "rubric_id": "Ad complendum",
-      "liturgical_genre_id": "Missale",
-      "function_id": "Oratio",
+      "rubric_name_from_ms": "Missa pro rege et exercitu eius",
+      "formula_text_from_ms": "Deus qui regnorum omnium regumque es dominator",
+      "rubric_id": "pro rege",
+      "liturgical_genre_id": "Missal",
+      "function_id": "Collecta",
       "original_or_added": "ORIGINAL"
     },
     {
@@ -238,6 +239,12 @@ request is a normal, expected payload.
 
 A bare JSON list is also accepted as the body, matching the older
 `/content_import/` format.
+
+> **Rubric or function?** *Collecta*, *Secreta* and *Ad complendum* are liturgical
+> **functions** and go in `function_id` (vocabulary `content-functions`). A
+> **rubric** (`rubric_id`, vocabulary `rite-names`) names the occasion, such as
+> *pro rege* or *de omnibus martyribus*. Putting a function in `rubric_id` is the
+> most common import error: it fails with `not_found`.
 
 ### Options
 
@@ -276,10 +283,10 @@ Failure, `400` — every problem located by row index, field and value:
   "errors": [
     {
       "row": 17,
-      "field": "rubric_id",
-      "value": "Ad conplendum",
+      "field": "function_id",
+      "value": "Colecta",
       "error": "not_found",
-      "detail": "No RiteNames entry matches \"Ad conplendum\" (matched against: name). …"
+      "detail": "No ContentFunctions entry matches \"Colecta\" (matched against: name). …"
     },
     {
       "row": 204,
@@ -427,7 +434,7 @@ with ours by citing stable UUIDs.
 ```bash
 curl https://ecatalogus.example.org/api/v1/dictionaries/
 curl 'https://ecatalogus.example.org/api/v1/dictionaries/rite-names/?limit=1000'
-curl 'https://ecatalogus.example.org/api/v1/dictionaries/rite-names/?search=complend'
+curl 'https://ecatalogus.example.org/api/v1/dictionaries/content-functions/?search=complend'
 ```
 
 Available: `rite-names`, `liturgical-genres`, `sections`, `content-functions`,
@@ -506,6 +513,20 @@ package is readable without downloading the dictionaries first. Add
 `?labels=false` for the raw UUID-only form, which is smaller and better suited to
 machine-to-machine replication.
 
+Images are not embedded. `media_files` lists each attached image with its path,
+size and an absolute URL on the web server, so you download only the ones you
+need:
+
+```json
+"media_files": [
+  {
+    "path": "images/PL-Wn_BOZ_8.jpg",
+    "size": 482113,
+    "url": "https://ecatalogus.example.org/media/images/PL-Wn_BOZ_8.jpg"
+  }
+]
+```
+
 Other formats for the same manuscript:
 
 - `GET /ms_tei/?manuscript_uuid={uuid}` — TEI XML.
@@ -521,7 +542,7 @@ data without knowing what you may do with it.
 At the transport layer, on every response including errors:
 
 ```
-Link: <https://creativecommons.org/licenses/by/4.0/>; rel="license"
+Link: <https://creativecommons.org/licenses/by-nc/4.0/>; rel="license"
 ```
 
 And inside every payload that carries data, a `rights` block — because JSON gets
@@ -529,15 +550,15 @@ saved to a file and headers are lost the moment it does:
 
 ```json
 "rights": {
-  "license": "CC-BY-4.0",
-  "license_name": "Creative Commons Attribution 4.0 International",
-  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "license": "CC-BY-NC-4.0",
+  "license_name": "Creative Commons Attribution-NonCommercial 4.0 International",
+  "license_url": "https://creativecommons.org/licenses/by-nc/4.0/",
   "copyright": "Copyright (c) 2024-2026 Instytut Sztuki Polskiej Akademii Nauk (PAN) - Polish Academy of Sciences.",
   "rights_holder": "Instytut Sztuki Polskiej Akademii Nauk (PAN)",
   "rights_holder_url": "https://ispan.pl/",
-  "required_statement": "Data from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). Used under CC BY 4.0.",
-  "attribution": "\"Graduale Cracoviense\", contributed by Anna Kowalska, Jan Nowak. Data from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). Used under CC BY 4.0.",
-  "recommended_citation": "Anna Kowalska, Jan Nowak. \"Graduale Cracoviense\". eCatalogus. Instytut Sztuki Polskiej Akademii Nauk (PAN). accessed 2026-07-21. https://…/package/. Licensed under CC-BY-4.0.",
+  "required_statement": "Data from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). Used under CC BY-NC 4.0; not for commercial use.",
+  "attribution": "\"Graduale Cracoviense\", contributed by Anna Kowalska, Jan Nowak. Data from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). Used under CC BY-NC 4.0; not for commercial use.",
+  "recommended_citation": "Anna Kowalska, Jan Nowak. \"Graduale Cracoviense\". eCatalogus. Instytut Sztuki Polskiej Akademii Nauk (PAN). accessed 2026-07-21. https://…/package/. Licensed under CC-BY-NC-4.0.",
   "accessed": "2026-07-21T15:04:32+00:00",
   "source": "https://ecatalogus.example.org/api/v1/manuscripts/0b7622ff-…/package/",
   "contributors": [
@@ -549,15 +570,20 @@ saved to a file and headers are lost the moment it does:
 
 ### What you must do
 
-CC BY obliges you to **credit**. Concretely:
+CC BY-NC obliges you to **credit** and restricts you to **non-commercial use**.
+Concretely:
 
 - Display `rights.attribution` (or build your own credit from
   `rights.contributors` and `rights.rights_holder`) wherever the data is shown.
 - Keep the `rights.copyright` notice with any copy you redistribute.
 - Link back to `rights.license_url`.
+- Do not use the data, or anything adapted from it, primarily for commercial
+  advantage or monetary compensation.
 
-You do **not** have to ask permission, and you may adapt and redistribute,
-including commercially, as long as attribution is preserved.
+For non-commercial purposes, such as research, teaching and non-profit projects,
+you do **not** have to ask permission, and you may adapt and redistribute as long
+as attribution is preserved. Commercial use needs separate permission from the
+rights holder.
 
 ### Whom to credit
 
@@ -588,7 +614,7 @@ your house style — the components are all available separately.
 
 | Caller | Limit |
 |---|---|
-| Anonymous (public reads) | 600 requests/minute per IP; 60/minute on the aggregate index endpoints |
+| Anonymous (public reads under `/api/v1/`) | 15 requests/minute per IP |
 | Authenticated (any account, including yours) | **No limit** |
 | ETL replication between eCatalogus instances | **No limit** |
 

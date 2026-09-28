@@ -140,10 +140,18 @@ def strip_local_ids(payload):
     return payload
 
 
-def build_manuscript_package(manuscript_uuid, with_labels=True):
-    """Full manuscript export — everything the manuscript tab displays."""
-    payload = build_manuscript_export_payload(manuscript_uuid)
+def build_manuscript_package(manuscript_uuid, with_labels=True, build_uri=None):
+    """Full manuscript export — everything the manuscript tab displays.
+
+    Media files are listed by path, size and URL, never inlined: the web server
+    already serves them, and a reader fetches only the images it wants.
+    ``build_uri`` turns those URLs into absolute ones.
+    """
+    payload = build_manuscript_export_payload(manuscript_uuid, inline_media=False)
     payload['api_version'] = 'v1'
+    if build_uri is not None:
+        for media_file in payload.get('media_files', []):
+            media_file['url'] = build_uri(media_file['url'])
     if with_labels:
         add_labels(payload)
     strip_local_ids(payload)

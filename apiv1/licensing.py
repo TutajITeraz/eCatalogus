@@ -7,7 +7,7 @@ The practice this implements, which is what digital humanities consumers expect:
    if the payload is split, cached or proxied.
 2. **Repeat it inside the payload** — a ``rights`` block, because JSON gets saved
    to a file and the headers are lost the moment it does.
-3. **Name the people, not just the institution** — CC BY obliges the reuser to
+3. **Name the people, not just the institution** — CC BY-NC obliges the reuser to
    credit; they can only do that if the export tells them whom to credit. The
    contributors are collected from the records actually present in the export.
 4. **Offer a citation string** — scholars cite. If we do not supply the wording,
@@ -89,7 +89,7 @@ def build_rights(*, source_url=None, title=None, contributors=None):
 
     credited = [person['name'] for person in (contributors or [])]
 
-    # Reads as: "Graduale Cracoviense", contributed by A, B. Data from … CC BY 4.0.
+    # Reads as: "Graduale Cracoviense", contributed by A, B. Data from … CC BY-NC 4.0.
     subject = f'"{title}"' if title else ''
     if credited:
         credit = 'contributed by ' + ', '.join(credited)

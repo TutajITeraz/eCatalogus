@@ -534,7 +534,7 @@ was last refreshed:
 ```
 
 Every response also carries a `rights` block. Keep `rights.attribution` and
-`rights.license_url` with the cache — CC BY applies to the vocabularies too, and
+`rights.license_url` with the cache — CC BY-NC applies to the vocabularies too, and
 a TSV on disk has no HTTP headers left to carry the terms.
 
 ### 8.5 The refresh button

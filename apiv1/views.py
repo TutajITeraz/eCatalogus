@@ -15,13 +15,15 @@ from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from indexerapp.api_access import EditorWriteOnly, user_can_write_api
+from indexerapp.api_access import ApiV1AnonRateThrottle, EditorWriteOnly, user_can_write_api
 from indexerapp.models import Content, Manuscripts
 
 from . import dictionaries as dictionaries_module
+from . import schema_examples as examples
 from . import serializers as api_serializers
 from .authentication import SilentBasicAuthentication
 from .licensing import (
@@ -42,6 +44,24 @@ from .importers import ImportValidationError, create_manuscript, import_content_
 
 
 V1_TAG = 'Public API v1'
+
+PAGING_PARAMETERS = [
+    OpenApiParameter(
+        'limit', int,
+        description='Page size. Default 100, maximum 2000; larger values are clamped.',
+    ),
+    OpenApiParameter(
+        'offset', int,
+        description='Zero-based index of the first record. Use `next_offset` from the previous page.',
+    ),
+]
+
+AUTH_NOTE = (
+    '\n\n**Authentication:** requires an eCatalogus account that is a superuser, a member '
+    'of the `api_importers` group, or holds the matching Django permission. Send it as '
+    'HTTP Basic over HTTPS (`curl -u user:password …`). A wrong password answers 401; '
+    'a valid account without import rights answers 403.'
+)
 
 #: Everything ``/api/v1/dictionaries/{slug}/`` understands. Anything else is a
 #: typo or a wrong assumption, and answering 200 to it hides both.
@@ -94,6 +114,11 @@ class V1View(APIView):
     """
 
     authentication_classes = [SilentBasicAuthentication, SessionAuthentication]
+    throttle_classes = [ApiV1AnonRateThrottle]
+    # JSON only, whatever the Accept header says. The browsable API renderer in
+    # the project defaults needs rest_framework's templates, which are not
+    # installed — a link opened in a browser answered 500 instead of the data.
+    renderer_classes = [JSONRenderer]
 
     def handle_exception(self, exc):
         if isinstance(exc, _NotFound):
@@ -134,11 +159,21 @@ class RootView(V1View):
         tags=[V1_TAG],
         summary='API v1 discovery document',
         operation_id='v1_root',
+        description=(
+            'Entry point for a client exploring the API: the instance name, a link to this '
+            'documentation, URL templates for every endpoint and the licence the data is '
+            'published under. Public, no authentication.'
+        ),
         responses={200: api_serializers.RootSerializer},
     )
     def get(self, request):
+        # Resolve the host once and append the paths verbatim: build_absolute_uri
+        # percent-encodes the braces, which turns the {uuid} placeholder of a
+        # URL template into %7Buuid%7D.
+        origin = request.build_absolute_uri('/').rstrip('/')
+
         def url(path):
-            return request.build_absolute_uri(path)
+            return origin + path
 
         return Response({
             'api_version': 'v1',
@@ -173,10 +208,20 @@ class WhoAmIView(V1View):
         summary='Confirm who the supplied credentials belong to',
         operation_id='v1_whoami',
         description=(
-            'Returns the identity behind the request. Answers 200 for anonymous '
-            'callers too, with `authenticated: false`, so a login form can treat '
-            'wrong credentials and missing rights as two different messages.'
+            'Returns the identity behind the request. Call it as soon as a user submits '
+            'their eCatalogus login, before generating or uploading anything.\n\n'
+            '| Result | Meaning |\n'
+            '|---|---|\n'
+            '| `401` | Wrong username or password. |\n'
+            '| `200`, `can_import: false` | Credentials fine, but the account may not import. '
+            'An administrator must add it to the `api_importers` group. |\n'
+            '| `200`, `can_import: true` | Ready to upload. |\n\n'
+            'Without credentials it answers 200 with `authenticated: false`. A failed login '
+            'answers 401 with `WWW-Authenticate: xBasic`, a scheme browsers do not recognise, '
+            'so a page calling this from JavaScript never gets the browser\'s own password '
+            'pop-up on top of its form. Never throttled.'
         ),
+        examples=examples.WHOAMI_EXAMPLES,
         responses={200: api_serializers.WhoAmISerializer, 401: api_serializers.ErrorSerializer},
     )
     def get(self, request):
@@ -200,11 +245,22 @@ class ManuscriptListView(V1View):
         tags=[V1_TAG],
         summary='List manuscripts',
         operation_id='v1_manuscripts_list',
+        description=(
+            'Manuscripts catalogued on this instance, ordered by name, with the number of '
+            'content rows each one has. Public, no authentication.\n\n'
+            'Filters combine with AND. `search` is a case-insensitive substring match; '
+            '`foreign_id` is exact, which makes it the way to look up a manuscript by the '
+            'identifier your own system gave it.'
+        ),
         parameters=[
-            OpenApiParameter('search', str, description='Match against name, shelf mark, RISM id or foreign id.'),
+            OpenApiParameter(
+                'search', str,
+                description='Case-insensitive substring of the name, shelf mark, RISM id or foreign id.',
+            ),
             OpenApiParameter('foreign_id', str, description='Exact match on the calling system\'s identifier.'),
-            OpenApiParameter('limit', int), OpenApiParameter('offset', int),
+            *PAGING_PARAMETERS,
         ],
+        examples=examples.MANUSCRIPT_LIST_EXAMPLES,
         responses={200: api_serializers.ManuscriptListSerializer},
     )
     def get(self, request):
@@ -262,14 +318,29 @@ class ManuscriptListView(V1View):
         summary='Create a manuscript',
         operation_id='v1_manuscripts_create',
         description=(
-            'Creates one manuscript. Relation fields accept either a UUID or the '
-            'dictionary entry\'s name; unknown names are rejected rather than created. '
-            'Requires an authorised account.'
+            'Creates one manuscript and returns its `uuid`, which every later call uses. '
+            'Only `name` is required.\n\n'
+            'Relation fields (`contemporary_repository_place`, `dating`, `place_of_origin`, '
+            '`main_script`, `binding_date`, `binding_place`) accept either a UUID or the '
+            'dictionary entry\'s name, matched case-insensitively. Unknown names are an '
+            'error: the API never creates dictionary entries. Read the vocabularies under '
+            '`/api/v1/dictionaries/` to validate values before sending.\n\n'
+            'Unrecognised keys are rejected. Add `?strict=false` to ignore them instead. '
+            'Every problem is reported at once, and nothing is created if there is any.'
+            + AUTH_NOTE
         ),
+        parameters=[
+            OpenApiParameter(
+                'strict', bool,
+                description='Reject unrecognised keys (default true). `false` ignores them.',
+            ),
+        ],
         request=api_serializers.ManuscriptCreateSerializer,
+        examples=examples.MANUSCRIPT_CREATE_EXAMPLES,
         responses={
-            201: api_serializers.ManuscriptListItemSerializer,
+            201: api_serializers.ManuscriptCreatedSerializer,
             400: api_serializers.ValidationFailureSerializer,
+            401: api_serializers.ErrorSerializer,
             403: api_serializers.ErrorSerializer,
         },
     )
@@ -315,17 +386,28 @@ class ManuscriptPackageView(V1View):
             'the TEI XML export.\n\n'
             'By default each foreign key is accompanied by a `*_label` key holding the '
             'human-readable name, so the package can be read without downloading the '
-            'dictionaries. Pass `labels=false` for the raw UUID-only form.'
+            'dictionaries. Pass `labels=false` for the raw UUID-only form.\n\n'
+            'The response is one block per model (`models[]`), each holding the records of '
+            'that model that belong to the manuscript. Instance-local numeric ids are left '
+            'out: records reference each other by UUID only.\n\n'
+            'Images are not embedded. `media_files` lists each attached image with its '
+            'path, size in bytes and an absolute URL, so you download only the images '
+            'you need, straight from the web server.\n\n'
+            'Public, no authentication. `rights.contributors` credits every person named '
+            'by the records in the package.'
         ),
         parameters=[
             OpenApiParameter('labels', bool, description='Include *_label keys. Default true.'),
         ],
+        examples=examples.PACKAGE_EXAMPLES,
         responses={200: api_serializers.ManuscriptPackageSerializer, 404: api_serializers.ErrorSerializer},
     )
     def get(self, request, manuscript_uuid):
         with_labels = str(request.query_params.get('labels', 'true')).lower() != 'false'
         try:
-            payload = build_manuscript_package(manuscript_uuid, with_labels=with_labels)
+            payload = build_manuscript_package(
+                manuscript_uuid, with_labels=with_labels, build_uri=request.build_absolute_uri,
+            )
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -345,10 +427,16 @@ class ManuscriptContentView(V1View):
         summary='List a manuscript\'s content',
         operation_id='v1_manuscript_content_list',
         description=(
-            'Flat content rows in exactly the vocabulary the bulk import accepts, so '
-            'the output of this endpoint can be posted back unchanged.'
+            'Flat content rows — one per liturgical item — ordered by `sequence_in_ms`. '
+            'They use exactly the vocabulary the bulk import accepts, so the output of '
+            'this endpoint can be posted back unchanged.\n\n'
+            'Each relation appears as a UUID (e.g. `function_id`) plus a readable '
+            '`*_label` (e.g. `function_label: "Collecta"`), so rows can be displayed '
+            'without downloading any dictionary. Page through with `limit`/`offset` until '
+            '`next_offset` is null. Public, no authentication.'
         ),
-        parameters=[OpenApiParameter('limit', int), OpenApiParameter('offset', int)],
+        parameters=PAGING_PARAMETERS,
+        examples=examples.CONTENT_LIST_EXAMPLES,
         responses={200: api_serializers.ContentListSerializer, 404: api_serializers.ErrorSerializer},
     )
     def get(self, request, manuscript_uuid):
@@ -377,7 +465,12 @@ class ManuscriptContentSummaryView(V1View):
         tags=[V1_TAG],
         summary='Check whether a manuscript already has content',
         operation_id='v1_manuscript_content_summary',
-        description='Cheap probe to call before uploading, so you do not create duplicates.',
+        description=(
+            'Cheap probe to call before uploading, so a retry or a re-run does not create '
+            'duplicates. If `has_content` is true, either stop, or upload with '
+            '`mode: "replace"` to overwrite what is there. Public, no authentication.'
+        ),
+        examples=examples.CONTENT_SUMMARY_EXAMPLES,
         responses={200: api_serializers.ContentSummarySerializer, 404: api_serializers.ErrorSerializer},
     )
     def get(self, request, manuscript_uuid):
@@ -402,12 +495,43 @@ class ManuscriptContentBulkView(WriteView):
             'Dictionary values (rubric, liturgical genre, function, …) may be given as '
             'a UUID or as the entry\'s name. Names that do not exist are an error — '
             'the API never invents dictionary entries.\n\n'
-            'Send `dry_run: true` first to validate a batch without writing.'
+            'Send `dry_run: true` first to validate a batch without writing.\n\n'
+            'The write is one transaction: with `mode: "replace"` the old rows are deleted '
+            'and the new ones written together, or not at all. Rows without '
+            '`sequence_in_ms` are numbered after the highest existing one. Allow roughly one '
+            'second per hundred rows and set a generous client timeout.\n\n'
+            '**Plain fields:** `sequence_in_ms`, `rubric_sequence_in_the_MS`, '
+            '`digital_page_number` (whole numbers); `proper_texts` (boolean); '
+            '`rubric_name_from_ms`, `subrubric_name_from_ms`, `formula_text_from_ms`, '
+            '`where_in_ms_from`, `where_in_ms_to`, `original_or_added` (`ORIGINAL` / '
+            '`ADDED`), `biblical_reference`, `reference_to_other_items`, '
+            '`similarity_by_user`, `edition_subindex`, `comments` (text).\n\n'
+            '**Relations** — a UUID, or a name matched case-insensitively against:\n\n'
+            '| Key | Dictionary | Name column |\n'
+            '|---|---|---|\n'
+            '| `rubric_id` | rite-names | `name` |\n'
+            '| `liturgical_genre_id` | liturgical-genres | `title` |\n'
+            '| `section_id`, `subsection_id` | sections | `name` |\n'
+            '| `function_id`, `subfunction_id` | content-functions | `name` |\n'
+            '| `layer`, `mass_hour`, `genre`, `season_month`, `week`, `day` | same-named | '
+            '`short_name`, then `name` |\n'
+            '| `text_standarization` | text-standarization | `standard_incipit` |\n'
+            '| `contributor_id` | contributors | `initials` |\n'
+            '| `formula_id` | formulas | UUID only — look it up by `co_no` first |\n'
+            '| `quire_id` | the manuscript\'s quires | UUID only |\n'
+            '| `music_notation_id` | music-notation-names | `name`, resolved to this '
+            'manuscript\'s own notation record |\n'
+            '| `edition_index` | edition content | `"<bibliography shortname> c.<sequence>"` |\n\n'
+            'Keys returned by the export but not written (`uuid`, `manuscript_uuid`, '
+            '`entry_date`, `*_label`) are accepted and ignored.'
+            + AUTH_NOTE
         ),
         request=api_serializers.ContentBulkRequestSerializer,
+        examples=examples.CONTENT_BULK_EXAMPLES,
         responses={
             200: api_serializers.ContentBulkResponseSerializer,
             400: api_serializers.ValidationFailureSerializer,
+            401: api_serializers.ErrorSerializer,
             403: api_serializers.ErrorSerializer,
             404: api_serializers.ErrorSerializer,
         },
@@ -449,6 +573,13 @@ class DictionaryListView(V1View):
         tags=[V1_TAG],
         summary='List the published controlled vocabularies',
         operation_id='v1_dictionaries_list',
+        description=(
+            'Every controlled vocabulary this instance publishes, with its slug, entry '
+            'count and URL. Vocabularies are curated in eCatalogus and replicated to the '
+            'other instances, so their UUIDs are the same everywhere and safe to store. '
+            'Read-only and public.'
+        ),
+        examples=examples.DICTIONARY_LIST_EXAMPLES,
         responses={200: api_serializers.DictionaryListSerializer},
     )
     def get(self, request):
@@ -463,9 +594,40 @@ class DictionaryDetailView(V1View):
         tags=[V1_TAG],
         summary='Read one controlled vocabulary',
         operation_id='v1_dictionary_detail',
+        description=(
+            'Entries of one vocabulary, ordered by creation. Default page size is 200, '
+            'maximum 1000. Selecting entries with `uuids` or `legacy_ids` returns all of '
+            'them in one page (up to 1000).\n\n'
+            'Typical uses:\n'
+            '* **Validate names before an import** — `?search=Collecta&fields=name`.\n'
+            '* **Mirror a vocabulary** — page through with `limit=1000`, then keep it '
+            'current with `?since=<timestamp of your last sync>`.\n'
+            '* **Resolve ids you already hold** — `?uuids=…` or, for numbering from the '
+            'legacy database, `?legacy_ids=…`.\n\n'
+            'Unknown query parameters are rejected with 400 rather than ignored, so a typo '
+            'cannot silently return the whole vocabulary. Public, no authentication.'
+        ),
+        examples=examples.DICTIONARY_PAGE_EXAMPLES,
         parameters=[
-            OpenApiParameter('search', str, description='Substring match on the vocabulary\'s name columns.'),
-            OpenApiParameter('since', str, description='ISO-8601 timestamp; only entries changed since then.'),
+            OpenApiParameter(
+                'slug', str, OpenApiParameter.PATH,
+                description='Vocabulary slug from `/api/v1/dictionaries/`, e.g. `rite-names`.',
+            ),
+            OpenApiParameter(
+                'search', str,
+                description=(
+                    'Case-insensitive substring match on the vocabulary\'s name columns '
+                    '(e.g. `co_no` and `text` for formulas, `name` and '
+                    '`english_translation` for rite-names).'
+                ),
+            ),
+            OpenApiParameter(
+                'since', str,
+                description=(
+                    'ISO-8601 timestamp, e.g. `2026-09-01T00:00:00Z`; only entries changed '
+                    'since then. Ignored by vocabularies that have no `entry_date` column.'
+                ),
+            ),
             OpenApiParameter(
                 'uuids', str,
                 description=(

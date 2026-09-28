@@ -33,7 +33,10 @@ class SilentBasicAuthenticationScheme(OpenApiAuthenticationExtension):
     """
 
     target_class = 'apiv1.authentication.SilentBasicAuthentication'
-    name = 'basicAuth'
+    # Distinct from drf-spectacular's own "basicAuth", which the plain
+    # BasicAuthentication used by the other APIs registers — sharing the name
+    # makes the generator warn and keep only one of the two definitions.
+    name = 'eCatalogusAccount'
 
     def get_security_definition(self, auto_schema):
         return {
@@ -41,6 +44,8 @@ class SilentBasicAuthenticationScheme(OpenApiAuthenticationExtension):
             'scheme': 'basic',
             'description': (
                 'An eCatalogus username and password over HTTPS. This is how an '
-                'external system authenticates on behalf of the person using it.'
+                'external system authenticates on behalf of the person using it. '
+                'Only writes need it; every read in API v1 is public. The account '
+                'must be in the `api_importers` group (or be a superuser) to write.'
             ),
         }

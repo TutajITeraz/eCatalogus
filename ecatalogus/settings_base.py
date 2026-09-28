@@ -222,6 +222,10 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': os.getenv('API_ANON_THROTTLE_RATE', '600/min'),
         'anon_expensive': os.getenv('API_ANON_EXPENSIVE_THROTTLE_RATE', '60/min'),
+        # The public API v1 is for other systems, not for the site's own pages,
+        # so anonymous harvesting there gets a much smaller budget. Integrations
+        # that need more authenticate and are not throttled at all.
+        'api_v1_anon': os.getenv('API_V1_ANON_THROTTLE_RATE', '15/min'),
     },
 }
 
@@ -250,7 +254,43 @@ SPECTACULAR_SETTINGS = {
         '**ETL** (`/api/etl/`) is internal replication between eCatalogus instances. '
         'It authenticates with a shared per-instance token and is not intended for '
         'third parties.\n\n'
-        'See `INTEGRATION.md` in the repository for a task-oriented walkthrough.'
+        '### Instances\n\n'
+        'Every instance serves the same API over its own data:\n\n'
+        '| Instance | Base URL |\n'
+        '|---|---|\n'
+        '| eCatalogus | `https://ecatalogus.ispan.pl/api/v1/` |\n'
+        '| MPL Limbo | `https://limbo.monumenta-poloniae-liturgica.ispan.pl/api/v1/` |\n'
+        '| Liturgica Poloniae | `https://monumenta-poloniae-liturgica.ispan.pl/api/v1/` |\n'
+        '| Canon Missae | `https://canon-missae.ispan.pl/api/v1/` |\n'
+        '| Corpus Liturgicum | `https://corpus-liturgicum.org/api/v1/` |\n\n'
+        'The controlled vocabularies are curated on eCatalogus and replicated to every '
+        'instance, so their UUIDs are identical everywhere. A manuscript\'s UUID belongs '
+        'to the instance that holds it.\n\n'
+        '### Quick start\n\n'
+        '```\n'
+        'curl https://limbo.monumenta-poloniae-liturgica.ispan.pl/api/v1/manuscripts/?search=Tinecense\n'
+        '```\n\n'
+        '### Access\n\n'
+        '* **Reading** needs no account and no key. Anonymous traffic is limited to 15 '
+        'requests per minute; authenticated callers are not limited.\n'
+        '* **Writing** needs an eCatalogus account in the `api_importers` group, sent as '
+        'HTTP Basic. Ask the eCatalogus administrator to create the account or add yours '
+        'to the group. Use *Authorize* above to try the write endpoints here.\n'
+        '* **CORS:** browser calls are allowed from origins on the instance\'s allow-list '
+        '(e.g. `https://ritus-indexer.ispan.pl`). Do not send cookies; the `Authorization` '
+        'header carries the identity.\n\n'
+        '### Conventions\n\n'
+        '* Records are identified by UUID. Numeric ids differ between instances and are '
+        'not published, except in `rite-names` and `formulas`, where they are kept identical.\n'
+        '* Lists page with `limit`/`offset`; fetch the next page with `offset=next_offset` '
+        'until it is `null`.\n'
+        '* Errors are JSON with a `detail` message. Validation failures add an `errors` '
+        'list naming the row, field and value of every problem.\n'
+        '* Data is published under **CC BY-NC 4.0**: free to reuse with attribution, '
+        'for non-commercial purposes only. Every response carries a '
+        '`Link: <…>; rel="license"` header, and read responses include a `rights` block '
+        'with the required attribution and a ready-made citation.\n\n'
+        'The *eCatalogus Public API v1 Guide* (PDF) has step-by-step walkthroughs.'
     ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
@@ -416,9 +456,11 @@ CACHES = {
 # Set DATA_LICENSE_* environment variables to override per deployment.
 DATA_LICENSE = {
     # SPDX identifier — the machine-readable form other systems match on.
-    'id': os.getenv('DATA_LICENSE_ID', 'CC-BY-4.0'),
-    'name': os.getenv('DATA_LICENSE_NAME', 'Creative Commons Attribution 4.0 International'),
-    'url': os.getenv('DATA_LICENSE_URL', 'https://creativecommons.org/licenses/by/4.0/'),
+    'id': os.getenv('DATA_LICENSE_ID', 'CC-BY-NC-4.0'),
+    'name': os.getenv(
+        'DATA_LICENSE_NAME', 'Creative Commons Attribution-NonCommercial 4.0 International',
+    ),
+    'url': os.getenv('DATA_LICENSE_URL', 'https://creativecommons.org/licenses/by-nc/4.0/'),
     'copyright': os.getenv(
         'DATA_LICENSE_COPYRIGHT',
         'Copyright (c) 2024-2026 Instytut Sztuki Polskiej Akademii Nauk (PAN) '
@@ -430,11 +472,11 @@ DATA_LICENSE = {
     ),
     'rights_holder_url': os.getenv('DATA_LICENSE_RIGHTS_HOLDER_URL', 'https://ispan.pl/'),
     # Attribution the reuser is required to reproduce. Kept separate from the
-    # copyright line because CC BY obliges display of the credit, not the notice.
+    # copyright line because CC BY-NC obliges display of the credit, not the notice.
     'required_statement': os.getenv(
         'DATA_LICENSE_REQUIRED_STATEMENT',
         'Data from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). '
-        'Used under CC BY 4.0.',
+        'Used under CC BY-NC 4.0; not for commercial use.',
     ),
 }
 

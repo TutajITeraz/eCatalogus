@@ -35,6 +35,15 @@ class AnonExpensiveRateThrottle(AnonRateThrottle):
     scope = 'anon_expensive'
 
 
+class ApiV1AnonRateThrottle(AnonRateThrottle):
+    """Anonymous budget for the public API v1, separate from the site's own pages.
+
+    Inherits ``AnonRateThrottle``, so authenticated callers are still exempt.
+    """
+
+    scope = 'api_v1_anon'
+
+
 def user_can_write_api(user, permissions=()):
     """Return True when ``user`` may create or modify catalogue data.
 

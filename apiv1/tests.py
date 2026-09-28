@@ -30,7 +30,21 @@ def basic_auth(username, password):
     return f'Basic {token}'
 
 
-class ApiAccessLockdownTests(TestCase):
+class ApiTestCase(TestCase):
+    """Every test starts with a fresh anonymous rate-limit budget.
+
+    The throttle counts requests in the cache, keyed by client IP, and the test
+    client always has the same one — without this, the public API's small
+    anonymous budget runs out part-way through the suite.
+    """
+
+    def _pre_setup(self):
+        super()._pre_setup()
+        from django.core.cache import cache
+        cache.clear()
+
+
+class ApiAccessLockdownTests(ApiTestCase):
     """Regression cover for the endpoints that used to accept anonymous writes."""
 
     def setUp(self):
@@ -111,7 +125,7 @@ class ApiAccessLockdownTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class ApiV1ReadTests(TestCase):
+class ApiV1ReadTests(ApiTestCase):
 
     def setUp(self):
         self.place = Places.objects.create(repository_today_eng='Cracow', repository_today_local_language='Krakow')
@@ -143,6 +157,31 @@ class ApiV1ReadTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['api_version'], 'v1')
         self.assertIn('manuscript_content_bulk', payload['endpoints'])
+
+    def test_browser_gets_json_rather_than_a_server_error(self):
+        """A browser asks for HTML first; the browsable API template is not installed."""
+        browser_accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+
+        for url in [
+            reverse('apiv1:root'),
+            reverse('apiv1:manuscript-list') + '?search=Missale',
+            reverse('apiv1:manuscript-content', kwargs={'manuscript_uuid': self.manuscript.uuid}),
+            reverse('apiv1:dictionary-detail', kwargs={'slug': 'rite-names'}),
+        ]:
+            response = self.client.get(url, HTTP_ACCEPT=browser_accept)
+
+            self.assertEqual(response.status_code, 200, url)
+            self.assertEqual(response['Content-Type'], 'application/json', url)
+
+    def test_root_url_templates_keep_their_placeholders(self):
+        """A client substitutes {uuid}; it cannot substitute %7Buuid%7D."""
+        endpoints = self.client.get(reverse('apiv1:root')).json()['endpoints']
+
+        self.assertEqual(
+            endpoints['manuscript_content_bulk'],
+            'http://testserver/api/v1/manuscripts/{uuid}/content/bulk/',
+        )
+        self.assertNotIn('%7B', ''.join(endpoints.values()))
 
     def test_manuscript_list_is_public_and_carries_labels(self):
         response = self.client.get(reverse('apiv1:manuscript-list'))
@@ -181,6 +220,28 @@ class ApiV1ReadTests(TestCase):
             if block['model'] == 'indexerapp.Manuscripts'
         )['results'][0]
         self.assertNotIn('dating_label', record)
+
+    def test_package_links_images_instead_of_embedding_them(self):
+        """Scans are served by the web server; inlining them made one package gigabytes."""
+        import tempfile
+
+        from django.core.files.base import ContentFile
+        from django.test import override_settings
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.manuscript.image.save('scan.png', ContentFile(b'\x89PNG fake image bytes'))
+
+            response = self.client.get(
+                reverse('apiv1:manuscript-package', kwargs={'manuscript_uuid': self.manuscript.uuid})
+            )
+
+        self.assertEqual(response.status_code, 200)
+        media_files = response.json()['media_files']
+        self.assertEqual(len(media_files), 1)
+        self.assertNotIn('content_base64', media_files[0])
+        self.assertEqual(media_files[0]['size'], len(b'\x89PNG fake image bytes'))
+        self.assertTrue(media_files[0]['url'].startswith('http://testserver/media/'))
+        self.assertTrue(media_files[0]['url'].endswith('.png'))
 
     def test_content_listing_uses_the_import_vocabulary(self):
         response = self.client.get(
@@ -224,7 +285,7 @@ class ApiV1ReadTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
-class ApiV1WriteTests(TestCase):
+class ApiV1WriteTests(ApiTestCase):
 
     def setUp(self):
         self.password = 'Secret123!pass'
@@ -432,7 +493,7 @@ class ApiV1WriteTests(TestCase):
         self.assertEqual(copied.where_in_ms_from, '2r')
 
 
-class ApiV1ManuscriptCreationTests(TestCase):
+class ApiV1ManuscriptCreationTests(ApiTestCase):
 
     def setUp(self):
         self.password = 'Secret123!pass'
@@ -497,7 +558,7 @@ class ApiV1ManuscriptCreationTests(TestCase):
         self.assertEqual(TimeReference.objects.count(), 1)
 
 
-class ApiThrottlingTests(TestCase):
+class ApiThrottlingTests(ApiTestCase):
     """The promise made in INTEGRATION.md: anonymous is capped, authenticated is not."""
 
     def setUp(self):
@@ -526,8 +587,14 @@ class ApiThrottlingTests(TestCase):
         return mock.patch.object(
             AnonRateThrottle,
             'THROTTLE_RATES',
-            dict(AnonRateThrottle.THROTTLE_RATES, anon=anon),
+            dict(AnonRateThrottle.THROTTLE_RATES, anon=anon, api_v1_anon=anon),
         )
+
+    def test_public_api_has_its_own_small_anonymous_budget(self):
+        from django.conf import settings
+
+        rates = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']
+        self.assertEqual(rates['api_v1_anon'], '15/min')
 
     def test_anonymous_reads_are_throttled(self):
         with self._rates('2/min'):
@@ -568,7 +635,7 @@ class ApiThrottlingTests(TestCase):
         self.assertEqual(Content.objects.count(), 5)
 
 
-class ApiSchemaTests(TestCase):
+class ApiSchemaTests(ApiTestCase):
 
     def test_schema_is_publicly_reachable(self):
         """Integration partners need the reference without an admin account."""
@@ -584,7 +651,7 @@ class ApiSchemaTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class BrowserIntegrationTests(TestCase):
+class BrowserIntegrationTests(ApiTestCase):
     """The ritus-indexer flow: partner-site JavaScript, credentials typed by the user."""
 
     PARTNER_ORIGIN = 'https://ritus-indexer.ispan.pl'
@@ -700,7 +767,7 @@ class BrowserIntegrationTests(TestCase):
         self.assertEqual(Content.objects.count(), 1)
 
 
-class DataLicensingTests(TestCase):
+class DataLicensingTests(ApiTestCase):
     """Every export must say who owns the data, who made it, and on what terms."""
 
     def setUp(self):
@@ -746,10 +813,11 @@ class DataLicensingTests(TestCase):
         )
 
         rights = response.json()['rights']
-        self.assertEqual(rights['license'], 'CC-BY-4.0')
+        self.assertEqual(rights['license'], 'CC-BY-NC-4.0')
         self.assertIn('Instytut Sztuki Polskiej Akademii Nauk', rights['copyright'])
         self.assertIn('2024-2026', rights['copyright'])
-        self.assertTrue(rights['license_url'].startswith('https://creativecommons.org/'))
+        self.assertEqual(rights['license_url'], 'https://creativecommons.org/licenses/by-nc/4.0/')
+        self.assertIn('not for commercial use', rights['required_statement'])
         self.assertEqual(rights['rights_holder'], 'Instytut Sztuki Polskiej Akademii Nauk (PAN)')
 
     def test_package_export_credits_the_people_in_the_export(self):
@@ -775,7 +843,7 @@ class DataLicensingTests(TestCase):
 
         citation = response.json()['rights']['recommended_citation']
         self.assertIn('Graduale Cracoviense', citation)
-        self.assertIn('CC-BY-4.0', citation)
+        self.assertIn('CC-BY-NC-4.0', citation)
         self.assertIn('accessed', citation)
         self.assertTrue(citation.endswith('.'))
 
@@ -788,7 +856,7 @@ class DataLicensingTests(TestCase):
         ]:
             payload = self.client.get(url).json()
             self.assertIn('rights', payload, url)
-            self.assertEqual(payload['rights']['license'], 'CC-BY-4.0', url)
+            self.assertEqual(payload['rights']['license'], 'CC-BY-NC-4.0', url)
 
     def test_source_url_is_recorded_so_the_export_is_traceable(self):
         response = self.client.get(
@@ -811,7 +879,7 @@ class DataLicensingTests(TestCase):
         self.assertIn('rel="license"', response['Link'])
 
 
-class GrantApiAccessCommandTests(TestCase):
+class GrantApiAccessCommandTests(ApiTestCase):
     """The command must never damage an existing account it is pointed at."""
 
     def run_command(self, *args, **kwargs):
@@ -874,7 +942,7 @@ class GrantApiAccessCommandTests(TestCase):
         self.assertTrue(user.check_password('Original!pass1'))
 
 
-class DictionarySelectorTests(TestCase):
+class DictionarySelectorTests(ApiTestCase):
     """The ``?uuids=`` / ``?legacy_ids=`` / ``?fields=`` selectors, and the
     deliberate absence of the local ``id`` column."""
 
@@ -986,7 +1054,7 @@ class DictionarySelectorTests(TestCase):
         self.assertEqual(response.json()['count'], 1)
 
 
-class MusicNotationImportTests(TestCase):
+class MusicNotationImportTests(ApiTestCase):
     """``music_notation_id`` points at one manuscript's notation record, so a
     notation *name* can only be resolved within the manuscript being imported."""
 
