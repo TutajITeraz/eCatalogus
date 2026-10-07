@@ -268,7 +268,9 @@ window.CorpusAnalysisViz = (function () {
    * ------------------------------------------------------------------ */
 
   function renderMdsMap(options) {
-    const { selector, manuscripts, embedding, clusters, colorBy, onSelect, traditionNames } = options;
+    const { selector, manuscripts, embedding, clusters, colorBy, onSelect, traditionNames, matrices } = options;
+    // Optional second criterion, drawn as the ring around each point.
+    const outlineBy = options.outlineBy && options.outlineBy !== 'none' ? options.outlineBy : null;
     // Legend entry the reader clicked to look at one group alone; null shows all.
     const isolated = options.isolated === undefined ? null : options.isolated;
     const coordinates = embedding.coordinates || [];
@@ -302,16 +304,16 @@ window.CorpusAnalysisViz = (function () {
     const GREY = '#c9c9c9';
 
     /** The legend group a manuscript belongs to under the current colouring. */
-    function categoryOf(i) {
-      if (colorBy === 'cluster' && cut) {
+    function categoryIn(mode, i) {
+      if (mode === 'cluster' && cut) {
         return { key: 'g' + cut[i], label: 'Group ' + cut[i], color: colorFor(cut[i] - 1) };
       }
-      if (colorBy === 'century') {
+      if (mode === 'century') {
         const year = manuscripts[i].year_from;
         if (!year) return { key: 'none', label: 'Undated', color: GREY };
         return { key: 'date', label: '', color: d3.interpolateViridis(Math.min(Math.max((year - 700) / 600, 0), 1)) };
       }
-      const layered = colorBy === 'layer';
+      const layered = mode === 'layer';
       const profile = (layered ? manuscripts[i].layer_profile
         : (manuscripts[i].tradition_profile || []).slice(0, -1)) || [];
       if (!profile.length || Math.max.apply(null, profile) <= 0) {
@@ -323,7 +325,43 @@ window.CorpusAnalysisViz = (function () {
       return { key: (layered ? 'l' : 't') + index, label: name, color: colorFor(index) };
     }
 
-    const categories = manuscripts.map(function (_m, i) { return categoryOf(i); });
+    const categories = manuscripts.map(function (_m, i) { return categoryIn(colorBy, i); });
+    const outlines = outlineBy
+      ? manuscripts.map(function (_m, i) { return categoryIn(outlineBy, i); }) : null;
+
+    const MODE_NAMES = {
+      tradition: 'tradition', cluster: 'group', layer: 'cluster', century: 'date'
+    };
+
+    /** Members of the same legend group as manuscript i, for the tooltip. */
+    function groupMembers(i) {
+      const mine = categories[i];
+      if (!mine.label) return '';
+      const others = [];
+      categories.forEach(function (c, j) {
+        if (j !== i && c.key === mine.key) others.push(manuscripts[j].label);
+      });
+      if (!others.length) return '';
+      const shown = others.slice(0, 15);
+      return '<br><em>' + escapeHtml(mine.label) + ' (' + (others.length + 1) + ' manuscripts):</em><br>' +
+        shown.map(escapeHtml).join('<br>') +
+        (others.length > shown.length ? '<br>… and ' + (others.length - shown.length) + ' more' : '');
+    }
+
+    /** The five manuscripts closest in content, from the run's own similarity matrix. */
+    function nearestNeighbours(i) {
+      if (!matrices || !matrices.metrics) return '';
+      const metric = matrices.metrics.idf_cosine ? 'idf_cosine' : matrices.primary;
+      if (!matrices.metrics[metric]) return '';
+      const scored = [];
+      for (let j = 0; j < manuscripts.length; j++) {
+        if (j !== i) scored.push({ j: j, v: matrixValue(matrices, metric, matrices.n, i, j) });
+      }
+      scored.sort(function (a, b) { return b.v - a.v; });
+      return '<br><em>Most similar:</em><br>' + scored.slice(0, 5).map(function (e) {
+        return escapeHtml(manuscripts[e.j].label) + ' (' + e.v.toFixed(2) + ')';
+      }).join('<br>');
+    }
 
     function pointColor(i) { return categories[i].color; }
 
@@ -350,7 +388,10 @@ window.CorpusAnalysisViz = (function () {
             '<strong>' + ms.label + '</strong><br>' +
             (ms.shelf_mark || '') + '<br>' +
             ms.n_distinct + ' distinct formulas, ' + ms.n_items + ' occurrences' +
-            (ms.year_from ? '<br>' + ms.year_from + '–' + ms.year_to : ''),
+            (ms.year_from ? '<br>' + ms.year_from + '–' + ms.year_to : '') +
+            (outlines && outlines[i].label
+              ? '<br>' + MODE_NAMES[outlineBy] + ': ' + escapeHtml(outlines[i].label) : '') +
+            groupMembers(i) + nearestNeighbours(i),
             event
           );
         })
@@ -393,6 +434,27 @@ window.CorpusAnalysisViz = (function () {
               isolated: isolated === entry.c.key ? null : entry.c.key
             }));
           });
+      });
+    }
+
+    if (outlines) {
+      const ring = new Map();
+      outlines.forEach(function (c) {
+        if (!c.label) return;
+        if (!ring.has(c.key)) ring.set(c.key, { c: c, n: 0 });
+        ring.get(c.key).n += 1;
+      });
+      const ringLegend = d3.select(node).append('div')
+        .attr('class', 'printIt flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs');
+      ringLegend.append('span').style('color', '#666')
+        .text('Ring = ' + MODE_NAMES[outlineBy] + ':');
+      Array.from(ring.values()).sort(function (a, b) {
+        return a.c.label.localeCompare(b.c.label, undefined, { numeric: true });
+      }).forEach(function (entry) {
+        ringLegend.append('span').html(
+          '<span style="display:inline-block;width:11px;height:11px;margin-right:5px;' +
+          'vertical-align:-1px;border-radius:50%;border:3px solid ' + entry.c.color +
+          ';box-sizing:border-box"></span>' + escapeHtml(entry.c.label) + ' (' + entry.n + ')');
       });
     }
 

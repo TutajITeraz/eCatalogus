@@ -1,7 +1,7 @@
 <script src="/static/js/cdn/d3.v7.min.js"></script>
-<script src="/static/js/prayer_hover.js?v=20261008"></script>
-<script src="/static/js/corpus_analysis_viz.js?v=20261008"></script>
-<script src="/static/js/corpus_analysis.js?v=20261008"></script>
+<script src="/static/js/prayer_hover.js?v=20261009"></script>
+<script src="/static/js/corpus_analysis_viz.js?v=20261009"></script>
+<script src="/static/js/corpus_analysis.js?v=20261009"></script>
 
 <div id="corpusAnalysisRoot" x-init="corpus_analysis_init()" class="px-2">
   <h1 class="printIt text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left mt-4 mb-1">
@@ -32,6 +32,15 @@
     <span id="corpusColorWrapper" class="items-center gap-2" style="display:none">
       <label for="corpusColorSelect" class="font-semibold ml-2">Colour by:</label>
       <select id="corpusColorSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="tradition">Dominant tradition</option>
+        <option value="cluster">Discovered group</option>
+        <option value="layer">Dominant liturgical cluster</option>
+        <option value="century">Date</option>
+        <option value="all">All four side by side</option>
+      </select>
+      <label for="corpusOutlineSelect" class="font-semibold ml-2">Ring by:</label>
+      <select id="corpusOutlineSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="none">None</option>
         <option value="tradition">Dominant tradition</option>
         <option value="cluster">Discovered group</option>
         <option value="layer">Dominant liturgical cluster</option>

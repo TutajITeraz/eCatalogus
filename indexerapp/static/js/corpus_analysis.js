@@ -13,6 +13,7 @@ let corpusAnalysisState = {
   cohort: null,
   metric: 'idf_cosine',
   colorBy: 'tradition',
+  outlineBy: 'none',
   cache: {},
   activeTab: 'report',
   pollTimer: null,
@@ -335,21 +336,43 @@ async function corpusRenderHeatmap() {
 
 async function corpusRenderMap() {
   const state = corpusAnalysisState;
-  const [manuscripts, embedding, clusters] = await Promise.all([
+  const [manuscripts, embedding, clusters, matrices] = await Promise.all([
     corpusFetchArtifact(state.cohort, 'manuscripts'),
     corpusFetchArtifact(state.cohort, 'ms_embedding'),
-    corpusFetchArtifact(state.cohort, 'ms_clusters')
+    corpusFetchArtifact(state.cohort, 'ms_clusters'),
+    corpusFetchArtifact(state.cohort, 'matrices')
   ]);
   if (!manuscripts || !embedding) {
     return CorpusAnalysisViz.message('#corpusMap', 'No embedding in this comparison group.');
   }
-  CorpusAnalysisViz.renderMdsMap({
-    selector: '#corpusMap',
+  const base = {
     manuscripts: manuscripts.manuscripts,
     embedding: embedding,
     clusters: clusters || {},
-    colorBy: state.colorBy,
+    matrices: matrices,
+    outlineBy: state.outlineBy,
     traditionNames: manuscripts.tradition_columns
+  };
+
+  if (state.colorBy !== 'all') {
+    document.getElementById('corpusMap').style.height = '64vh';
+    return CorpusAnalysisViz.renderMdsMap(Object.assign({ selector: '#corpusMap', colorBy: state.colorBy }, base));
+  }
+
+  // One small map per criterion, same coordinates, so the same book can be
+  // found in each and the criteria compared by eye.
+  const modes = [
+    ['tradition', 'Dominant tradition'], ['cluster', 'Discovered group'],
+    ['layer', 'Dominant liturgical cluster'], ['century', 'Date']
+  ];
+  const host = document.getElementById('corpusMap');
+  host.style.height = 'auto';
+  host.innerHTML = '<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">' + modes.map(function (m) {
+    return '<div><h4 class="caudex-bold mb-1">' + m[1] + '</h4>' +
+      '<div id="corpusMap-' + m[0] + '" style="height:460px"></div></div>';
+  }).join('') + '</div>';
+  modes.forEach(function (m) {
+    CorpusAnalysisViz.renderMdsMap(Object.assign({ selector: '#corpusMap-' + m[0], colorBy: m[0] }, base));
   });
 }
 
@@ -961,6 +984,10 @@ function corpus_analysis_init() {
   });
   document.getElementById('corpusColorSelect').addEventListener('change', function (e) {
     state.colorBy = e.target.value;
+    corpusRenderMap();
+  });
+  document.getElementById('corpusOutlineSelect').addEventListener('change', function (e) {
+    state.outlineBy = e.target.value;
     corpusRenderMap();
   });
   CORPUS_TABS.forEach(function (tab) {
