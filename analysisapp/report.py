@@ -56,6 +56,24 @@ def _prayer(formula_uuid, text):
     return {'t': display, 'f': str(formula_uuid)}
 
 
+def _witnesses(count, labels):
+    """A count that lists its manuscripts when hovered.
+
+    `{'n': count, 'ms': [labels]}`; the page shows the number and puts the names
+    in a tooltip, so "shared by 7" never leaves the reader asking which seven.
+    """
+    return {'n': int(count), 'ms': [str(label) for label in labels]}
+
+
+def _formula_witnesses(view):
+    """Manuscript labels carrying each formula, indexed by local formula."""
+    carriers = [[] for _ in range(view.n_formulas)]
+    for ms_index, counts in enumerate(view.counts):
+        for local in counts:
+            carriers[local].append(view.manuscripts[ms_index].label)
+    return carriers
+
+
 def _prayer_sequence(formulas, separator, label=None):
     """A cell listing several prayers, each one hoverable on its own.
 
@@ -246,11 +264,12 @@ def _core_repertoire(view, formula_space):
     core = np.where(df >= threshold)[0]
     order = core[np.argsort(df[core])[::-1]]
 
+    carriers = _formula_witnesses(view)
     rows = [
         [
             _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).co_no),
             _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).incipit),
-            int(df[f]),
+            _witnesses(df[f], carriers[int(f)]),
             int(formula_space.total_counts[f]),
             round(float(formula_space.mean_position[f]), 3),
             round(float(formula_space.position_spread[f]), 3),
@@ -439,11 +458,12 @@ def _order(view, manuscript_space, block_list, formula_space):
     ]
 
     mobile = np.argsort(formula_space.position_spread)[::-1]
+    carriers = _formula_witnesses(view)
     mobile_rows = [
         [
             _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).co_no),
             _prayer(view.formula_meta(int(f)).uuid, view.formula_meta(int(f)).incipit),
-            int(formula_space.df[f]),
+            _witnesses(formula_space.df[f], carriers[int(f)]),
             round(float(formula_space.mean_position[f]), 3),
             round(float(formula_space.position_spread[f]), 3),
         ]
@@ -453,7 +473,7 @@ def _order(view, manuscript_space, block_list, formula_space):
     block_rows = [
         [
             b['length'],
-            b['support'],
+            _witnesses(b['support'], [m['label'] for m in b['manuscripts']]),
             round(b['mean_position'], 3) if b['mean_position'] is not None else '',
             _prayer_sequence(b['formulas'][:8], ' → '),
         ]

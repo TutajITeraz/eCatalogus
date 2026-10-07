@@ -240,8 +240,8 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         ],
         'MEDIA_ROOT': os.getenv(media_root_env_name, os.getenv('MEDIA_ROOT', default_media_root)),
         'SITE_NAME': site_name,
-        'PROJECT_ID': defaults.get('project_id', 0),
-        'FOREIGN_ID_NAME': defaults.get('foreign_id_name', 'foreign id'),
+        'PROJECT_ID': resolved_defaults.get('project_id', 0),
+        'FOREIGN_ID_NAME': resolved_defaults.get('foreign_id_name', 'foreign id'),
         'SESSION_COOKIE_NAME': os.getenv(
             f'{env_prefix}_SESSION_COOKIE_NAME',
             os.getenv('SESSION_COOKIE_NAME', defaults.get('session_cookie_name', f'{instance_slug}_sessionid')),

@@ -562,6 +562,33 @@ window.CorpusAnalysisViz = (function () {
     return escapeHtml(text);
   }
 
+  /** Longest manuscript list shown in a tooltip before it is cut off. */
+  const WITNESS_TOOLTIP_LIMIT = 60;
+
+  /**
+   * A count whose hover lists the manuscripts behind it: `{n, ms: [labels]}`.
+   * The list rides in a data attribute and is shown by the delegated handlers
+   * installed below, so it works for any table the report renders.
+   */
+  function witnessMarkup(cell) {
+    if (!cell.ms.length) return escapeHtml(cell.n);
+    const shown = cell.ms.slice(0, WITNESS_TOOLTIP_LIMIT);
+    const rest = cell.ms.length - shown.length;
+    const html = '<div class="font-semibold mb-1">' + escapeHtml(cell.n) + ' manuscripts</div>' +
+      shown.map(escapeHtml).join('<br>') +
+      (rest > 0 ? '<br>… and ' + rest + ' more' : '');
+    return '<span class="corpus-witnesses" style="border-bottom:1px dotted #795a42;cursor:help" ' +
+      'data-witnesses="' + escapeHtml(html) + '">' + escapeHtml(cell.n) + '</span>';
+  }
+
+  document.addEventListener('mousemove', function (event) {
+    const target = event.target.closest && event.target.closest('.corpus-witnesses');
+    if (target) showTooltip(target.getAttribute('data-witnesses'), event);
+  });
+  document.addEventListener('mouseout', function (event) {
+    if (event.target.closest && event.target.closest('.corpus-witnesses')) hideTooltip();
+  });
+
   function legacyPrayerCell(value, separator) {
     if (separator === null) {
       return CO_NUMBER.test(value.trim())
@@ -583,6 +610,9 @@ window.CorpusAnalysisViz = (function () {
    * several prayers keeps each one hoverable on its own.
    */
   function renderCell(cell, column) {
+    if (cell && typeof cell === 'object' && !Array.isArray(cell) && Array.isArray(cell.ms)) {
+      return witnessMarkup(cell);
+    }
     if (Array.isArray(cell)) {
       return cell.map(function (token) { return renderCell(token, column); }).join('');
     }

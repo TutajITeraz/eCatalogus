@@ -972,13 +972,13 @@ class Manuscripts(models.Model):
             return
 
         try:
-            img = Image.open(self.image.path)
+            img = PILImage.open(self.image.path)
 
             # Convert problematic modes to RGB
             if img.mode in ("RGBA", "LA", "P"):   # P = palette (often from GIF/PNG)
                 # For transparent PNGs: paste on white background
                 if img.mode in ("RGBA", "LA"):
-                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background = PILImage.new("RGB", img.size, (255, 255, 255))
                     if img.mode == "RGBA":
                         background.paste(img, mask=img.split()[-1])  # use alpha channel
                     else:
@@ -992,7 +992,7 @@ class Manuscripts(models.Model):
                 img = img.convert("RGB")
 
             # Resize
-            img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+            img.thumbnail((300, 300), PILImage.Resampling.LANCZOS)
 
             # Save as JPEG in memory
             thumb_io = BytesIO()
