@@ -55,7 +55,8 @@ def analyse(view: CohortView) -> dict:
 
     records: List[dict] = []
     for local, by_rubric in observations.items():
-        witnesses = len({ms for members in by_rubric.values() for ms in members})
+        carriers = {ms for members in by_rubric.values() for ms in members}
+        witnesses = len(carriers)
         counts = Counter({rubric: len(members) for rubric, members in by_rubric.items()})
         total = sum(counts.values())
         modal_rubric, modal_hits = counts.most_common(1)[0]
@@ -66,6 +67,7 @@ def analyse(view: CohortView) -> dict:
             'co_no': meta.co_no,
             'incipit': meta.incipit,
             'witnesses': witnesses,
+            'witness_labels': sorted(view.manuscripts[ms].label for ms in carriers),
             'distinct_rubrics': len(counts),
             'modal_rubric': view.corpus.rubrics[modal_rubric].name,
             'modal_rubric_uuid': view.corpus.rubrics[modal_rubric].uuid,
@@ -92,7 +94,7 @@ def analyse(view: CohortView) -> dict:
         'min_witnesses': MIN_WITNESSES,
         'formulas_with_rubrics': len(records),
         'formulas_above_threshold': len(reliable),
-        'formulas': records,
+        'formulas': [{k: v for k, v in r.items() if k != 'witness_labels'} for r in records],
         'anchors': anchors[:TOP_N],
         'floaters': [r for r in floaters if r['entropy'] > 0][:TOP_N],
     }

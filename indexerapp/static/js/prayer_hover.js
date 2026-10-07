@@ -202,6 +202,14 @@ window.PrayerHover = (function () {
     return text.slice(0, limit).replace(/\s+\S*$/, '') + '…';
   }
 
+  function manuscriptNamesHtml(formula) {
+    const names = formula.manuscript_names || [];
+    if (!names.length) return '';
+    const rest = (formula.manuscripts || names.length) - names.length;
+    return '<div class="ph-meta">' + names.map(escapeHtml).join('; ') +
+      (rest > 0 ? '; … and ' + rest + ' more' : '') + '</div>';
+  }
+
   function entryHtml(formula) {
     const traditions = (formula.traditions || []).map(function (tradition) {
       const colour = /^#?[0-9a-fA-F]{6}$/.test(tradition.color_rgb || '')
@@ -230,6 +238,7 @@ window.PrayerHover = (function () {
           escapeHtml(truncate(formula.translation_en, 900)) + '</div>'
         : '') +
       (meta.length ? '<div class="ph-meta">' + escapeHtml(meta.join(' · ')) + '</div>' : '') +
+      manuscriptNamesHtml(formula) +
       '</div>';
   }
 

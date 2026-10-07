@@ -348,7 +348,8 @@ async function corpusRenderMap() {
     manuscripts: manuscripts.manuscripts,
     embedding: embedding,
     clusters: clusters || {},
-    colorBy: state.colorBy
+    colorBy: state.colorBy,
+    traditionNames: manuscripts.tradition_columns
   });
 }
 

@@ -16,9 +16,10 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from indexerapp.api_access import user_can_write_api
-from indexerapp.models import Content, Formulas
+from indexerapp.models import Content, Formulas, Manuscripts
 
 from .models import AnalysisArtifact, AnalysisRun
+from .extract import _manuscript_label
 from .pipeline import DEFAULT_PARAMS
 
 #: Artifacts served as text rather than JSON, for tools outside the browser.
@@ -212,6 +213,7 @@ class FormulaLookupView(View):
 
     #: Enough for any single hover burst; a scraper gains nothing by batching wider.
     MAX_KEYS = 80
+    MAX_MANUSCRIPT_NAMES = 40
     #: Formula text is public (so is /api/formulas_index/), and a run's artifacts are
     #: immutable, so the browser may hold these cards for a while.
     CACHE_SECONDS = 300
@@ -261,6 +263,24 @@ class FormulaLookupView(View):
             )
         }
 
+        # Which manuscripts, not only how many. Capped, because a prayer found in
+        # hundreds of books would otherwise bloat every hover card.
+        carriers = {}
+        pairs = (
+            Content.objects
+            .filter(formula_uuid__in=[f.uuid for f in records if f.uuid],
+                    manuscript_uuid__isnull=False)
+            .values_list('formula_uuid', 'manuscript_uuid')
+            .distinct()
+        )
+        for formula_uuid, manuscript_uuid in pairs:
+            carriers.setdefault(str(formula_uuid), []).append(manuscript_uuid)
+        wanted = {m for ms in carriers.values() for m in ms[:self.MAX_MANUSCRIPT_NAMES]}
+        labels = {
+            m.uuid: _manuscript_label(m.name, m.common_name, m.shelf_mark)
+            for m in Manuscripts.objects.filter(uuid__in=wanted)
+        }
+
         payload = []
         for formula in records:
             key = str(formula.uuid) if formula.uuid else None
@@ -278,6 +298,10 @@ class FormulaLookupView(View):
                 ],
                 'occurrences': counts.get('occurrences', 0),
                 'manuscripts': counts.get('manuscripts', 0),
+                'manuscript_names': sorted(
+                    labels[m] for m in carriers.get(key, [])[:self.MAX_MANUSCRIPT_NAMES]
+                    if m in labels
+                ),
             })
 
         response = JsonResponse({'formulas': payload})

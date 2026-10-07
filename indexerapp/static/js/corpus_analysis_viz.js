@@ -268,7 +268,9 @@ window.CorpusAnalysisViz = (function () {
    * ------------------------------------------------------------------ */
 
   function renderMdsMap(options) {
-    const { selector, manuscripts, embedding, clusters, colorBy, onSelect } = options;
+    const { selector, manuscripts, embedding, clusters, colorBy, onSelect, traditionNames } = options;
+    // Legend entry the reader clicked to look at one group alone; null shows all.
+    const isolated = options.isolated === undefined ? null : options.isolated;
     const coordinates = embedding.coordinates || [];
     if (coordinates.length < 2) {
       return message(selector, 'Not enough manuscripts to place on a map.');
@@ -297,24 +299,35 @@ window.CorpusAnalysisViz = (function () {
 
     const cut = clusters.suggested_k ? clusters.cuts[String(clusters.suggested_k)] : null;
 
-    function pointColor(i) {
-      if (colorBy === 'cluster' && cut) return colorFor(cut[i] - 1);
+    const GREY = '#c9c9c9';
+
+    /** The legend group a manuscript belongs to under the current colouring. */
+    function categoryOf(i) {
+      if (colorBy === 'cluster' && cut) {
+        return { key: 'g' + cut[i], label: 'Group ' + cut[i], color: colorFor(cut[i] - 1) };
+      }
       if (colorBy === 'century') {
         const year = manuscripts[i].year_from;
-        if (!year) return '#c9c9c9';
-        return d3.interpolateViridis(Math.min(Math.max((year - 700) / 600, 0), 1));
+        if (!year) return { key: 'none', label: 'Undated', color: GREY };
+        return { key: 'date', label: '', color: d3.interpolateViridis(Math.min(Math.max((year - 700) / 600, 0), 1)) };
       }
-      if (colorBy === 'layer') {
-        const profile = manuscripts[i].layer_profile || [];
-        if (!profile.length) return '#c9c9c9';
-        return colorFor(profile.indexOf(Math.max.apply(null, profile)));
+      const layered = colorBy === 'layer';
+      const profile = (layered ? manuscripts[i].layer_profile
+        : (manuscripts[i].tradition_profile || []).slice(0, -1)) || [];
+      if (!profile.length || Math.max.apply(null, profile) <= 0) {
+        return { key: 'none', label: layered ? 'No cluster' : 'Unattributed', color: GREY };
       }
-      const profile = manuscripts[i].tradition_profile || [];
-      if (!profile.length) return '#c9c9c9';
-      const attributed = profile.slice(0, -1);
-      if (!attributed.length || Math.max.apply(null, attributed) <= 0) return '#c9c9c9';
-      return colorFor(attributed.indexOf(Math.max.apply(null, attributed)));
+      const index = profile.indexOf(Math.max.apply(null, profile));
+      const name = layered ? 'Cluster ' + (index + 1)
+        : ((traditionNames && traditionNames[index]) || 'Tradition ' + (index + 1));
+      return { key: (layered ? 'l' : 't') + index, label: name, color: colorFor(index) };
     }
+
+    const categories = manuscripts.map(function (_m, i) { return categoryOf(i); });
+
+    function pointColor(i) { return categories[i].color; }
+
+    function visible(i) { return isolated === null || categories[i].key === isolated; }
 
     const sizeScale = d3.scaleSqrt()
       .domain(d3.extent(manuscripts, function (m) { return m.n_distinct; }))
@@ -327,8 +340,9 @@ window.CorpusAnalysisViz = (function () {
         .attr('cx', cx).attr('cy', cy)
         .attr('r', sizeScale(ms.n_distinct))
         .attr('fill', pointColor(i))
-        .attr('fill-opacity', 0.78)
+        .attr('fill-opacity', visible(i) ? 0.78 : 0.07)
         .attr('stroke', '#0d1b2a')
+        .attr('stroke-opacity', visible(i) ? 1 : 0.15)
         .attr('stroke-width', 0.8)
         .style('cursor', 'pointer')
         .on('mousemove', function (event) {
@@ -343,6 +357,7 @@ window.CorpusAnalysisViz = (function () {
         .on('mouseleave', hideTooltip)
         .on('click', function () { if (onSelect) onSelect(i); });
 
+      if (!visible(i)) return;
       plot.append('text')
         .attr('x', cx).attr('y', cy - sizeScale(ms.n_distinct) - 4)
         .attr('text-anchor', 'middle')
@@ -350,6 +365,36 @@ window.CorpusAnalysisViz = (function () {
         .attr('fill', '#0d1b2a')
         .text(ms.label.length > 26 ? ms.label.slice(0, 25) + '…' : ms.label);
     });
+
+    // Clickable legend: a click isolates that group, a second click restores all.
+    const seen = new Map();
+    categories.forEach(function (c) {
+      if (c.label && !seen.has(c.key)) seen.set(c.key, { c: c, n: 0 });
+      if (c.label) seen.get(c.key).n += 1;
+    });
+    const entries = Array.from(seen.values()).sort(function (a, b) {
+      return a.c.label.localeCompare(b.c.label, undefined, { numeric: true });
+    });
+    if (entries.length) {
+      const legend = d3.select(node).append('div')
+        .attr('class', 'printIt flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs');
+      entries.forEach(function (entry) {
+        const active = isolated === null || isolated === entry.c.key;
+        legend.append('button')
+          .attr('type', 'button')
+          .attr('title', 'Show only this group')
+          .style('opacity', active ? 1 : 0.4)
+          .style('cursor', 'pointer')
+          .html('<span style="display:inline-block;width:11px;height:11px;margin-right:5px;' +
+            'vertical-align:-1px;background:' + entry.c.color + '"></span>' +
+            escapeHtml(entry.c.label) + ' (' + entry.n + ')')
+          .on('click', function () {
+            renderMdsMap(Object.assign({}, options, {
+              isolated: isolated === entry.c.key ? null : entry.c.key
+            }));
+          });
+      });
+    }
 
     svg.append('text')
       .attr('x', margin.left).attr('y', size.height - 12)
@@ -394,7 +439,10 @@ window.CorpusAnalysisViz = (function () {
           (margin.left + columnWidth * (index + 0.5)) + ',' + (margin.top - 6) + ') rotate(-62)')
         .attr('font-size', 11)
         .attr('fill', '#0d1b2a')
-        .text(label.length > 26 ? label.slice(0, 25) + '…' : label);
+        .style('cursor', 'default')
+        .text(label.length > 26 ? label.slice(0, 25) + '…' : label)
+        .on('mousemove', function (event) { showTooltip(escapeHtml(label), event); })
+        .on('mouseleave', hideTooltip);
     });
 
     const canvas = wrapper.append('canvas')
@@ -410,6 +458,19 @@ window.CorpusAnalysisViz = (function () {
     context.fillRect(0, 0, width, height);
 
     const rowHeight = height / rows.length;
+
+    // Hovering the grid names the manuscript of that column in full.
+    d3.select(canvas)
+      .on('mousemove', function (event) {
+        const box = canvas.getBoundingClientRect();
+        const column = Math.floor((event.clientX - box.left) / box.width * columns.length);
+        const row = Math.floor((event.clientY - box.top) / box.height * rows.length);
+        if (column < 0 || column >= columns.length) return hideTooltip();
+        const present = row >= 0 && row < rows.length && rows[row].indexOf(column) !== -1;
+        showTooltip('<strong>' + escapeHtml(columns[column]) + '</strong>' +
+          (present ? '<br>carries this prayer' : ''), event);
+      })
+      .on('mouseleave', hideTooltip);
     context.fillStyle = '#795a42';
     rows.forEach(function (witnesses, rowIndex) {
       const y = rowIndex * rowHeight;

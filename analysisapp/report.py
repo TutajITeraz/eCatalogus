@@ -533,13 +533,13 @@ def _rubrics(rubric_analysis):
     anchors = [
         [_prayer(r.get('formula_uuid'), r['co_no']),
          _prayer(r.get('formula_uuid'), r['incipit']),
-         r['witnesses'], r['modal_rubric']]
+         _witnesses(r['witnesses'], r.get('witness_labels', [])), r['modal_rubric']]
         for r in rubric_analysis['anchors']
     ]
     floaters = [
         [_prayer(r.get('formula_uuid'), r['co_no']),
          _prayer(r.get('formula_uuid'), r['incipit']),
-         r['witnesses'], r['distinct_rubrics'],
+         _witnesses(r['witnesses'], r.get('witness_labels', [])), r['distinct_rubrics'],
          r['modal_rubric'], r['modal_share'], r['entropy']]
         for r in rubric_analysis['floaters']
     ]
