@@ -172,7 +172,8 @@ def _corpus_overview(view, formula_space, params, exemplars=None):
         'overview', 'Corpus overview',
         paragraphs=paragraphs,
         highlights=[
-            {'label': 'Manuscripts', 'value': view.n_manuscripts},
+            {'label': 'Manuscripts',
+             'value': _witnesses(view.n_manuscripts, [m.label for m in view.manuscripts])},
             {'label': 'Distinct formulas', 'value': view.n_formulas},
             {'label': 'Occurrences', 'value': total_occurrences},
             {'label': 'Minimum items per manuscript', 'value': (params or {}).get('min_items')},
@@ -662,7 +663,10 @@ def _caveats(view, formula_space, manuscript_space, exemplars, validation, rubri
             'attribution was made in the first place. Agreement scores computed with these '
             'witnesses included should not be read as independent confirmation.'
         )
-        highlights.append({'label': 'Indirect witnesses detected', 'value': len(exemplars)})
+        highlights.append({
+            'label': 'Indirect witnesses detected',
+            'value': _witnesses(len(exemplars), [e['manuscript_label'] for e in exemplars]),
+        })
 
     if validation:
         if validation.get('performed'):

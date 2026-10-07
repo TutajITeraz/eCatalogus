@@ -186,6 +186,7 @@
       const pointer = new THREE.Vector2();
 
       let formulas = [];
+      let manuscriptLabels = [];
       let coordinates = [];
       let instancedMesh = null;
       let baseColors = [];
@@ -214,6 +215,7 @@
           ]);
           coordinates = (embedding.dimensions && embedding.dimensions['3d']) || [];
           formulas = formulaData.formulas || [];
+          manuscriptLabels = (formulaData.manuscripts || []).map(function (m) { return m.label; });
 
           if (!coordinates.length || coordinates.length !== formulas.length) {
             loadingDiv.textContent = 'This run has no prayer map for the chosen cohort.';
@@ -377,9 +379,20 @@
         return bits.join(' · ');
       }
 
+      /** Names of the witnesses, so the count is never all the reader gets. */
+      function witnessList(formula) {
+        const names = (formula.witnesses || []).map(function (i) { return manuscriptLabels[i]; })
+          .filter(Boolean).sort();
+        if (!names.length) return '';
+        const shown = names.slice(0, 40);
+        return '<div class="meta">' + shown.map(escapeHtml).join('; ') +
+          (names.length > shown.length ? '; … and ' + (names.length - shown.length) + ' more' : '') +
+          '</div>';
+      }
+
       function panelHtml(formula, text) {
         return '<h3>' + escapeHtml(formula.co_no || '(no CO number)') + '</h3>' +
-          '<div class="meta">' + escapeHtml(describe(formula)) + '</div>' +
+          '<div class="meta">' + escapeHtml(describe(formula)) + '</div>' + witnessList(formula) +
           '<div>' + (text === undefined ? escapeHtml(formula.incipit) : text) + '</div>';
       }
 

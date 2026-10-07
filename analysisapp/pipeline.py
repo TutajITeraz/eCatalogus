@@ -260,6 +260,11 @@ def _write_stage_one(writer, view, space, exemplars, slug, label):
     layers = space.layers
     layer_weights = layers['formula_weights'] if layers else None
 
+    carriers = [[] for _ in range(view.n_formulas)]
+    for ms_index, counts in enumerate(view.counts):
+        for local in counts:
+            carriers[local].append(ms_index)
+
     nodes = []
     for local in range(view.n_formulas):
         meta = view.formula_meta(local)
@@ -269,6 +274,7 @@ def _write_stage_one(writer, view, space, exemplars, slug, label):
             'co_no': meta.co_no,
             'incipit': meta.incipit,
             'df': int(space.df[local]),
+            'witnesses': carriers[local],
             'idf': round(float(space.idf[local]), 4),
             'count': int(space.total_counts[local]),
             'position': round(float(space.mean_position[local]), 4),

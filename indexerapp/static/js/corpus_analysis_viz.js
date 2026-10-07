@@ -700,7 +700,7 @@ window.CorpusAnalysisViz = (function () {
         ? '<div class="printIt flex flex-wrap gap-4 my-3">' + section.highlights.map(function (h) {
           return '<div class="px-3 py-2 bg-[#fef9f6] border border-[#e3d5ca] rounded">' +
             '<div class="text-xs text-gray-500">' + escapeHtml(h.label) + '</div>' +
-            '<div class="text-lg caudex-bold">' + escapeHtml(h.value) + '</div></div>';
+            '<div class="text-lg caudex-bold">' + renderCell(h.value, h.label) + '</div></div>';
         }).join('') + '</div>'
         : '';
 

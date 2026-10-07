@@ -282,7 +282,7 @@ function corpusRenderPrayerMap(force) {
   const frame = document.getElementById('corpusPrayerFrame');
   const url = '/static/corpus_3d/index.html?run=' + encodeURIComponent(state.run.uuid) +
     '&cohort=' + encodeURIComponent(state.cohort) +
-    '&api=' + encodeURIComponent(pageRoot);
+    '&api=' + encodeURIComponent(pageRoot) + '&v=20261008';
   if (force || frame.dataset.loaded !== url) {
     frame.src = url;
     frame.dataset.loaded = url;
