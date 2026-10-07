@@ -96,6 +96,144 @@ window.CorpusAnalysisViz = (function () {
     return values[condensedIndex(n, i, j)];
   }
 
+
+  /* ------------------------------------------------------------------ *
+   * Map layouts computed in the browser from any pairwise metric
+   * ------------------------------------------------------------------ */
+
+  /** Distance matrix for a metric: 1 − similarity, or the raw value if lower is closer. */
+  function distanceMatrix(matrices, metric, n) {
+    const closer = matrices.higher_is_closer && matrices.higher_is_closer[metric] === false ? false : true;
+    const D = [];
+    let largest = 0;
+    for (let i = 0; i < n; i++) {
+      D.push(new Float64Array(n));
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const v = matrixValue(matrices, metric, n, i, j);
+        D[i][j] = closer ? 1 - v : v;
+        if (D[i][j] > largest) largest = D[i][j];
+      }
+    }
+    if (!closer && largest > 0) {
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) D[i][j] /= largest;
+    }
+    return D;
+  }
+
+  /** Classical (Torgerson) MDS: the two leading eigenvectors of the double-centred matrix. */
+  function classicalMds(D, n) {
+    const B = [];
+    const rowMean = new Float64Array(n);
+    let grand = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) { rowMean[i] += D[i][j] * D[i][j]; }
+      rowMean[i] /= n;
+      grand += rowMean[i];
+    }
+    grand /= n;
+    for (let i = 0; i < n; i++) {
+      B.push(new Float64Array(n));
+      for (let j = 0; j < n; j++) {
+        B[i][j] = -0.5 * (D[i][j] * D[i][j] - rowMean[i] - rowMean[j] + grand);
+      }
+    }
+    const vectors = [];
+    const values = [];
+    for (let axis = 0; axis < 2; axis++) {
+      let v = new Float64Array(n);
+      for (let i = 0; i < n; i++) v[i] = Math.sin(i * 12.9898 + axis * 78.233) + 0.5;
+      let eigenvalue = 0;
+      for (let step = 0; step < 300; step++) {
+        vectors.forEach(function (u) {
+          let dot = 0;
+          for (let i = 0; i < n; i++) dot += v[i] * u[i];
+          for (let i = 0; i < n; i++) v[i] -= dot * u[i];
+        });
+        const next = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          let sum = 0;
+          for (let j = 0; j < n; j++) sum += B[i][j] * v[j];
+          next[i] = sum;
+        }
+        let norm = 0;
+        for (let i = 0; i < n; i++) norm += next[i] * next[i];
+        norm = Math.sqrt(norm) || 1;
+        for (let i = 0; i < n; i++) next[i] /= norm;
+        eigenvalue = norm;
+        v = next;
+      }
+      vectors.push(v);
+      values.push(Math.max(eigenvalue, 0));
+    }
+    const coordinates = [];
+    for (let i = 0; i < n; i++) {
+      coordinates.push([vectors[0][i] * Math.sqrt(values[0]), vectors[1][i] * Math.sqrt(values[1])]);
+    }
+    let trace = 0;
+    for (let i = 0; i < n; i++) trace += Math.max(B[i][i], 0);
+    return { coordinates: coordinates, explained: trace > 0 ? (values[0] + values[1]) / trace : 0 };
+  }
+
+  /**
+   * Force-directed layout on the nearest-neighbour graph. Where classical MDS
+   * tries to honour every distance and so crowds the middle, this keeps each
+   * book near its closest relatives and lets whole families drift apart.
+   */
+  function neighbourGraphLayout(D, n, start) {
+    const nodes = start.map(function (c) { return { x: c[0] * 300, y: c[1] * 300 }; });
+    const k = Math.min(5, n - 1);
+    const links = [];
+    const seen = new Set();
+    for (let i = 0; i < n; i++) {
+      const order = [];
+      for (let j = 0; j < n; j++) if (j !== i) order.push(j);
+      order.sort(function (a, b) { return D[i][a] - D[i][b]; });
+      order.slice(0, k).forEach(function (j) {
+        const key = i < j ? i + '-' + j : j + '-' + i;
+        if (!seen.has(key)) { seen.add(key); links.push({ source: i, target: j, d: D[i][j] }); }
+      });
+    }
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).distance(function (l) { return 20 + l.d * 260; }).strength(0.7))
+      .force('charge', d3.forceManyBody().strength(-60))
+      .force('center', d3.forceCenter(0, 0))
+      .stop();
+    for (let tick = 0; tick < 400; tick++) simulation.tick();
+    return nodes.map(function (node) { return [node.x, node.y]; });
+  }
+
+  /**
+   * @param {string} kind 'server' (as computed by the run), 'mds' or 'graph'
+   */
+  function computeLayout(options) {
+    const { matrices, metric, kind, serverEmbedding } = options;
+    const n = matrices ? matrices.n : 0;
+    if (kind === 'server' || !matrices || !matrices.metrics[metric] || n < 3) {
+      return serverEmbedding;
+    }
+    const D = distanceMatrix(matrices, metric, n);
+    const mds = classicalMds(D, n);
+    const name = metric.replace(/_/g, ' ');
+    if (kind === 'graph') {
+      return {
+        coordinates: neighbourGraphLayout(D, n, mds.coordinates.map(function (c) {
+          const scale = Math.max.apply(null, mds.coordinates.map(function (q) {
+            return Math.max(Math.abs(q[0]), Math.abs(q[1]), 1e-9);
+          }));
+          return [c[0] / scale, c[1] / scale];
+        })),
+        caption: 'Nearest-neighbour graph, force-directed, on distances from ' + name +
+          '; only local neighbourhoods are meaningful. '
+      };
+    }
+    return {
+      coordinates: mds.coordinates,
+      explained: mds.explained,
+      caption: 'Principal coordinates on distances from ' + name + '. '
+    };
+  }
+
   /* ------------------------------------------------------------------ *
    * Dendrogram geometry
    * ------------------------------------------------------------------ */
@@ -273,6 +411,9 @@ window.CorpusAnalysisViz = (function () {
     const outlineBy = options.outlineBy && options.outlineBy !== 'none' ? options.outlineBy : null;
     // Legend entry the reader clicked to look at one group alone; null shows all.
     const isolated = options.isolated === undefined ? null : options.isolated;
+    // Pie markers show shares of every cluster (or tradition) instead of one colour.
+    const marker_pie = options.marker === 'pie';
+    const markerShares = options.pieBy === 'tradition' ? 'tradition' : 'layer';
     const coordinates = embedding.coordinates || [];
     if (coordinates.length < 2) {
       return message(selector, 'Not enough manuscripts to place on a map.');
@@ -325,7 +466,9 @@ window.CorpusAnalysisViz = (function () {
       return { key: (layered ? 'l' : 't') + index, label: name, color: colorFor(index) };
     }
 
-    const categories = manuscripts.map(function (_m, i) { return categoryIn(colorBy, i); });
+    // A pie marker is coloured by the very shares it draws, so the legend follows it.
+    const fillMode = marker_pie ? (markerShares === 'tradition' ? 'tradition' : 'layer') : colorBy;
+    const categories = manuscripts.map(function (_m, i) { return categoryIn(fillMode, i); });
     const outlines = outlineBy
       ? manuscripts.map(function (_m, i) { return categoryIn(outlineBy, i); }) : null;
 
@@ -371,26 +514,81 @@ window.CorpusAnalysisViz = (function () {
       .domain(d3.extent(manuscripts, function (m) { return m.n_distinct; }))
       .range([6, 20]);
 
+    // Share vectors for pie markers: how much of each cluster (or tradition) a
+    // manuscript draws on. A book with no profile falls back to a grey disc.
+    function sharesOf(i) {
+      const raw = markerShares === 'tradition'
+        ? (manuscripts[i].tradition_profile || []) : (manuscripts[i].layer_profile || []);
+      const total = raw.reduce(function (a, v) { return a + v; }, 0);
+      return total > 0 ? raw.map(function (v) { return v / total; }) : [];
+    }
+
+    function shareName(index, count) {
+      if (markerShares === 'tradition') {
+        return index === count - 1 ? 'Unattributed'
+          : ((traditionNames && traditionNames[index]) || 'Tradition ' + (index + 1));
+      }
+      return 'Cluster ' + (index + 1);
+    }
+
+    function shareColor(index, count) {
+      return markerShares === 'tradition' && index === count - 1 ? GREY : colorFor(index);
+    }
+
+    function shareLines(i) {
+      const shares = sharesOf(i);
+      if (!shares.length) return '';
+      return '<br><em>' + (markerShares === 'tradition' ? 'Traditions' : 'Clusters') + ':</em><br>' +
+        shares.map(function (v, index) { return { v: v, index: index }; })
+          .filter(function (e) { return e.v >= 0.01; })
+          .sort(function (a, b) { return b.v - a.v; })
+          .map(function (e) {
+            return '<span style="display:inline-block;width:9px;height:9px;margin-right:4px;background:' +
+              shareColor(e.index, shares.length) + '"></span>' +
+              escapeHtml(shareName(e.index, shares.length)) + ' ' + Math.round(e.v * 100) + '%';
+          }).join('<br>');
+    }
+
     manuscripts.forEach(function (ms, i) {
       const cx = x(coordinates[i][0]);
       const cy = y(coordinates[i][1]);
-      plot.append('circle')
-        .attr('cx', cx).attr('cy', cy)
-        .attr('r', sizeScale(ms.n_distinct))
-        .attr('fill', pointColor(i))
-        .attr('fill-opacity', visible(i) ? 0.78 : 0.07)
-        .attr('stroke', '#0d1b2a')
-        .attr('stroke-opacity', visible(i) ? 1 : 0.15)
-        .attr('stroke-width', 0.8)
+      const radius = sizeScale(ms.n_distinct);
+      const marker = plot.append('g')
+        .attr('transform', 'translate(' + cx + ',' + cy + ')')
         .style('cursor', 'pointer')
+        .attr('opacity', visible(i) ? 1 : 0.1);
+
+      const shares = marker_pie ? sharesOf(i) : [];
+      if (shares.length) {
+        const arc = d3.arc().innerRadius(0).outerRadius(radius);
+        d3.pie().sort(null).value(function (v) { return v; })(shares).forEach(function (slice, index) {
+          marker.append('path').attr('d', arc(slice))
+            .attr('fill', shareColor(index, shares.length))
+            .attr('fill-opacity', 0.9)
+            .attr('stroke', '#fff').attr('stroke-width', 0.5);
+        });
+        marker.append('circle').attr('r', radius).attr('fill', 'none')
+          .attr('stroke', outlines ? outlines[i].color : '#0d1b2a')
+          .attr('stroke-width', outlines ? 3 : 0.8);
+      } else {
+        marker.append('circle')
+          .attr('r', radius)
+          .attr('fill', pointColor(i))
+          .attr('fill-opacity', 0.78)
+          .attr('stroke', outlines ? outlines[i].color : '#0d1b2a')
+          .attr('stroke-width', outlines ? 3 : 0.8);
+      }
+
+      marker
         .on('mousemove', function (event) {
           showTooltip(
-            '<strong>' + ms.label + '</strong><br>' +
-            (ms.shelf_mark || '') + '<br>' +
+            '<strong>' + escapeHtml(ms.label) + '</strong><br>' +
+            escapeHtml(ms.shelf_mark || '') + '<br>' +
             ms.n_distinct + ' distinct formulas, ' + ms.n_items + ' occurrences' +
             (ms.year_from ? '<br>' + ms.year_from + '–' + ms.year_to : '') +
             (outlines && outlines[i].label
               ? '<br>' + MODE_NAMES[outlineBy] + ': ' + escapeHtml(outlines[i].label) : '') +
+            (marker_pie ? shareLines(i) : '') +
             groupMembers(i) + nearestNeighbours(i),
             event
           );
@@ -461,7 +659,7 @@ window.CorpusAnalysisViz = (function () {
     svg.append('text')
       .attr('x', margin.left).attr('y', size.height - 12)
       .attr('font-size', 11).attr('fill', '#666')
-      .text('Principal coordinates on 1 − idf-weighted cosine. '
+      .text((embedding.caption || 'Principal coordinates on 1 − idf-weighted cosine. ')
         + (embedding.explained
           ? 'Two axes carry ' + Math.round(embedding.explained * 100) + '% of the variation.'
           : ''));
@@ -831,6 +1029,7 @@ window.CorpusAnalysisViz = (function () {
     escapeHtml: escapeHtml,
     matrixValue: matrixValue,
     renderHeatmap: renderHeatmap,
+    computeLayout: computeLayout,
     renderMdsMap: renderMdsMap,
     renderSeriation: renderSeriation,
     renderLayers: renderLayers,

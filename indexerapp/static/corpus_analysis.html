@@ -1,7 +1,7 @@
 <script src="/static/js/cdn/d3.v7.min.js"></script>
-<script src="/static/js/prayer_hover.js?v=20261009"></script>
-<script src="/static/js/corpus_analysis_viz.js?v=20261009"></script>
-<script src="/static/js/corpus_analysis.js?v=20261009"></script>
+<script src="/static/js/prayer_hover.js?v=20261010"></script>
+<script src="/static/js/corpus_analysis_viz.js?v=20261010"></script>
+<script src="/static/js/corpus_analysis.js?v=20261010"></script>
 
 <div id="corpusAnalysisRoot" x-init="corpus_analysis_init()" class="px-2">
   <h1 class="printIt text-[#0d1b2a] text-[32px] sm:text-[40pt] caudex-bold text-left mt-4 mb-1">
@@ -27,25 +27,6 @@
     <span id="corpusMetricWrapper" class="items-center gap-2" style="display:none">
       <label for="corpusMetricSelect" class="font-semibold ml-2">Metric:</label>
       <select id="corpusMetricSelect" class="border border-[#e3d5ca] rounded px-2 py-1"></select>
-    </span>
-
-    <span id="corpusColorWrapper" class="items-center gap-2" style="display:none">
-      <label for="corpusColorSelect" class="font-semibold ml-2">Colour by:</label>
-      <select id="corpusColorSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
-        <option value="tradition">Dominant tradition</option>
-        <option value="cluster">Discovered group</option>
-        <option value="layer">Dominant liturgical cluster</option>
-        <option value="century">Date</option>
-        <option value="all">All four side by side</option>
-      </select>
-      <label for="corpusOutlineSelect" class="font-semibold ml-2">Ring by:</label>
-      <select id="corpusOutlineSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
-        <option value="none">None</option>
-        <option value="tradition">Dominant tradition</option>
-        <option value="cluster">Discovered group</option>
-        <option value="layer">Dominant liturgical cluster</option>
-        <option value="century">Date</option>
-      </select>
     </span>
 
     <span class="ml-auto flex items-center gap-2">
@@ -228,6 +209,47 @@
         not; the dendrogram and the NeighborNet/SplitsTree files written by the same run are
         the stricter view of the same distances.
       </p>
+    </div>
+    <div class="corpus-print-skip flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 p-2 bg-[#fef9f6] border border-[#e3d5ca] rounded text-sm">
+      <label for="corpusMapDistance" class="font-semibold">Distance by:</label>
+      <select id="corpusMapDistance" class="border border-[#e3d5ca] rounded px-2 py-1"></select>
+
+      <label for="corpusMapLayout" class="font-semibold ml-2">Layout:</label>
+      <select id="corpusMapLayout" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="mds">Classical MDS (all distances)</option>
+        <option value="graph">Neighbour graph (force-directed)</option>
+        <option value="server">As computed by the run</option>
+      </select>
+
+      <label for="corpusMapMarker" class="font-semibold ml-2">Marker:</label>
+      <select id="corpusMapMarker" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="dot">Dot (one colour)</option>
+        <option value="pie">Pie (shares of each cluster)</option>
+      </select>
+
+      <label for="corpusMapPieBy" class="font-semibold ml-2">Pie shows:</label>
+      <select id="corpusMapPieBy" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="layer">Liturgical clusters</option>
+        <option value="tradition">Known traditions</option>
+      </select>
+
+      <label for="corpusColorSelect" class="font-semibold ml-2">Colour by:</label>
+      <select id="corpusColorSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="tradition">Dominant tradition</option>
+        <option value="cluster">Discovered group</option>
+        <option value="layer">Dominant liturgical cluster</option>
+        <option value="century">Date</option>
+        <option value="all">All four side by side</option>
+      </select>
+
+      <label for="corpusOutlineSelect" class="font-semibold ml-2">Ring by:</label>
+      <select id="corpusOutlineSelect" class="border border-[#e3d5ca] rounded px-2 py-1">
+        <option value="none">None</option>
+        <option value="tradition">Dominant tradition</option>
+        <option value="cluster">Discovered group</option>
+        <option value="layer">Dominant liturgical cluster</option>
+        <option value="century">Date</option>
+      </select>
     </div>
     <div id="corpusMap" style="height:64vh; min-height:420px"></div>
   </div>

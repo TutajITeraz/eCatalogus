@@ -14,6 +14,10 @@ let corpusAnalysisState = {
   metric: 'idf_cosine',
   colorBy: 'tradition',
   outlineBy: 'none',
+  mapMetric: 'idf_cosine',
+  mapLayout: 'mds',
+  mapMarker: 'dot',
+  mapPieBy: 'layer',
   cache: {},
   activeTab: 'report',
   pollTimer: null,
@@ -203,8 +207,6 @@ function corpusActivateTab(tab) {
   });
   document.getElementById('corpusMetricWrapper').style.display =
     tab === 'heatmap' ? 'flex' : 'none';
-  document.getElementById('corpusColorWrapper').style.display =
-    tab === 'map' ? 'flex' : 'none';
 
   return corpusRenderActiveTab(false);
 }
@@ -334,6 +336,19 @@ async function corpusRenderHeatmap() {
   });
 }
 
+/** Offer every pairwise metric of the run as the basis of the map's distances. */
+function corpusFillMapMetrics(matrices) {
+  const select = document.getElementById('corpusMapDistance');
+  if (!matrices || select.options.length) return;
+  Object.keys(matrices.metrics).forEach(function (name) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name.replace(/_/g, ' ') + (name === matrices.primary ? ' (default)' : '');
+    select.appendChild(option);
+  });
+  if (matrices.metrics[corpusAnalysisState.mapMetric]) select.value = corpusAnalysisState.mapMetric;
+}
+
 async function corpusRenderMap() {
   const state = corpusAnalysisState;
   const [manuscripts, embedding, clusters, matrices] = await Promise.all([
@@ -345,9 +360,18 @@ async function corpusRenderMap() {
   if (!manuscripts || !embedding) {
     return CorpusAnalysisViz.message('#corpusMap', 'No embedding in this comparison group.');
   }
+  corpusFillMapMetrics(matrices);
+  const layout = CorpusAnalysisViz.computeLayout({
+    matrices: matrices,
+    metric: state.mapMetric,
+    kind: state.mapLayout,
+    serverEmbedding: embedding
+  });
   const base = {
     manuscripts: manuscripts.manuscripts,
-    embedding: embedding,
+    embedding: layout,
+    marker: state.mapMarker,
+    pieBy: state.mapPieBy,
     clusters: clusters || {},
     matrices: matrices,
     outlineBy: state.outlineBy,
@@ -976,6 +1000,7 @@ function corpus_analysis_init() {
   document.getElementById('corpusCohortSelect').addEventListener('change', function (e) {
     state.cohort = e.target.value;
     document.getElementById('corpusMetricSelect').innerHTML = '';
+    document.getElementById('corpusMapDistance').innerHTML = '';
     corpusRenderActiveTab(true);
   });
   document.getElementById('corpusMetricSelect').addEventListener('change', function (e) {
@@ -985,6 +1010,13 @@ function corpus_analysis_init() {
   document.getElementById('corpusColorSelect').addEventListener('change', function (e) {
     state.colorBy = e.target.value;
     corpusRenderMap();
+  });
+  [['corpusMapDistance', 'mapMetric'], ['corpusMapLayout', 'mapLayout'],
+   ['corpusMapMarker', 'mapMarker'], ['corpusMapPieBy', 'mapPieBy']].forEach(function (pair) {
+    document.getElementById(pair[0]).addEventListener('change', function (e) {
+      state[pair[1]] = e.target.value;
+      corpusRenderMap();
+    });
   });
   document.getElementById('corpusOutlineSelect').addEventListener('change', function (e) {
     state.outlineBy = e.target.value;

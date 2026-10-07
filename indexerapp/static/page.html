@@ -276,7 +276,7 @@ document.addEventListener('alpine:initializing', () => {
         // → http://127.0.0.1:8000/static/hands.html
 
         try {
-            const resp = await fetch(url);
+            const resp = await fetch(url, { cache: 'no-cache' });   // revalidate: pages carry versioned script URLs
             if (!resp.ok) throw new Error('404');
             const html = await resp.text();
 
