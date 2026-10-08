@@ -6,8 +6,8 @@ liturgical unit that moved through the tradition as one piece, rather than a
 statistic about it.
 
 Found by growing runs left to right and keeping only those still supported by
-enough witnesses, so the search space collapses immediately: almost no length-2 run
-survives, and the survivors are exactly the interesting ones.
+enough witnesses, so the search space collapses as runs grow longer. Runs shorter than MIN_BLOCK_LENGTH are
+dropped from the output.
 """
 
 from collections import defaultdict
@@ -20,6 +20,8 @@ from .cohort import CohortView
 MAX_BLOCK_LENGTH = 25
 #: A run must appear in at least this many manuscripts to count as shared.
 MIN_SUPPORT = 3
+#: A block must contain at least this many prayers in the same order.
+MIN_BLOCK_LENGTH = 3
 #: Cap on how many blocks are written out, longest and best supported first.
 MAX_BLOCKS = 500
 
@@ -78,6 +80,7 @@ def find_blocks(view: CohortView,
         if not _left_extension_keeps_support(run, occurrences, sequences, support):
             results.append(_describe(view, run, occurrences, support))
 
+    results = [b for b in results if b['length'] >= MIN_BLOCK_LENGTH]
     results.sort(key=lambda b: (-b['length'], -b['support']))
     return results[:max_blocks]
 

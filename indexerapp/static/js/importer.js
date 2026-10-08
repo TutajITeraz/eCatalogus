@@ -674,6 +674,8 @@ function sendToServer() {
                 });
             } else if (xhr.status === 401) {
                 handleServerResponse({info: 'you have to be logged in to import data'});
+            } else if (xhr.status === 403 && /CSRF/i.test(xhr.responseText || '')) {
+                handleServerResponse({info: 'CSRF verification failed - reload the page and log in again'});
             } else if (xhr.status === 403) {
                 handleServerResponse({info: 'your account is not allowed to import into this table'});
             } else {
@@ -835,6 +837,39 @@ function refreshImporterManuscripts() {
     document.getElementById('content-to-tradition').style.display = 'none';
 }
 
+// Sends a bulk-action request and reports every outcome to the user: HTTP
+// refusals (CSRF, permissions), non-JSON replies and network failures
+// included, so that a failed action is never mistaken for a silent success.
+function runBulkAction(url, method, countField, successVerb, failureLabel) {
+    fetch(url, {
+        method: method,
+        credentials: 'same-origin',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security
+        }
+    })
+    .then(response => response.text().then(text => {
+        let data = null;
+        try { data = JSON.parse(text); } catch (e) { /* non-JSON reply, e.g. an HTML 403 page */ }
+
+        if (response.ok && data && data.status === 'success') {
+            alert(`Successfully ${successVerb} ${data[countField]} items.`);
+            return;
+        }
+
+        let reason = (data && (data.message || data.info || data.detail)) || '';
+        if (!reason && text) {
+            const plain = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            reason = plain.slice(0, 200);
+        }
+        alert(`${failureLabel} (HTTP ${response.status}${reason ? ': ' + reason : ''}).`);
+    }))
+    .catch(error => {
+        console.error('Error:', error);
+        alert(`${failureLabel}: ${error.message || 'network error'}.`);
+    });
+}
+
 function deleteMSContent() {
     if (!hasSelectedManuscript()) {
         alert('You have to select a manuscript from the list!');
@@ -842,21 +877,7 @@ function deleteMSContent() {
     }
 
     if (confirm('Are you sure you want to delete all content for this manuscript?')) {
-        fetch(getManuscriptDeleteUrl(), {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert(`Successfully deleted ${data.deleted_count} items.`);
-            } else {
-                alert('Failed to delete content.');
-            }
-        })
-        .catch(error => console.error('Error:', error));
+        runBulkAction(getManuscriptDeleteUrl(), 'DELETE', 'deleted_count', 'deleted', 'Failed to delete content');
     }
 }
 
@@ -867,21 +888,7 @@ function deleteTraditionContent() {
     }
 
     if (confirm('Are you sure you want to delete all content assigned with this tradition?')) {
-        fetch(pageRoot+`/delete/tradition-formulas/${traditionId}/`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert(`Successfully deleted ${data.deleted_count} items.`);
-            } else {
-                alert('Failed to delete content.');
-            }
-        })
-        .catch(error => console.error('Error:', error));
+        runBulkAction(pageRoot+`/delete/tradition-formulas/${traditionId}/`, 'DELETE', 'deleted_count', 'deleted', 'Failed to delete content');
     }
 }
 
@@ -897,21 +904,7 @@ function assignMSContentToTheTradition() {
     }
 
     if (confirm('Are you sure you want to assign all content from the manuscript to the tradition?')) {
-        fetch(getAssignManuscriptContentUrl(), {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken')  // Include CSRF token for security
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert(`Successfully assigned ${data.assigned_count} items.`);
-            } else {
-                alert('Failed to assign content.');
-            }
-        })
-        .catch(error => console.error('Error:', error));
+        runBulkAction(getAssignManuscriptContentUrl(), 'POST', 'added_count', 'assigned', 'Failed to assign content');
     }
 }
 
@@ -921,8 +914,11 @@ function getCookie(name) {
         const cookies = document.cookie.split(';');
         for (let i = 0; i < cookies.length; i++) {
             const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            // Instances name the CSRF cookie '<instance>_csrftoken', so 'csrftoken' matches either form.
+            var eq = cookie.indexOf('=');
+            var cookieName = cookie.substring(0, eq);
+            if (cookieName === name || (name === 'csrftoken' && cookieName.endsWith('_csrftoken'))) {
+                cookieValue = decodeURIComponent(cookie.substring(eq + 1));
                 break;
             }
         }

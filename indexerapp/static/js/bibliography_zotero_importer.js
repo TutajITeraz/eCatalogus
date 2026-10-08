@@ -3,8 +3,11 @@
         const cookies = document.cookie ? document.cookie.split(';') : [];
         for (const rawCookie of cookies) {
             const cookie = rawCookie.trim();
-            if (cookie.startsWith(`${name}=`)) {
-                return decodeURIComponent(cookie.slice(name.length + 1));
+            const eq = cookie.indexOf('=');
+            const cookieName = cookie.slice(0, eq);
+            // Instances name the CSRF cookie '<instance>_csrftoken', so 'csrftoken' matches either form.
+            if (cookieName === name || (name === 'csrftoken' && cookieName.endsWith('_csrftoken'))) {
+                return decodeURIComponent(cookie.slice(eq + 1));
             }
         }
         return '';

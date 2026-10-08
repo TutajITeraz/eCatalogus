@@ -105,8 +105,11 @@ function getCookie(name) {
         var cookies = document.cookie.split(';');
         for (var i = 0; i < cookies.length; i++) {
             var cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            // Instances name the CSRF cookie '<instance>_csrftoken', so 'csrftoken' matches either form.
+            var eq = cookie.indexOf('=');
+            var cookieName = cookie.substring(0, eq);
+            if (cookieName === name || (name === 'csrftoken' && cookieName.endsWith('_csrftoken'))) {
+                cookieValue = decodeURIComponent(cookie.substring(eq + 1));
                 break;
             }
         }
