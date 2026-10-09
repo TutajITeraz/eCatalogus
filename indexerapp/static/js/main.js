@@ -8,6 +8,19 @@ const defaultUiVisibility = {
         manuscripts: true,
         contentAnalysis: true,
         aiTools: true,
+        aiHands: true,
+    },
+    // Manuscripts list: map toggle and the fields of the table rows
+    manuscriptTable: {
+        mapView: true,
+        placeOfOrigin: true,
+        medievalProvenance: true,
+        folios: true,
+        measurements: true,
+        mainScript: true,
+        decorated: true,
+        musicNotation: true,
+        bindingDate: true,
     },
     manuscriptFilters: {
         mainInfo: true,
@@ -24,6 +37,9 @@ const defaultUiVisibility = {
         // Opt-in: the original eCLLA filters (enabled in static_eclla/js/config.js)
         repositoryCity: false,
         clla: false,
+        // Quick filters next to the view toggle
+        quickDecoration: true,
+        quickMusicNotation: true,
         // Tabs
         codicology: true,
         paleography: true,

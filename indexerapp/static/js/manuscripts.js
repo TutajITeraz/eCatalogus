@@ -1185,6 +1185,11 @@ manuscripts_init = function()
         d.order_direction = $('.sort-arrow').data('direction') || 'asc';
     }
     
+    // Per-instance visibility of the fields shown in a table row (manuscriptTable in config.js)
+    function tableField(key) {
+        return window.isUiVisible ? window.isUiVisible('manuscriptTable', key) : true;
+    }
+
     var manuscripts_table;
     var map = null;
     var markerClusterGroup = null;
@@ -1344,8 +1349,9 @@ manuscripts_init = function()
                 "title": "Image",
                 "width": "220px",
                 "fnCreatedCell": function (nTd, sData, oData, iRow, iCol) {
+                    $(nTd).css({ 'text-align': 'center', 'vertical-align': 'middle' });
                     if (oData.thumbnail_url && oData.thumbnail_url.length > 3) {
-                        $(nTd).html("<img src='" + oData.thumbnail_url + "' style='max-height: 170px; max-width: 190px;'></img>");
+                        $(nTd).html("<img src='" + oData.thumbnail_url + "' style='max-height: 170px; max-width: 190px; display: block; margin: 0 auto;'></img>");
                     }
                 }
             },
@@ -1357,16 +1363,16 @@ manuscripts_init = function()
                         + "<div class='left_script_content'>"
                         + "<div class='ms_foreign_id'><span class='mspltext'> " + (oData.contemporary_repository_place_name || '') + ":</span> "+ (oData.shelf_mark || '') + "<span class='mspltext'> (Shelfmark), </span><br /><span class='mspltext'>" + foreign_id_name + ": </span>" + (oData.foreign_id || '') + "</div>"
                         + "<div class='ms_dating'><b>Dating: </b>" + (oData.dating || '') + "</div>"
-                        + "<div class='ms_place_of_origin'><b>Place of origin: </b>" + renderUnsurePlace(oData.place_of_origin_name || '', { unsure: oData.place_of_origin_unsure }) + "</div>"
-                        + "<div class='ms_place_of_origin'><b>Medieval provenance: </b>" + (oData.ms_provenance || '') + "</div>"
+                        + (tableField('placeOfOrigin') ? ("<div class='ms_place_of_origin'><b>Place of origin: </b>" + renderUnsurePlace(oData.place_of_origin_name || '', { unsure: oData.place_of_origin_unsure }) + "</div>") : '')
+                        + (tableField('medievalProvenance') ? ("<div class='ms_place_of_origin'><b>Medieval provenance: </b>" + (oData.ms_provenance || '') + "</div>") : '')
                         + "</div>"
                         + "<div class='right_script_content'>"
-                        + "<div class='ms_folios'><span class='decorated_left'>Number of folios: </span><span class='decorated_right'>" + (oData.folios_no || '-') + "</span></div>"
-                        + "<div class='ms_measurements'><span class='decorated_left'>Measurements: </span><span class='decorated_right'>" + (oData.page_size_max_h || '-') + "mm x " + (oData.page_size_max_w || '-') + "mm</span></div>"
-                        + "<div class='ms_main_script'><span class='decorated_left'>Main script: </span><span class='decorated_right'>" + (oData.main_script || '') + "</span></div>"
-                        + "<div class='ms_decorated'><span class='decorated_left'>Decorated: </span><span class='decorated_right'>" + (oData.decorated || '') + "</span></div>"
-                        + "<div class='ms_music_notation'><span class='decorated_left'>Music notation: </span><span class='decorated_right'>" + (oData.music_notation || '') + "</span></div>"
-                        + "<div class='ms_binding_date'><span class='decorated_left'>Binding date: </span><span class='decorated_right'>" + (oData.binding_date || '') + "</span></div>"
+                        + (tableField('folios') ? ("<div class='ms_folios'><span class='decorated_left'>Number of folios: </span><span class='decorated_right'>" + (oData.folios_no || '-') + "</span></div>") : '')
+                        + (tableField('measurements') ? ("<div class='ms_measurements'><span class='decorated_left'>Measurements: </span><span class='decorated_right'>" + (oData.page_size_max_h || '-') + "mm x " + (oData.page_size_max_w || '-') + "mm</span></div>") : '')
+                        + (tableField('mainScript') ? ("<div class='ms_main_script'><span class='decorated_left'>Main script: </span><span class='decorated_right'>" + (oData.main_script || '') + "</span></div>") : '')
+                        + (tableField('decorated') ? ("<div class='ms_decorated'><span class='decorated_left'>Decorated: </span><span class='decorated_right'>" + (oData.decorated || '') + "</span></div>") : '')
+                        + (tableField('musicNotation') ? ("<div class='ms_music_notation'><span class='decorated_left'>Music notation: </span><span class='decorated_right'>" + (oData.music_notation || '') + "</span></div>") : '')
+                        + (tableField('bindingDate') ? ("<div class='ms_binding_date'><span class='decorated_left'>Binding date: </span><span class='decorated_right'>" + (oData.binding_date || '') + "</span></div>") : '')
                         + renderSourceProjectMarkup(oData)
                         + "</div>";
                     $(nTd).html(html);

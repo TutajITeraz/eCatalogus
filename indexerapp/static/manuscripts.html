@@ -216,7 +216,7 @@
                             x-transition:leave-end="transform opacity-0 scale-90">
                             <div class="flex mx-3 mt-1 mb-2">
                                 <h2 class="w-1/2 flex items-center">CLLA no.:</h2>
-                                <input class="manuscript_filter w-1/2"  type="text" id="clla_no" name="clla_no" style="width: 50% !important;" />
+                                <input class="manuscript_filter w-1/2" type="text" id="clla_no" name="clla_no" style="width: 50% !important; min-width: 0; height: 32px; padding: 0 8px;" />
                                 <br />
                             </div>
                             <div class="flex mx-3 mt-1 mb-2">
@@ -1181,7 +1181,7 @@
     <div class id="leftColumn"></div>
     <div class id="resizer"></div>
     <div class="flex justify-between items-center mb-2">
-    <div class="view-toggle flex justify-start items-center">
+    <div data-ui-scope="manuscriptTable" data-ui-key="mapView" class="view-toggle flex justify-start items-center">
         <div class="flex divide-[#c32f27] divide-x">
         <button id="tableViewBtn" class="young-serif text-[10px] sm:text-xs md:text-[8pt] uppercase hover:underline hover:text-[#070e16] bg-blue-500 font-bold px-4 py-2">Table View</button>
         <button id="mapViewBtn" class="young-serif text-[10px] sm:text-xs md:text-[8pt] uppercase hover:underline hover:text-[#070e16] bg-gray-200 px-4 py-2">Map View</button>
@@ -1198,7 +1198,7 @@
     </div>
 
     <div class="quick_filters_container">
-        <div class="quick_filter_group">
+        <div data-ui-scope="manuscriptFilters" data-ui-key="quickDecoration" class="quick_filter_group">
             <span class="quick_filter_label">Decoration</span>
             <div class="quick_filter_options">
                 <label class="quick_filter_option">
@@ -1212,7 +1212,7 @@
             </div>
         </div>
         
-        <div class="quick_filter_separator"></div>
+        <div data-ui-scope="manuscriptFilters" data-ui-key="quickDecoration" class="quick_filter_separator"></div>
         
         <div class="quick_filter_group">
             <span class="quick_filter_label">Digitized</span>
@@ -1228,9 +1228,9 @@
             </div>
         </div>
         
-        <div class="quick_filter_separator"></div>
+        <div data-ui-scope="manuscriptFilters" data-ui-key="quickMusicNotation" class="quick_filter_separator"></div>
         
-        <div class="quick_filter_group">
+        <div data-ui-scope="manuscriptFilters" data-ui-key="quickMusicNotation" class="quick_filter_group">
             <span class="quick_filter_label">Music notation</span>
             <div class="quick_filter_options">
                 <label class="quick_filter_option">

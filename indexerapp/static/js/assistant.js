@@ -66,14 +66,18 @@ function askQuestion() {
         url: pageRoot + '/assistant/start/?project_id=' + projectId + '&q=' + encodeURIComponent(question),
         success: function(data) {
             if (data.query_id) {
-                startPolling(data.query_id);
+                startPolling(data.query_id, data.token);
             } else {
                 loader.style.display = 'none';
                 alert('Error starting query.');
             }
         },
-        error: function() {
+        error: function(xhr) {
             loader.style.display = 'none';
+            if (xhr.status === 429 && xhr.responseJSON && xhr.responseJSON.error) {
+                alert(xhr.responseJSON.error);
+                return;
+            }
             alert('Error fetching data. Check if you are logged in! Only logged users are allowed to use AI assistant. You should have OpenAI API Key set in you user preferences');
         },
         xhrFields: {
@@ -82,13 +86,13 @@ function askQuestion() {
     });
 }
 
-function startPolling(queryId) {
+function startPolling(queryId, token) {
     var loader = document.getElementById('loader');
     loader.innerHTML = 'Analyzing query...';
     pollInterval = setInterval(function() {
         $.ajax({
             type: 'GET',
-            url: pageRoot + '/assistant/status/' + queryId + '/',
+            url: pageRoot + '/assistant/status/' + queryId + '/' + (token ? '?token=' + encodeURIComponent(token) : ''),
             success: function(data) {
                 console.log('Status data:', data);  // Debug log
                 try {

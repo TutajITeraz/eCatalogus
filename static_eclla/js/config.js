@@ -28,6 +28,20 @@ window.SITE_CONFIG = (function () {
                 manuscripts: true,
                 contentAnalysis: true,
                 aiTools: true,
+                aiHands: false,
+            },
+            manuscriptTable: {
+                mapView: false,
+                // Table rows: only name, repository/shelfmark and dating (left column).
+                placeOfOrigin: false,
+                medievalProvenance: false,
+                // Right-hand column of the row details: all fields off hides the column.
+                folios: false,
+                measurements: false,
+                mainScript: false,
+                decorated: false,
+                musicNotation: false,
+                bindingDate: false,
             },
             manuscriptFilters: {
                 // The original eCLLA offered exactly these three filter tabs ...
@@ -45,6 +59,8 @@ window.SITE_CONFIG = (function () {
                 bibliography: false,
                 // Main Info showed: name, repository, repository city, dating, digitized.
                 // "CLLA no." lives in the CLLA tab, so the generic foreign-id row is hidden.
+                quickDecoration: false,
+                quickMusicNotation: false,
                 repositoryCity: true,
                 foreignId: false,
                 liturgicalGenre: false,

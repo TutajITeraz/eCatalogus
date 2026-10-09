@@ -503,6 +503,14 @@ AI_ASSISTANT_BACKEND = text_env('AI_ASSISTANT_BACKEND', default='ollama')
 AI_ASSISTANT_TIMEOUT = int(text_env('AI_ASSISTANT_TIMEOUT', default='900'))
 AI_ASSISTANT_MAX_ITERATIONS = int(text_env('AI_ASSISTANT_MAX_ITERATIONS', default='15'))
 
+# Anonymous use of the assistant. Off unless the instance enables it (instance registry key
+# `assistant_anonymous` or env AI_ASSISTANT_ANONYMOUS=1, see instance_settings.py). Anonymous
+# questions are stored under one service account (never able to log in), and at most
+# AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR of them are accepted per hour in total, because each
+# one costs CPU on the local model (or money with the OpenAI backend).
+AI_ASSISTANT_ANONYMOUS_USERNAME = text_env('AI_ASSISTANT_ANONYMOUS_USERNAME', default='anonymous_assistant')
+AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR = int(text_env('AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR', default='30'))
+
 # Keep OLLAMA_MODEL identical to the OCR autofix tool on this server so Ollama
 # holds a single copy of the weights in memory for both applications.
 OLLAMA_HOST = text_env('OLLAMA_HOST', default='http://127.0.0.1:11434')

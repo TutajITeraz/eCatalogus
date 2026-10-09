@@ -26,7 +26,7 @@ from etlapp.model_categories import get_sync_model_names
 from etlapp.services import _serialize_instance
 from indexerapp.ai_tools import get_all_manuscript_names
 from indexerapp.models import AttributeDebate, Bibliography, Ceremony, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
-from indexerapp.models import DeletedRecord
+from indexerapp.models import AIQuery, DeletedRecord
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.zotero_service import import_zotero_items, list_zotero_collection_items
 from indexerapp.views import get_obj_dictionary
@@ -2305,3 +2305,84 @@ class MainVocabularyUniquenessTests(TestCase):
 						found.add((model.__name__, fields[0]))
 
 			self.assertEqual(expected - found, set())
+
+
+class AnonymousAssistantTests(TestCase):
+	"""The AI assistant is login-only unless the instance enables anonymous use."""
+
+	def setUp(self):
+		patcher = patch('indexerapp.views.threading.Thread')
+		self.thread = patcher.start()
+		self.addCleanup(patcher.stop)
+
+	def _start(self, client=None, q='how many manuscripts?'):
+		return (client or self.client).get('/assistant/start/', {'q': q, 'project_id': 1})
+
+	def test_anonymous_is_redirected_to_login_by_default(self):
+		response = self._start()
+
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(AIQuery.objects.exists())
+
+	@override_settings(AI_ASSISTANT_ANONYMOUS=True)
+	def test_anonymous_question_is_stored_under_a_service_account_that_cannot_log_in(self):
+		response = self._start()
+
+		self.assertEqual(response.status_code, 200)
+		data = response.json()
+		query = AIQuery.objects.get(id=data['query_id'])
+		self.assertEqual(query.user.username, 'anonymous_assistant')
+		self.assertFalse(query.user.is_active)
+		self.assertFalse(query.user.has_usable_password())
+		self.assertTrue(data['token'])
+		self.thread.assert_called_once()
+
+	@override_settings(AI_ASSISTANT_ANONYMOUS=True)
+	def test_status_requires_the_token_issued_for_that_query(self):
+		first = self._start().json()
+		second = self._start().json()
+
+		self.assertEqual(self.client.get(f"/assistant/status/{first['query_id']}/").status_code, 404)
+		self.assertEqual(
+			self.client.get(f"/assistant/status/{first['query_id']}/", {'token': 'garbage'}).status_code, 404
+		)
+		# a valid token for another query must not open this one
+		self.assertEqual(
+			self.client.get(f"/assistant/status/{first['query_id']}/", {'token': second['token']}).status_code, 404
+		)
+		ok = self.client.get(f"/assistant/status/{first['query_id']}/", {'token': first['token']})
+		self.assertEqual(ok.status_code, 200)
+		self.assertEqual(ok.json()['status'], 'pending')
+
+	@override_settings(AI_ASSISTANT_ANONYMOUS=True, AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR=2)
+	def test_anonymous_questions_are_rate_limited(self):
+		self.assertEqual(self._start().status_code, 200)
+		self.assertEqual(self._start().status_code, 200)
+
+		response = self._start()
+
+		self.assertEqual(response.status_code, 429)
+		self.assertIn('error', response.json())
+		self.assertEqual(AIQuery.objects.count(), 2)
+
+	@override_settings(AI_ASSISTANT_ANONYMOUS=True)
+	def test_anonymous_cannot_read_a_logged_in_users_query(self):
+		user = get_user_model().objects.create_user('alice', password='pw')
+		query = AIQuery.objects.create(user=user, question='private', status='completed')
+		token = self._start().json()['token']
+
+		response = self.client.get(f'/assistant/status/{query.id}/', {'token': token})
+
+		self.assertEqual(response.status_code, 404)
+
+	@override_settings(AI_ASSISTANT_ANONYMOUS=True)
+	def test_logged_in_user_still_owns_their_queries(self):
+		user = get_user_model().objects.create_user('alice', password='pw')
+		self.client.force_login(user)
+
+		data = self._start().json()
+
+		self.assertNotIn('token', data)
+		query = AIQuery.objects.get(id=data['query_id'])
+		self.assertEqual(query.user, user)
+		self.assertEqual(self.client.get(f"/assistant/status/{data['query_id']}/").status_code, 200)

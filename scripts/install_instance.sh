@@ -579,21 +579,36 @@ guard_unexpected_git_changes() {
     return 0
   fi
 
+  # git fetch/checkout/reset --hard only touch tracked files and this script never runs
+  # `git clean` without --force-reset, so untracked files are safe; only modified or
+  # deleted tracked files can be lost and therefore block the update.
   local unexpected=()
-  local line
+  local untracked_info=()
+  local line status path
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    line=${line:3}
-    if path_is_preserved "$line" || path_is_managed_generated "$line" || [[ "$line" == .env || "$line" == .env.* ]]; then
+    status=${line:0:2}
+    path=${line:3}
+    if path_is_preserved "$path" || path_is_managed_generated "$path" || [[ "$path" == .env || "$path" == .env.* ]]; then
       continue
     fi
-    unexpected+=("$line")
+    if [[ "$status" == "??" ]]; then
+      untracked_info+=("$path")
+      continue
+    fi
+    unexpected+=("$path")
   done < <(git status --porcelain --untracked-files=all)
+
+  if ((${#untracked_info[@]})); then
+    log "Local untracked files present (left in place, not touched by the update):"
+    printf '%s\n' "${untracked_info[@]}" | sed 's/^/ - /'
+  fi
+
   if ((${#unexpected[@]})); then
     printf '%s\n' "${unexpected[@]}" | sed 's/^/ - /'
-      # ensure terminal is sane before aborting so user can see the message
-      restore_tty
-    die "Repository has unexpected local changes. Commit them, remove them, add them to PRESERVE_FILES, or rerun with --force-reset to discard them."
+    # ensure terminal is sane before aborting so user can see the message
+    restore_tty
+    die "Repository has unexpected local changes to tracked files. Commit them, remove them, add them to PRESERVE_FILES, or rerun with --force-reset to discard them."
   fi
 }
 

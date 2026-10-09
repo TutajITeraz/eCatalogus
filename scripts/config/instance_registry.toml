@@ -71,6 +71,8 @@ database_user = "ecatalogus_user"
 # Public UI is hosted as static files by the Henry Bradshaw Society and calls
 # this API cross-origin. Kept here because install/deploy re-render settings_eclla.py.
 api_integration_origins = ["https://eclla.henrybradshawsociety.org"]
+# Visitors may use the AI database assistant without an account (rate limited).
+assistant_anonymous = true
 
 [instances.limbo]
 slug = "limbo"

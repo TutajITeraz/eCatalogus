@@ -240,6 +240,10 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         ],
         'MEDIA_ROOT': os.getenv(media_root_env_name, os.getenv('MEDIA_ROOT', default_media_root)),
         'SITE_NAME': site_name,
+        'AI_ASSISTANT_ANONYMOUS': bool_env(
+            f'{env_prefix}_AI_ASSISTANT_ANONYMOUS',
+            os.getenv('AI_ASSISTANT_ANONYMOUS', '1' if resolved_defaults.get('assistant_anonymous') else '0'),
+        ),
         'PROJECT_ID': resolved_defaults.get('project_id', 0),
         'FOREIGN_ID_NAME': resolved_defaults.get('foreign_id_name', 'foreign id'),
         # Needed when the UI is served from another origin (SameSite=None cookies are only

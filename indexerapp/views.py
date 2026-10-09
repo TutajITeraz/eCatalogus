@@ -109,6 +109,9 @@ from django.db import transaction
 
 #For the data licence declared on exports:
 from django.conf import settings
+from django.core import signing
+from django.utils import timezone
+from datetime import timedelta
 
 from .api_access import (
     AnonExpensiveRateThrottle,
@@ -1529,25 +1532,85 @@ class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
 ## Modified views.py fragment
 
 
-class AssistantStartView(LoginRequiredMixin, View):
+ASSISTANT_TOKEN_SALT = 'indexerapp.assistant.anonymous'
+ASSISTANT_TOKEN_MAX_AGE = 24 * 3600
+
+
+def _anonymous_assistant_enabled():
+    return bool(getattr(settings, 'AI_ASSISTANT_ANONYMOUS', False))
+
+
+def _anonymous_assistant_user():
+    """The service account that owns anonymous assistant questions (cannot log in)."""
+    user, created = User.objects.get_or_create(
+        username=getattr(settings, 'AI_ASSISTANT_ANONYMOUS_USERNAME', 'anonymous_assistant'),
+        defaults={'is_active': False, 'is_staff': False, 'is_superuser': False},
+    )
+    if created:
+        user.set_unusable_password()
+        user.save(update_fields=['password'])
+    return user
+
+
+class AssistantAccessMixin(LoginRequiredMixin):
+    """Login required, unless the instance lets anonymous visitors use the assistant."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated and _anonymous_assistant_enabled():
+            # Skip LoginRequiredMixin's redirect; View.dispatch still routes the request.
+            return super(LoginRequiredMixin, self).dispatch(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
+
+
+class AssistantStartView(AssistantAccessMixin, View):
     def get(self, request, *args, **kwargs):
         q = request.GET.get('q')
         project_id = request.GET.get('project_id', 0)
         if not q:
             return JsonResponse({'error': 'No question provided'})
+
+        anonymous = not request.user.is_authenticated
+        if anonymous:
+            user = _anonymous_assistant_user()
+            limit = getattr(settings, 'AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR', 30)
+            since = timezone.now() - timedelta(hours=1)
+            if AIQuery.objects.filter(user=user, created_at__gte=since).count() >= limit:
+                return JsonResponse(
+                    {'error': 'The assistant is receiving too many questions right now. Please try again later.'},
+                    status=429,
+                )
+        else:
+            user = request.user
+
         ai_query = AIQuery.objects.create(
-            user=request.user,
+            user=user,
             project_id=project_id,
             question=q,
             status='pending'
         )
         threading.Thread(target=process_ai_query, args=(ai_query.id,)).start()
-        return JsonResponse({'query_id': ai_query.id})
+        response = {'query_id': ai_query.id}
+        if anonymous:
+            # Anonymous callers have no session to prove ownership (the UI is on another site, so
+            # cookies are often blocked): a signed token for this query id does it instead.
+            response['token'] = signing.TimestampSigner(salt=ASSISTANT_TOKEN_SALT).sign(str(ai_query.id))
+        return JsonResponse(response)
 
-class AssistantStatusView(LoginRequiredMixin, View):
+class AssistantStatusView(AssistantAccessMixin, View):
     def get(self, request, query_id, *args, **kwargs):
         try:
-            ai_query = AIQuery.objects.get(id=query_id, user=request.user)
+            if request.user.is_authenticated:
+                ai_query = AIQuery.objects.get(id=query_id, user=request.user)
+            else:
+                try:
+                    signed = signing.TimestampSigner(salt=ASSISTANT_TOKEN_SALT).unsign(
+                        request.GET.get('token', ''), max_age=ASSISTANT_TOKEN_MAX_AGE
+                    )
+                except signing.BadSignature:
+                    return JsonResponse({'error': 'Query not found'}, status=404)
+                if signed != str(query_id):
+                    return JsonResponse({'error': 'Query not found'}, status=404)
+                ai_query = AIQuery.objects.get(id=query_id, user=_anonymous_assistant_user())
             conversation = json.loads(ai_query.conversation) if ai_query.conversation else []
             messages = [{'role': msg['role'], 'content': msg['content']} for msg in conversation if msg['role'] != 'system']
             data = {
