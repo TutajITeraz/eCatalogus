@@ -208,6 +208,20 @@ manuscripts_init = function()
     });
     $('#ms_contemporary_repository_place_select').on('select2:select', processFilters);
 
+    // Opt-in filter (manuscriptFilters.repositoryCity): distinct city names, matched by name.
+    $('#ms_contemporary_repository_place_city_select').select2({
+        ajax: {
+            url: pageRoot+'/ms-contemporary-repository-place-city-autocomplete/',
+            dataType: 'json',
+            xhrFields: {
+                withCredentials: true
+           }
+        },
+        allowClear: true,
+        placeholder: '',
+    });
+    $('#ms_contemporary_repository_place_city_select').on('select2:select select2:unselect', processFilters);
+
     // ms_shelfmark_select 'ms-shelf-mark-autocomplete/
     $('#ms_shelfmark_select').select2({
         ajax: {
@@ -933,6 +947,7 @@ manuscripts_init = function()
     $('#author_select').on("change", processFilters);
     $('#clla_liturgical_genre_select').on("change", processFilters);
     $('#clla_provenance_place_select').on("change", processFilters);
+    $('#clla_no').on("change", processFilters);
 
     $('#original_or_added_select').on("change", processFilters);
     $('#location_on_the_page_select').on("change", processFilters);
@@ -1030,6 +1045,7 @@ manuscripts_init = function()
         setIfActive('source_project',                 window.isFeatureEnabled('sourceProjectFilter') ? getUuidAwareSelect2Values('#ms_source_project_select') : '');
         setIfActive('liturgical_genre',               getUuidAwareSelect2Values('#ms_liturgical_genre_select'));
         setIfActive('contemporary_repository_place',  getUuidAwareSelect2Values('#ms_contemporary_repository_place_select'));
+        setIfActive('contemporary_repository_place_city', getLegacySelect2Values('#ms_contemporary_repository_place_city_select'));
         setIfActive('shelfmark',                      getLegacySelect2Values('#ms_shelfmark_select'));
         setIfActive('place_of_origin',                getUuidAwareSelect2Values('#ms_place_of_origin_select'));
         setIfActive('parchment_colour_select',        getUuidAwareSelect2Values('#parchment_colour_select'));
@@ -1049,6 +1065,9 @@ manuscripts_init = function()
         setIfActive('rubric_select',                  getUuidAwareSelect2Values('#rubric_select'));
         setIfActive('damage_select',                  getLegacySelect2Values('#damage_select'));
         setIfActive('provenance_place_select',        getUuidAwareSelect2Values('#provenance_place_select'));
+        // CLLA (Gamber) filters: autocomplete ids are the values themselves.
+        setIfActive('clla_liturgical_genre_select',   getLegacySelect2Values('#clla_liturgical_genre_select'));
+        setIfActive('clla_provenance_place_select',   getLegacySelect2Values('#clla_provenance_place_select'));
         setIfActive('provenance_place_countries_select', getLegacySelect2Values('#provenance_place_countries_select'));
         setIfActive('form_of_an_item_select',         getLegacySelect2Values('#form_of_an_item_select'));
         setIfActive('title_select',                   getUuidAwareSelect2Values('#title_select'));
@@ -1110,6 +1129,11 @@ manuscripts_init = function()
             ['dating_max',                            '#ms_dating_max'],
             ['dating_years_min',                      '#ms_dating_years_min'],
             ['dating_years_max',                      '#ms_dating_years_max'],
+            ['clla_no',                               '#clla_no'],
+            ['clla_dating_min',                       '#clla_dating_min'],
+            ['clla_dating_max',                       '#clla_dating_max'],
+            ['clla_dating_years_min',                 '#clla_dating_years_min'],
+            ['clla_dating_years_max',                 '#clla_dating_years_max'],
             ['number_of_parchment_folios_min',        '#number_of_parchment_folios_min'],
             ['number_of_parchment_folios_max',        '#number_of_parchment_folios_max'],
             ['binding_date_min',                      '#ms_binding_date_min'],
@@ -1455,6 +1479,7 @@ const filterIdMap = {
     source_project: 'ms_source_project_select',
   liturgical_genre: 'ms_liturgical_genre_select',
   contemporary_repository_place: 'ms_contemporary_repository_place_select',
+  contemporary_repository_place_city: 'ms_contemporary_repository_place_city_select',
   shelfmark: 'ms_shelfmark_select',
   place_of_origin: 'ms_place_of_origin_select',
 

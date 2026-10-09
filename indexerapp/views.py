@@ -765,6 +765,7 @@ class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
         source_project = self.request.query_params.get('source_project')
         liturgical_genre = self.request.query_params.get('liturgical_genre')
         contemporary_repository_place = self.request.query_params.get('contemporary_repository_place')
+        contemporary_repository_place_city = self.request.query_params.get('contemporary_repository_place_city')
         shelfmark = self.request.query_params.get('shelfmark')
         dating = self.request.query_params.get('dating')
         place_of_origin = self.request.query_params.get('place_of_origin')
@@ -894,6 +895,10 @@ class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'ms_genres__genre_uuid', liturgical_genre)
         if contemporary_repository_place:
             queryset = _filter_queryset_by_uuid_or_pk_any(queryset, 'contemporary_repository_place_uuid', contemporary_repository_place)
+        if contemporary_repository_place_city:
+            queryset = queryset.filter(
+                contemporary_repository_place_uuid__city_today_local_language__in=_parse_selector_list(contemporary_repository_place_city)
+            )
         if shelfmark:
             shelfmark_ids = shelfmark.split(';')
             queryset = queryset.filter(shelf_mark__in=shelfmark_ids)
@@ -956,16 +961,16 @@ class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
 
 
         if clla_dating_min and clla_dating_min.isdigit():
-            queryset = queryset.filter(Q(ms_clla__dating__century_from__gte=int(clla_dating_min)) | Q(ms_clla__dating__century_to__gte=int(clla_dating_min)))
+            queryset = queryset.filter(Q(ms_clla__dating_uuid__century_from__gte=int(clla_dating_min)) | Q(ms_clla__dating_uuid__century_to__gte=int(clla_dating_min)))
 
         if clla_dating_max and clla_dating_max.isdigit():
-            queryset = queryset.filter(Q(ms_clla__dating__century_from__lte=int(clla_dating_max)) | Q(ms_clla__dating__century_to__lte=int(clla_dating_max)))
+            queryset = queryset.filter(Q(ms_clla__dating_uuid__century_from__lte=int(clla_dating_max)) | Q(ms_clla__dating_uuid__century_to__lte=int(clla_dating_max)))
 
         if clla_dating_years_min and clla_dating_years_min.isdigit():
-            queryset = queryset.filter(Q(ms_clla__dating__year_from__gte=int(clla_dating_years_min)) | Q(ms_clla__dating__year_to__gte=int(clla_dating_years_min)))
+            queryset = queryset.filter(Q(ms_clla__dating_uuid__year_from__gte=int(clla_dating_years_min)) | Q(ms_clla__dating_uuid__year_to__gte=int(clla_dating_years_min)))
 
         if clla_dating_years_max and clla_dating_years_max.isdigit():
-            queryset = queryset.filter(Q(ms_clla__dating__year_from__lte=int(clla_dating_years_max)) | Q(ms_clla__dating__year_to__lte=int(clla_dating_years_max)))
+            queryset = queryset.filter(Q(ms_clla__dating_uuid__year_from__lte=int(clla_dating_years_max)) | Q(ms_clla__dating_uuid__year_to__lte=int(clla_dating_years_max)))
 
 
         if decoration_false and not decoration_true:
@@ -2255,6 +2260,30 @@ class MSContemporaryRepositoryPlaceAutocomplete(UUIDAutocompleteResultMixin, aut
     def get_result_label(self, item):
         return str(item)
 
+
+
+class MSContemporaryRepositoryPlaceCityAutocomplete(autocomplete.Select2QuerySetView):
+    """Distinct repository cities (local-language name) of the manuscripts shown in the catalogue."""
+
+    def get_queryset(self):
+        qs = Places.objects.filter(
+            manuscripts__contemporary_repository_place_uuid__isnull=False,
+            manuscripts__display_as_main=True,
+        ).exclude(city_today_local_language__isnull=True).exclude(city_today_local_language='')
+
+        if self.q:
+            qs = qs.filter(city_today_local_language__icontains=self.q)
+
+        return qs.values('city_today_local_language').distinct().order_by('city_today_local_language')
+
+    def get_result_value(self, item):
+        return item['city_today_local_language']
+
+    def get_result_label(self, item):
+        return item['city_today_local_language']
+
+    def get_selected_result_label(self, item):
+        return item['city_today_local_language']
 
 
 class MSDatingAutocomplete(UUIDAutocompleteResultMixin, autocomplete.Select2QuerySetView):

@@ -58,7 +58,7 @@
                                     id="ms_name_select" 
                                     style="width: 50% !important;"></select>
                             </div>
-                            <div class="flex mx-3 my-1">
+                            <div class="flex mx-3 my-1" data-ui-scope="manuscriptFilters" data-ui-key="foreignId">
                                 <h2 class="w-1/2 flex items-center" x-text="foreign_id_name"></h2>
                                 <select class="manuscript_filter"
                                     id="ms_foreign_id_select" 
@@ -70,7 +70,7 @@
                                     id="ms_source_project_select"
                                     style="width: 50% !important;"></select>
                             </div>
-                            <div class="flex mx-3 my-1">
+                            <div class="flex mx-3 my-1" data-ui-scope="manuscriptFilters" data-ui-key="liturgicalGenre">
                                 <h2 class="w-1/2 flex items-center">Liturgical genre</h2>
                                 <select class="manuscript_filter"
                                     id="ms_liturgical_genre_select" 
@@ -84,28 +84,35 @@
                                     multiple
                                     style="width: 50% !important;"></select>
                             </div>
-                            <div class="flex mx-3 my-1">
+                            <div data-ui-scope="manuscriptFilters" data-ui-key="repositoryCity" class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Contemporary repository (city)</h2>
+                                <select class="manuscript_filter"
+                                    id="ms_contemporary_repository_place_city_select"
+                                    multiple
+                                    style="width: 50% !important;"></select>
+                            </div>
+                            <div class="flex mx-3 my-1" data-ui-scope="manuscriptFilters" data-ui-key="shelfmark">
                                 <h2 class="w-1/2 flex items-center">Shelfmark</h2>
                                 <select class="manuscript_filter"
                                     id="ms_shelfmark_select" 
                                     style="width: 50% !important;"> </select>
                             </div>
-                            <div class="flex mx-3 my-1">
+                            <div class="flex mx-3 my-1" data-ui-scope="manuscriptFilters" data-ui-key="placeOfOrigin">
                                 <h2 class="w-1/2 flex items-center">Origin</h2>
                                 <select class="manuscript_filter"
                                     id="ms_place_of_origin_select" 
                                     style="width: 50% !important;"></select>
                             </div>
-                            <div class="flex mx-3 mt-1 mb-2">
+                            <div class="flex mx-3 mt-1 mb-2" data-ui-scope="manuscriptFilters" data-ui-key="provenance">
                                 <h2 class="w-1/2 flex items-center">Provenance</h2>
                                 <select class="manuscript_filter w-1/2" id="provenance_place_select" multiple style="width: 50% !important;"></select>
                             </div>
-                            <div class="flex mx-3 mt-1 mb-2">
+                            <div class="flex mx-3 mt-1 mb-2" data-ui-scope="manuscriptFilters" data-ui-key="provenanceCountries">
                                 <h2 class="w-1/2 flex items-center">Provenance countries</h2>
                                 <select class="manuscript_filter w-1/2" id="provenance_place_countries_select" multiple style="width: 50% !important;"></select>
                             </div>
 
-                            <div class="flex mx-3 mt-1 mb-2">
+                            <div class="flex mx-3 mt-1 mb-2" data-ui-scope="manuscriptFilters" data-ui-key="formOfItem">
                                 <h2 class="w-1/2 flex items-center">Form of an item</h2>
                                 <select class="manuscript_filter w-1/2" id="form_of_an_item_select" multiple style="width: 50% !important;">
                                     <option value="C">Codices</option>
@@ -141,7 +148,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="flex mx-3 my-1">
+                            <div class="flex mx-3 my-1" data-ui-scope="manuscriptFilters" data-ui-key="decorated">
                                 <h2 class="w-1/2 flex items-center">Decoration</h2>
                                 <div class="flex my-1 w-1/2">
                                     <div class="range_input">
@@ -152,7 +159,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="flex mx-3 my-1">
+                            <div class="flex mx-3 my-1" data-ui-scope="manuscriptFilters" data-ui-key="musicNotation">
                                 <h2 class="w-1/2 flex items-center">Music notation</h2>
                                 <div class="flex my-1 w-1/2">
                                     <div class="range_input">
@@ -189,7 +196,70 @@
                             -->
                         </div>
                     </li>
-                    <li x-data="{ cap: false }" @click.away="cap = false"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="clla" x-data="{ clla: false }" @click.away="clla = false"
+                        class="md:relative items-center justify-center xl:mb-0 flex col-span-1">
+                        <button @click="clla = !clla"
+                            id="mega-menu-icons-dropdown-button"
+                            data-dropdown-toggle="mega-menu-icons-dropdown"
+                            :class="clla ? 'text-[#0d1b2a] underline' : 'hover:underline hover:text-[#070e16]'"
+                            class="w-full h-full text-center young-serif text-[10px] sm:text-xs md:text-[8pt] uppercase">
+                            CLLA
+                        </button>
+                        <div id="mega-menu-icons-dropdown"
+                            class="absolute flex flex-col z-10 w-full md:w-[28rem] top-[60px] md:top-[30px] text-xs md:text-sm text-[#0d1b2a] bg-[#fef9f6] border border-gray-200 rounded shadow-md right-0 md:left-0"
+                            x-show="clla"
+                            x-transition:enter="transition ease-out duration-400"
+                            x-transition:enter-start="transform opacity-0 scale-90"
+                            x-transition:enter-end="transform opacity-100 scale-100"
+                            x-transition:leave="transition ease-in duration-400"
+                            x-transition:leave-start="transform opacity-100 scale-100"
+                            x-transition:leave-end="transform opacity-0 scale-90">
+                            <div class="flex mx-3 mt-1 mb-2">
+                                <h2 class="w-1/2 flex items-center">CLLA no.:</h2>
+                                <input class="manuscript_filter w-1/2"  type="text" id="clla_no" name="clla_no" style="width: 50% !important;" />
+                                <br />
+                            </div>
+                            <div class="flex mx-3 mt-1 mb-2">
+                                <h2 class="w-1/2 flex items-center">Liturgical genre:</h2>
+                                <select class="manuscript_filter w-1/2" id="clla_liturgical_genre_select" multiple style="width: 50% !important;"></select>
+                                <br />
+                            </div>
+                            <div class="flex mx-3 mt-1 mb-2">
+                                <h2 class="w-1/2 flex items-center">Provenance place:</h2>
+                                <select class="manuscript_filter w-1/2" id="clla_provenance_place_select" multiple style="width: 50% !important;"></select>
+                                <br />
+                            </div>
+
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Date by centuries</h2>
+                                <div class="flex w-1/2">
+                                    <div class="range_input">
+                                        <label class="top_level_label range_label" for="clla_dating_min">min.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="clla_dating_min" min="0" max="22" />
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <label class="top_level_label range_label" for="clla_dating_max">max.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="clla_dating_max" min="0" max="22" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex mx-3 my-1">
+                                <h2 class="w-1/2 flex items-center">Date by years</h2>
+                                <div class="flex w-1/2">
+                                    <div class="range_input">
+                                        <label class="top_level_label range_label" for="clla_dating_years_min">min.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="clla_dating_years_min" min="0" max="2200" />
+                                    </div>
+                                    <div class="range_input ml-2">
+                                        <label class="top_level_label range_label" for="clla_dating_years_max">max.</label>
+                                        <input class="range_number p-[5px] border border-[#bbb] rounded" type="number" id="clla_dating_years_max" min="0" max="2200" />
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </li>
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="codicology" x-data="{ cap: false }" @click.away="cap = false"
                         class="md:relative items-center justify-center xl:mb-0 flex col-span-1">
                         <button @click="cap = !cap"
                             id="mega-menu-icons-dropdown-button"
@@ -351,7 +421,7 @@
 
                         </div>
                     </li>-->
-                    <li x-data="{ script: false }" @click.away="script = false"
+                    <li data-ui-scope="manuscriptFilters" data-ui-key="paleography" x-data="{ script: false }" @click.away="script = false"
                         class="md:relative items-center justify-center xl:mb-0 flex">
                         <button @click="script = !script"
                             id="mega-menu-icons-dropdown-button"

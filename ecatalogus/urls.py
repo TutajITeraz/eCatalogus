@@ -216,6 +216,7 @@ urlpatterns = [
 
     path('ms-foreign-id-autocomplete/',views.MSForeignIdAutocomplete.as_view(),name='ms-foreign-id-autocomplete'),
     path('ms-contemporary-repository-place-autocomplete/',views.MSContemporaryRepositoryPlaceAutocomplete.as_view(),name='ms-contemporary-repository-place-autocomplete'),
+    path('ms-contemporary-repository-place-city-autocomplete/',views.MSContemporaryRepositoryPlaceCityAutocomplete.as_view(),name='ms-contemporary-repository-place-city-autocomplete'),
     path('ms-shelf-mark-autocomplete/',views.MSShelfMarkAutocomplete.as_view(),name='ms-shelf-mark-autocomplete'),
     path('ms-dating-autocomplete/',views.MSDatingAutocomplete.as_view(),name='ms-dating-autocomplete'),
     path('ms-place-of-origins-autocomplete/',views.MSPlaceOfOriginsAutocomplete.as_view(),name='ms-place-of-origins-autocomplete'),

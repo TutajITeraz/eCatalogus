@@ -11,6 +11,22 @@ const defaultUiVisibility = {
     },
     manuscriptFilters: {
         mainInfo: true,
+        // Main Info rows
+        foreignId: true,
+        liturgicalGenre: true,
+        shelfmark: true,
+        placeOfOrigin: true,
+        provenance: true,
+        provenanceCountries: true,
+        formOfItem: true,
+        decorated: true,
+        musicNotation: true,
+        // Opt-in: the original eCLLA filters (enabled in static_eclla/js/config.js)
+        repositoryCity: false,
+        clla: false,
+        // Tabs
+        codicology: true,
+        paleography: true,
         layout: true,
         binding: true,
         condition: true,
@@ -47,6 +63,9 @@ const defaultUiVisibility = {
 const defaultSiteFeatures = {
     sourceProject: false,
     sourceProjectFilter: false,
+    // Anonymous visitors are sent to the login page everywhere except "about".
+    // Public catalogues (eCLLA) switch this off in their static_<instance>/js/config.js.
+    requireLogin: true,
 };
 
 function mergeNestedBooleans(defaults, overrides) {
@@ -318,7 +337,7 @@ async function getUsername()
     const main_info = await getMainInfo();
     const user = main_info.username
 
-    if( user == "" && page !='about')
+    if( user == "" && page !='about' && window.isFeatureEnabled('requireLogin'))
 	    //alert('no user');
         window.location.href = "/static/login.html";
 

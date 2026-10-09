@@ -242,6 +242,10 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         'SITE_NAME': site_name,
         'PROJECT_ID': resolved_defaults.get('project_id', 0),
         'FOREIGN_ID_NAME': resolved_defaults.get('foreign_id_name', 'foreign id'),
+        # Needed when the UI is served from another origin (SameSite=None cookies are only
+        # accepted over HTTPS with the Secure flag). Set COOKIE_SECURE=1 in the instance .env.
+        'SESSION_COOKIE_SECURE': bool_env(f'{env_prefix}_COOKIE_SECURE', os.getenv('COOKIE_SECURE', '0')),
+        'CSRF_COOKIE_SECURE': bool_env(f'{env_prefix}_COOKIE_SECURE', os.getenv('COOKIE_SECURE', '0')),
         'SESSION_COOKIE_NAME': os.getenv(
             f'{env_prefix}_SESSION_COOKIE_NAME',
             os.getenv('SESSION_COOKIE_NAME', defaults.get('session_cookie_name', f'{instance_slug}_sessionid')),

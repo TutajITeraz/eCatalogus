@@ -51,6 +51,27 @@ project_id = 0
 foreign_id_name = "foreign id"
 local_port = 8000
 
+[instances.eclla]
+slug = "eclla"
+site_name = "eCLLA"
+domain = "api.eclla.ecatalogus.ispan.pl"
+public_url = "https://api.eclla.ecatalogus.ispan.pl"
+settings_module = "ecatalogus.settings_eclla"
+overlay_dir = "static_eclla"
+role = "slave"
+peer_id = "eclla"
+canonical_master = false
+default_parent_peer = "ecatalogus"
+source_peers = ["ecatalogus"]
+project_id = 1
+foreign_id_name = "CLLA no."
+local_port = 8084
+database_name = "eclla"
+database_user = "ecatalogus_user"
+# Public UI is hosted as static files by the Henry Bradshaw Society and calls
+# this API cross-origin. Kept here because install/deploy re-render settings_eclla.py.
+api_integration_origins = ["https://eclla.henrybradshawsociety.org"]
+
 [instances.limbo]
 slug = "limbo"
 site_name = "MPL Limbo"
