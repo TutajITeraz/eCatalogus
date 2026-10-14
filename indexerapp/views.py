@@ -109,7 +109,6 @@ from django.db import transaction
 
 #For the data licence declared on exports:
 from django.conf import settings
-from django.core import signing
 from django.utils import timezone
 from datetime import timedelta
 
@@ -1532,10 +1531,6 @@ class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
 ## Modified views.py fragment
 
 
-ASSISTANT_TOKEN_SALT = 'indexerapp.assistant.anonymous'
-ASSISTANT_TOKEN_MAX_AGE = 24 * 3600
-
-
 def _anonymous_assistant_enabled():
     return bool(getattr(settings, 'AI_ASSISTANT_ANONYMOUS', False))
 
@@ -1589,12 +1584,7 @@ class AssistantStartView(AssistantAccessMixin, View):
             status='pending'
         )
         threading.Thread(target=process_ai_query, args=(ai_query.id,)).start()
-        response = {'query_id': ai_query.id}
-        if anonymous:
-            # Anonymous callers have no session to prove ownership (the UI is on another site, so
-            # cookies are often blocked): a signed token for this query id does it instead.
-            response['token'] = signing.TimestampSigner(salt=ASSISTANT_TOKEN_SALT).sign(str(ai_query.id))
-        return JsonResponse(response)
+        return JsonResponse({'query_id': ai_query.id})
 
 class AssistantStatusView(AssistantAccessMixin, View):
     def get(self, request, query_id, *args, **kwargs):
@@ -1602,14 +1592,7 @@ class AssistantStatusView(AssistantAccessMixin, View):
             if request.user.is_authenticated:
                 ai_query = AIQuery.objects.get(id=query_id, user=request.user)
             else:
-                try:
-                    signed = signing.TimestampSigner(salt=ASSISTANT_TOKEN_SALT).unsign(
-                        request.GET.get('token', ''), max_age=ASSISTANT_TOKEN_MAX_AGE
-                    )
-                except signing.BadSignature:
-                    return JsonResponse({'error': 'Query not found'}, status=404)
-                if signed != str(query_id):
-                    return JsonResponse({'error': 'Query not found'}, status=404)
+                # Anonymous visitors only see queries owned by the shared service account.
                 ai_query = AIQuery.objects.get(id=query_id, user=_anonymous_assistant_user())
             conversation = json.loads(ai_query.conversation) if ai_query.conversation else []
             messages = [{'role': msg['role'], 'content': msg['content']} for msg in conversation if msg['role'] != 'system']

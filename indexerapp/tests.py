@@ -2334,23 +2334,14 @@ class AnonymousAssistantTests(TestCase):
 		self.assertEqual(query.user.username, 'anonymous_assistant')
 		self.assertFalse(query.user.is_active)
 		self.assertFalse(query.user.has_usable_password())
-		self.assertTrue(data['token'])
 		self.thread.assert_called_once()
 
 	@override_settings(AI_ASSISTANT_ANONYMOUS=True)
-	def test_status_requires_the_token_issued_for_that_query(self):
+	def test_anonymous_can_poll_status_without_a_token(self):
 		first = self._start().json()
-		second = self._start().json()
 
-		self.assertEqual(self.client.get(f"/assistant/status/{first['query_id']}/").status_code, 404)
-		self.assertEqual(
-			self.client.get(f"/assistant/status/{first['query_id']}/", {'token': 'garbage'}).status_code, 404
-		)
-		# a valid token for another query must not open this one
-		self.assertEqual(
-			self.client.get(f"/assistant/status/{first['query_id']}/", {'token': second['token']}).status_code, 404
-		)
-		ok = self.client.get(f"/assistant/status/{first['query_id']}/", {'token': first['token']})
+		ok = self.client.get(f"/assistant/status/{first['query_id']}/")
+
 		self.assertEqual(ok.status_code, 200)
 		self.assertEqual(ok.json()['status'], 'pending')
 
@@ -2369,9 +2360,8 @@ class AnonymousAssistantTests(TestCase):
 	def test_anonymous_cannot_read_a_logged_in_users_query(self):
 		user = get_user_model().objects.create_user('alice', password='pw')
 		query = AIQuery.objects.create(user=user, question='private', status='completed')
-		token = self._start().json()['token']
 
-		response = self.client.get(f'/assistant/status/{query.id}/', {'token': token})
+		response = self.client.get(f'/assistant/status/{query.id}/')
 
 		self.assertEqual(response.status_code, 404)
 
