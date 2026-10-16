@@ -16,6 +16,8 @@ window.SITE_CONFIG = (function () {
         projectId: 1,
         siteName: 'eCLLA',
         foreign_id_name: 'CLLA no.',
+        // Manuscripts and CLLA entries are dated 501-1200; the slider covers 500-1200.
+        datingYears: { min: 500, max: 1200 },
         features: {
             sourceProject: false,
             sourceProjectFilter: false,

@@ -98,6 +98,7 @@ def chat(conversation, model=None, temperature=DEFAULT_TEMPERATURE, timeout=REQU
     started = time.time()
     last_activity = started
     eval_count = 0
+    done_reason = ""
 
     with urllib.request.urlopen(request, timeout=timeout) as response:
         for line in response:
@@ -117,6 +118,12 @@ def chat(conversation, model=None, temperature=DEFAULT_TEMPERATURE, timeout=REQU
             except json.JSONDecodeError:
                 continue
 
+            if chunk.get("error"):
+                # Ollama reports load/OOM/context failures as {"error": ...}
+                # in the stream; without this the reply is just silently empty.
+                print(f"   Ollama error (model={model or DEFAULT_MODEL}): {chunk['error']}")
+                continue
+
             message = chunk.get("message") or {}
             # Reasoning tokens are not part of the answer we parse for SQL.
             if not message.get("thinking"):
@@ -124,13 +131,17 @@ def chat(conversation, model=None, temperature=DEFAULT_TEMPERATURE, timeout=REQU
 
             if chunk.get("done", False):
                 eval_count = chunk.get("eval_count", 0) or 0
+                done_reason = chunk.get("done_reason", "")
                 break
 
     text = _fix_byte_fallback_tokens("".join(collected)).strip()
     print(
         f"Ollama assistant: model={model or DEFAULT_MODEL} "
-        f"took={time.time() - started:.1f}s tokens={eval_count}"
+        f"took={time.time() - started:.1f}s tokens={eval_count} "
+        f"done_reason={done_reason or 'n/a'} chars={len(text)}"
     )
+    if done_reason and done_reason != "stop":
+        print(f"   Ollama stopped abnormally: done_reason={done_reason}")
     return text
 
 

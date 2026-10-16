@@ -1,5 +1,7 @@
-const DATING_YEAR_MIN = 1000;
-const DATING_YEAR_MAX = 1400;
+// Slider range for "Dating by years"; an instance can override it with
+// SITE_CONFIG.datingYears = { min, max } (eCLLA covers 500-1200).
+const DATING_YEAR_MIN = (window.SITE_CONFIG && window.SITE_CONFIG.datingYears && window.SITE_CONFIG.datingYears.min) || 1000;
+const DATING_YEAR_MAX = (window.SITE_CONFIG && window.SITE_CONFIG.datingYears && window.SITE_CONFIG.datingYears.max) || 1400;
 
 function escapeHtml(value) {
     return String(value || '')
@@ -62,7 +64,7 @@ manuscripts_init = function()
     // Sync slider with number inputs
     slider.noUiSlider.on('update', function(values, handle) {
         const [min, max] = values;
-        // Clear inputs if slider is at full range (1000–1400)
+        // Clear inputs if slider is at full range (DATING_YEAR_MIN–DATING_YEAR_MAX)
         if (min === DATING_YEAR_MIN && max === DATING_YEAR_MAX) {
             minInput.value = '';
             maxInput.value = '';
