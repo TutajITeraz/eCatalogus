@@ -293,7 +293,7 @@ content_init = function()
                                     border-radius: 50%;
                                     display: inline-block;
                                     margin-right: 2px;
-                                    background-image: url('/static/img/eng_flag.png');
+                                    background-image: url('${pageRoot}/static/img/eng_flag.png');
                                     background-size: cover;
                                     background-position: center;
                                 ">

@@ -2376,3 +2376,37 @@ class AnonymousAssistantTests(TestCase):
 		query = AIQuery.objects.get(id=data['query_id'])
 		self.assertEqual(query.user, user)
 		self.assertEqual(self.client.get(f"/assistant/status/{data['query_id']}/").status_code, 200)
+
+
+class ImproveOurDataFormTests(TestCase):
+	"""The captcha form is public and may be posted from a UI hosted on another site."""
+
+	def test_post_without_csrf_token_succeeds_with_a_valid_captcha(self):
+		from captcha.models import CaptchaStore
+		from indexerapp.models import ImproveOurDataEntry
+
+		client = self.client_class(enforce_csrf_checks=True)
+		key = client.get('/improve_our_data/').json()['captcha_key']
+		answer = CaptchaStore.objects.get(hashkey=key).response
+
+		response = client.post(
+			'/improve_our_data/',
+			data=json.dumps({'name': 'A', 'email': 'a@b.c', 'ms_signature': 'S', 'message': 'm', 'captcha': answer, 'captcha_key': key}),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(response.json()['success'])
+		self.assertEqual(ImproveOurDataEntry.objects.filter(name='A').count(), 1)
+
+	def test_wrong_captcha_is_rejected(self):
+		client = self.client_class(enforce_csrf_checks=True)
+		key = client.get('/improve_our_data/').json()['captcha_key']
+
+		response = client.post(
+			'/improve_our_data/',
+			data=json.dumps({'name': 'A', 'email': 'a@b.c', 'ms_signature': 'S', 'message': 'm', 'captcha': 'definitely-wrong', 'captcha_key': key}),
+			content_type='application/json',
+		)
+
+		self.assertEqual(response.status_code, 400)

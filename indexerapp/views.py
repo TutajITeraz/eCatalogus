@@ -4630,6 +4630,9 @@ class DeleteContentView(View):
         return JsonResponse({'status': 'success', 'deleted_count': deleted_count})
 
 
+# Public, anonymous form protected by a captcha. csrf_exempt because the UI may be served from
+# another site than the API (eCLLA), where a script cannot read the API's CSRF cookie.
+@method_decorator(csrf_exempt, name='dispatch')
 class ImproveOurDataFormView(View):
     def post(self, request):
         data = json.loads(request.body)

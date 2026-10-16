@@ -283,7 +283,7 @@ async function corpusRenderReport() {
 function corpusRenderPrayerMap(force) {
   const state = corpusAnalysisState;
   const frame = document.getElementById('corpusPrayerFrame');
-  const url = '/static/corpus_3d/index.html?run=' + encodeURIComponent(state.run.uuid) +
+  const url = pageRoot + '/static/corpus_3d/index.html?run=' + encodeURIComponent(state.run.uuid) +
     '&cohort=' + encodeURIComponent(state.cohort) +
     '&api=' + encodeURIComponent(pageRoot) + '&v=20261008';
   if (force || frame.dataset.loaded !== url) {
@@ -889,7 +889,7 @@ function corpusPrintDocument(title) {
 
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
     + '<title>' + corpusEscapeHtml(title || 'Corpus analysis') + '</title>'
-    + '<link rel="stylesheet" href="/static/css/printed.css" />'
+    + '<link rel="stylesheet" href="' + pageRoot + '/static/css/printed.css" />'
     + '<style>' + style + '</style>'
     + '</head><body data-corpus-print="ready">'
     + '<section class="corpus-section">' + heading + '</section>'

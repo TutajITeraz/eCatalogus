@@ -30,9 +30,10 @@ INSTANCES=(
 post_update() {
   case "$1" in
     eclla)
-      # The public UI of eCLLA is a copy of static_assets on eclla.henrybradshawsociety.org.
-      tar czf "$HOME/eclla_ui.tgz" -C static_assets . \
-        && echo "  UI archive: ~/eclla_ui.tgz  (copy it to the HBS host and unpack into ~/eclla/static, see ECLLA_MIGRATION.md section 4)"
+      # The public UI of eCLLA is served by eclla.henrybradshawsociety.org: only the pages
+      # (~300 KB); scripts, styles and images are loaded from this API host.
+      .venv/bin/python scripts/export_ui_bundle.py --instance eclla --output "$HOME/eclla_ui.tgz" \
+        && echo "  Copy ~/eclla_ui.tgz to the HBS host and unpack it into ~/eclla/static (ECLLA_MIGRATION.md, section 4)."
       ;;
   esac
 }

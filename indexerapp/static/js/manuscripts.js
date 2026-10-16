@@ -1231,7 +1231,7 @@ manuscripts_init = function()
                     return sum + (marker.manuscriptCount || 1);
                 }, 0);
                 return L.divIcon({
-                    html: '<img src="/static/img/icons/marker_number.svg"><div class="number">' + manuscriptCount + '</div>',
+                    html: '<img src="' + pageRoot + '/static/img/icons/marker_number.svg"><div class="number">' + manuscriptCount + '</div>',
                     className: 'leaflet-marker-icon leaflet-div-icon',
                     iconSize: L.point(25, 41)
                 });
@@ -1298,7 +1298,7 @@ manuscripts_init = function()
             popupContent += '</ul>';
             var marker = L.marker([location.lat, location.lon], {
                 icon: L.divIcon({
-                    html: `<img src="/static/img/icons/marker_number.svg">${location.manuscripts.length > 1 ? '<div class="number">' + location.manuscripts.length + '</div>' : ''}${location.unsure ? '<div class="unsure-badge" title="unsure">?</div>' : ''}`,
+                    html: `<img src="${pageRoot}/static/img/icons/marker_number.svg">${location.manuscripts.length > 1 ? '<div class="number">' + location.manuscripts.length + '</div>' : ''}${location.unsure ? '<div class="unsure-badge" title="unsure">?</div>' : ''}`,
                     className: 'leaflet-marker-icon leaflet-div-icon',
                     iconSize: L.point(25, 41)
                 })
@@ -1351,7 +1351,9 @@ manuscripts_init = function()
                 "fnCreatedCell": function (nTd, sData, oData, iRow, iCol) {
                     $(nTd).css({ 'text-align': 'center', 'vertical-align': 'middle' });
                     if (oData.thumbnail_url && oData.thumbnail_url.length > 3) {
-                        $(nTd).html("<img src='" + oData.thumbnail_url + "' style='max-height: 170px; max-width: 190px; display: block; margin: 0 auto;'></img>");
+                        // The API returns a site-relative path; with the UI on another host it must point at the API.
+                        var thumbUrl = oData.thumbnail_url.charAt(0) === '/' ? pageRoot + oData.thumbnail_url : oData.thumbnail_url;
+                        $(nTd).html("<img src='" + thumbUrl + "' style='max-height: 170px; max-width: 190px; display: block; margin: 0 auto;'></img>");
                     }
                 }
             },

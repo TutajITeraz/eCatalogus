@@ -1326,6 +1326,8 @@ location /static/ {
   alias ${STATIC_DIR}/;
     expires 30d;
     add_header Cache-Control "public, immutable";
+    # Public assets; lets a UI hosted on another site (eCLLA) use fonts and models from here.
+    add_header Access-Control-Allow-Origin "*";
 }
 
 location /media/ {

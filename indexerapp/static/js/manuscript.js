@@ -830,7 +830,7 @@ function init_content_table(reinit = false) {
                                     border-radius: 50%;
                                     display: inline-block;
                                     margin-right: 2px;
-                                    background-image: url('/static/img/eng_flag.png');
+                                    background-image: url('${pageRoot}/static/img/eng_flag.png');
                                     background-size: cover;
                                     background-position: center;
                                 ">
@@ -2503,7 +2503,7 @@ function printDiv(divId, title) {
   );
 
   mywindow.document.body.innerHTML =
-    '<html><head><title>${title}</title><link rel="stylesheet" href="/static/css/printed.css" /></head><body>Loading data... Please be patient...</body></html>';
+    '<html><head><title>${title}</title><link rel="stylesheet" href="' + pageRoot + '/static/css/printed.css" /></head><body>Loading data... Please be patient...</body></html>';
 
   let bibliography_promise = getBibliographyPrintableInfo();
 
@@ -2528,7 +2528,7 @@ function printDiv(divId, title) {
     mywindow.document.body.innerHTML = "";
     mywindow.document.write(`<html><head><title>${title}</title>`);
     mywindow.document.write(
-      '<link rel="stylesheet" href="/static/css/printed.css" /></head><body >'
+      '<link rel="stylesheet" href="' + pageRoot + '/static/css/printed.css" /></head><body >'
     );
 
     for (e in inside_elements) {
@@ -2613,7 +2613,7 @@ function submitSugestionsForm() {
   const captcha = document.getElementById("captcha").value;
   const captchaKey = document.getElementById("captchaImage").dataset.key;
 
-  fetch("/improve_our_data/", {
+  fetch(pageRoot + "/improve_our_data/", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -2647,7 +2647,7 @@ function submitSugestionsForm() {
 }
 
 function loadCaptcha() {
-  fetch("/improve_our_data/", {
+  fetch(pageRoot + "/improve_our_data/", {
     headers: {
       "Content-Type": "application/json",
       "X-CSRFToken": getCookie("csrftoken"),
@@ -2655,7 +2655,8 @@ function loadCaptcha() {
   })
     .then((response) => response.json())
     .then((data) => {
-      document.getElementById("captchaImage").src = data.captcha_image;
+      // site-relative path from the API; the UI may be hosted elsewhere
+      document.getElementById("captchaImage").src = data.captcha_image.charAt(0) === "/" ? pageRoot + data.captcha_image : data.captcha_image;
       document.getElementById("captchaImage").dataset.key = data.captcha_key;
     });
 }
@@ -3060,7 +3061,7 @@ async function map_init() {
 
     var marker = L.marker([markers[m].lat, markers[m].lon], {
       icon: L.divIcon({
-        html: `<img src="/static/img/icons/marker_number.svg"><div class="number">${Number(m) + 1}</div>${markers[m].unsure ? '<div class="unsure-badge" title="unsure">?</div>' : ''}`,
+        html: `<img src="${pageRoot}/static/img/icons/marker_number.svg"><div class="number">${Number(m) + 1}</div>${markers[m].unsure ? '<div class="unsure-badge" title="unsure">?</div>' : ''}`,
         className: 'leaflet-marker-icon leaflet-div-icon',
         iconSize: L.point(25, 41)
       }),
