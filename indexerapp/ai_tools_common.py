@@ -163,9 +163,9 @@ def get_table_list():
 
 
 # The list is pasted into the system prompt, so it must stay small enough that
-# the whole prompt fits the model's context window (32k tokens on our Ollama).
-# Past this size the model gets the hint to look manuscripts up with SQL instead.
-MANUSCRIPT_LIST_MAX_CHARS = 15000
+# the whole prompt fits the model's context window (32k tokens on our Ollama)
+# with room left for the conversation. ~0.37 tokens per char on real data.
+MANUSCRIPT_LIST_MAX_CHARS = 30000
 
 
 def get_all_manuscript_names(projectId):
@@ -186,17 +186,52 @@ def get_all_manuscript_names(projectId):
 
 
 def manuscript_list_prompt_section(projectId):
-    """Manuscript list for the prompt, or a hint to query when it is too long."""
-    csv_data = get_all_manuscript_names(projectId)
-    if len(csv_data) <= MANUSCRIPT_LIST_MAX_CHARS:
-        return (
-            "The user may refer to these manuscripts by name, RISM id or foreign id. "
-            f"Filter on the matching manuscript when they do:\n{csv_data}"
+    """Manuscript list for the prompt, shrunk step by step to fit the budget.
+
+    1. every column (id, name, rism_id, foreign_id, shelf_mark)
+    2. without the id: the SQL joins on uuid, the historian speaks in names
+    3. names only
+    4. names only, cut after the last row that fits
+    """
+    queryset = Manuscripts.objects.all()
+    if projectId != 0:
+        queryset = queryset.filter(ms_projects__project_uuid__id=projectId)
+    rows = list(queryset.values_list('id', 'name', 'rism_id', 'foreign_id', 'shelf_mark'))
+
+    def render(columns, header, limit=None):
+        body = ''.join(
+            ','.join(f'"{row[c] or ""}"' for c in columns) + '\n' for row in rows[:limit]
         )
+        return f'{header}\n{body}'
+
+    tiers = (
+        ((0, 1, 2, 3, 4), '"id","name","rism_id","foreign_id","shelf_mark"'),
+        ((1, 2, 3, 4), '"name","rism_id","foreign_id","shelf_mark"'),
+        ((1,), '"name"'),
+    )
+    intro = (
+        "The user may refer to these manuscripts by name, RISM id or foreign id. "
+        "Filter on the matching manuscript when they do:\n"
+    )
+    for columns, header in tiers:
+        text = render(columns, header)
+        if len(text) <= MANUSCRIPT_LIST_MAX_CHARS:
+            return intro + text
+
+    names_only = tiers[-1]
+    shown = len(render(*names_only, limit=0))
+    for count, row in enumerate(rows):
+        shown += len(f'"{row[1] or ""}"\n')
+        if shown > MANUSCRIPT_LIST_MAX_CHARS:
+            break
+    else:
+        count = len(rows)
     return (
-        "The user may refer to manuscripts by name, RISM id, foreign id or shelf mark. "
-        "There are too many to list here: look the manuscript up in `manuscripts` "
-        "with an exploratory query (e.g. WHERE `name` LIKE '%...%') before filtering on it."
+        f"The user may refer to manuscripts by name, RISM id, foreign id or shelf mark. "
+        f"Only the first {count} of {len(rows)} manuscript names are listed below; for any "
+        "other, look the manuscript up in `manuscripts` with an exploratory query "
+        "(e.g. WHERE `name` LIKE '%...%') before filtering on it.\n"
+        + render(*names_only, limit=count)
     )
 
 

@@ -55,8 +55,10 @@ class Command(BaseCommand):
         row("domain notes", common.DOMAIN_NOTES)
 
         full = common.build_instructions(project, 15, 5)
-        fixed = full.replace(common.get_all_manuscript_names(project), "")
-        row("prompt without manuscript list", fixed)
+        section = common.manuscript_list_prompt_section(project)
+        row("prompt without manuscript list", full.replace(section, ""))
+        row("manuscript section as sent now", section)
+        row("whole prompt as sent now", full)
 
         queryset = Manuscripts.objects.all()
         if project != 0:

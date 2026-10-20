@@ -1595,11 +1595,20 @@ class AssistantStatusView(AssistantAccessMixin, View):
                 # Anonymous visitors only see queries owned by the shared service account.
                 ai_query = AIQuery.objects.get(id=query_id, user=_anonymous_assistant_user())
             conversation = json.loads(ai_query.conversation) if ai_query.conversation else []
-            messages = [{'role': msg['role'], 'content': msg['content']} for msg in conversation if msg['role'] != 'system']
+            debug = settings.DEBUG
+            result = json.loads(ai_query.result) if ai_query.result else None
+            if debug:
+                messages = [{'role': msg['role'], 'content': msg['content']} for msg in conversation if msg['role'] != 'system']
+            else:
+                # The UI only counts the steps to show progress; the prompts and
+                # the generated SQL stay on the server.
+                messages = [{'role': msg['role']} for msg in conversation if msg['role'] != 'system']
+                if result:
+                    result = [{k: v for k, v in entry.items() if k != 'query'} for entry in result]
             data = {
                 'status': ai_query.status,
                 'messages': messages,
-                'result': json.loads(ai_query.result) if ai_query.result else None,
+                'result': result,
                 'error': ai_query.error,
                 'execution_time': ai_query.execution_time
             }
