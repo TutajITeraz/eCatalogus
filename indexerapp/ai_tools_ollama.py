@@ -22,7 +22,7 @@ OLLAMA_CHAT_URL = f'{OLLAMA_HOST}/api/chat'
 OLLAMA_TAGS_URL = f'{OLLAMA_HOST}/api/tags'
 
 # Must match the model the OCR autofix tool uses, so Ollama loads it once.
-DEFAULT_MODEL = getattr(settings, 'OLLAMA_MODEL', 'gemma4:12b-it-qat')
+DEFAULT_MODEL = getattr(settings, 'OLLAMA_MODEL', 'gemma4:e4b')
 
 # SQL generation wants determinism, not creativity.
 DEFAULT_TEMPERATURE = getattr(settings, 'OLLAMA_TEMPERATURE', 0.05)
@@ -142,6 +142,14 @@ def chat(conversation, model=None, temperature=DEFAULT_TEMPERATURE, timeout=REQU
     )
     if done_reason and done_reason != "stop":
         print(f"   Ollama stopped abnormally: done_reason={done_reason}")
+    if done_reason == "length" and eval_count < 8:
+        # Almost nothing generated: the prompt filled the context window.
+        # Retrying only repeats it, so fail the query with a clear message.
+        raise RuntimeError(
+            "Ollama produced no usable output: the prompt most likely exceeds the "
+            "model's context window (done_reason=length after "
+            f"{eval_count} tokens)."
+        )
     return text
 
 

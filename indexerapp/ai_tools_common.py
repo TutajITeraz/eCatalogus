@@ -162,6 +162,12 @@ def get_table_list():
     return '\n'.join(t for t in tables if not _is_forbidden_table(t))
 
 
+# The list is pasted into the system prompt, so it must stay small enough that
+# the whole prompt fits the model's context window (32k tokens on our Ollama).
+# Past this size the model gets the hint to look manuscripts up with SQL instead.
+MANUSCRIPT_LIST_MAX_CHARS = 15000
+
+
 def get_all_manuscript_names(projectId):
     queryset = Manuscripts.objects.all()
 
@@ -177,6 +183,21 @@ def get_all_manuscript_names(projectId):
         csv_data += row
 
     return csv_data
+
+
+def manuscript_list_prompt_section(projectId):
+    """Manuscript list for the prompt, or a hint to query when it is too long."""
+    csv_data = get_all_manuscript_names(projectId)
+    if len(csv_data) <= MANUSCRIPT_LIST_MAX_CHARS:
+        return (
+            "The user may refer to these manuscripts by name, RISM id or foreign id. "
+            f"Filter on the matching manuscript when they do:\n{csv_data}"
+        )
+    return (
+        "The user may refer to manuscripts by name, RISM id, foreign id or shelf mark. "
+        "There are too many to list here: look the manuscript up in `manuscripts` "
+        "with an exploratory query (e.g. WHERE `name` LIKE '%...%') before filtering on it."
+    )
 
 
 # --------------------------------------------------------------------------
@@ -421,9 +442,7 @@ Rules:
 
 {DOMAIN_NOTES}
 
-The user may refer to these manuscripts by name, RISM id or foreign id. Filter
-on the matching manuscript when they do:
-{get_all_manuscript_names(project_id)}
+{manuscript_list_prompt_section(project_id)}
 """
 
 

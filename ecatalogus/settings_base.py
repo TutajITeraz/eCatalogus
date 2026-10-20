@@ -514,7 +514,7 @@ AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR = int(text_env('AI_ASSISTANT_ANONYMOUS_MAX_P
 # Keep OLLAMA_MODEL identical to the OCR autofix tool on this server so Ollama
 # holds a single copy of the weights in memory for both applications.
 OLLAMA_HOST = text_env('OLLAMA_HOST', default='http://127.0.0.1:11434')
-OLLAMA_MODEL = text_env('OLLAMA_MODEL', default='gemma4:12b-it-qat')
+OLLAMA_MODEL = text_env('OLLAMA_MODEL', default='gemma4:e4b')
 OLLAMA_REQUEST_TIMEOUT = int(text_env('OLLAMA_REQUEST_TIMEOUT', default='300'))
 OLLAMA_TEMPERATURE = float(text_env('OLLAMA_TEMPERATURE', default='0.05'))
 
