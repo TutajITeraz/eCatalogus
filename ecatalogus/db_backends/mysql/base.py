@@ -18,7 +18,9 @@ Case-insensitive lookups: ``icontains`` & co. compile to a plain ``LIKE``, whose
 case sensitivity follows the column collation. A database imported from a
 ``utf8mb4_bin`` dump (eCLLA) therefore finds "Karlsruhe" but not "kar". The
 ``*_unicode_ci`` collation is attached to the *pattern*, which (being explicit)
-overrides the column's, so the search behaves the same on every instance. Set
+overrides the column's, so the search behaves the same on every instance. The
+pattern is converted to utf8mb4 first: Django connects with charset ``utf8``
+(utf8mb3), and ``COLLATE utf8mb4_*`` on a utf8mb3 string is error 1253. Set
 ``CASE_INSENSITIVE_LOOKUPS = False`` in the DATABASES entry to turn it off.
 """
 
@@ -29,11 +31,10 @@ class DatabaseFeatures(mysql_base.DatabaseFeatures):
     has_native_uuid_field = False
 
 
-_CI = ' COLLATE utf8mb4_unicode_ci'
 CASE_INSENSITIVE_OPERATORS = {
     **mysql_base.DatabaseWrapper.operators,
     **{
-        name: mysql_base.DatabaseWrapper.operators[name] + _CI
+        name: 'LIKE CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci'
         for name in ('iexact', 'icontains', 'istartswith', 'iendswith')
     },
 }
