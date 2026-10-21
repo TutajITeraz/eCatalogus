@@ -28,7 +28,7 @@ window.SITE_CONFIG = (function () {
             menu: {
                 about: true,
                 manuscripts: true,
-                contentAnalysis: true,
+                contentAnalysis: false,
                 aiTools: true,
                 aiHands: false,
             },
