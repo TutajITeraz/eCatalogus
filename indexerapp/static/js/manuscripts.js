@@ -1422,6 +1422,10 @@ manuscripts_init = function()
         }
     });
 
+    // Per-instance sort fields (manuscriptSort in config.js): drop what the instance has no data for
+    $('#sortField option[data-ui-scope]').each(function() {
+        if (window.isUiVisible && !window.isUiVisible(this.dataset.uiScope, this.dataset.uiKey)) $(this).remove();
+    });
     $('#sortField').select2({
         minimumResultsForSearch: Infinity // Disable search/typing
     });

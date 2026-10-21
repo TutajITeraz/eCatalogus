@@ -632,6 +632,15 @@ class CustomDatatablesFilterBackend(DatatablesFilterBackend):
         order_column_index = int(request.query_params.get('order[0][column]', 0))
         order_column_name = _resolve_relation_lookup_name(request.query_params.get(f'columns[{order_column_index}][data]', 'name'))
         order_direction = request.query_params.get('order[0][dir]', 'asc')
+        # The UI sends its own sort field/direction (order_column/order_direction) and the
+        # view applies it in get_queryset; DataTables' default order[0] (its first, hidden
+        # column) must not override it.
+        if getattr(view, 'honor_order_column', False) and request.query_params.get('order_column'):
+            requested = _resolve_relation_lookup_name(request.query_params['order_column'])
+            if request.query_params.get('order_direction', 'asc') == 'asc':
+                return queryset.order_by(F(requested).asc(nulls_last=True), 'name')
+            return queryset.order_by(F(requested).desc(nulls_last=True), 'name')
+
         # Skip ordering for FormulasIndexViewSet (handled there) or when column is empty
         if getattr(view, 'skip_custom_ordering', False) or view.__class__.__name__ == 'FormulasIndexViewSet':
             return queryset
@@ -748,6 +757,7 @@ class ManuscriptsViewSet(viewsets.ReadOnlyModelViewSet):
     # Editing happens in the Django admin and through /api/v1/.
     queryset = Manuscripts.objects.all().order_by('name')
     serializer_class = ManuscriptsSerializer
+    honor_order_column = True
 
     filter_backends = [CustomDatatablesFilterBackend]
     filterset_class = ManuscriptsGlobalFilter

@@ -53,7 +53,7 @@ local_port = 8000
 
 [instances.eclla]
 slug = "eclla"
-site_name = "eCLLA"
+site_name = "eCLLA+"
 domain = "api.eclla.ecatalogus.ispan.pl"
 public_url = "https://api.eclla.ecatalogus.ispan.pl"
 settings_module = "ecatalogus.settings_eclla"

@@ -8,7 +8,7 @@ apply_instance_settings(
     globals(),
     instance_slug="eclla",
     defaults={
-        "site_name": "eCLLA",
+        "site_name": "eCLLA+",
         "domain": "api.eclla.ecatalogus.ispan.pl",
         "overlay_dir": "static_eclla",
         "database_name": "eclla",

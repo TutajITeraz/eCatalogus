@@ -1257,8 +1257,9 @@
         <select id="sortField" class="select2-selection select2-selection--single" role="combobox" aria-haspopup="true" aria-expanded="false" tabindex="0" aria-disabled="false" aria-labelledby="select2-sortField-container" aria-controls="select2-sortField-container">
                 <option value="dating__year_from" selected>Dating</option>
                 <option value="name">Name</option>
-                <option value="binding_date__year_from">Binding date</option>
-                <option value="rism_id">RISM ID (shelfmark)</option>
+                <option value="shelf_mark">Shelfmark</option>
+                <option value="binding_date__year_from" data-ui-scope="manuscriptSort" data-ui-key="bindingDate">Binding date</option>
+                <option value="rism_id" data-ui-scope="manuscriptSort" data-ui-key="rismId">RISM ID (shelfmark)</option>
 
         </select>
         <span class="select2-selection__rendered" id="select2-sortField-container" role="textbox" aria-readonly="true" title="Name"></span>

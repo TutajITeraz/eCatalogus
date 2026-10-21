@@ -14,7 +14,7 @@ window.SITE_CONFIG = (function () {
     return {
         pageRoot: productionRoots[origin] || origin,
         projectId: 1,
-        siteName: 'eCLLA',
+        siteName: 'eCLLA+',
         foreign_id_name: 'CLLA no.',
         // Manuscripts and CLLA entries are dated 501-1200; the slider covers 500-1200.
         datingYears: { min: 500, max: 1200 },
@@ -31,6 +31,11 @@ window.SITE_CONFIG = (function () {
                 contentAnalysis: false,
                 aiTools: true,
                 aiHands: false,
+            },
+            manuscriptSort: {
+                // eCLLA has no binding dates and no RISM IDs: sort only by Dating, Name, Shelfmark.
+                bindingDate: false,
+                rismId: false,
             },
             manuscriptTable: {
                 mapView: false,

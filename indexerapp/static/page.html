@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Liturgica Poloniae</title>
+    <title>eCatalogus</title>
 
     <link rel="shortcut icon" type="image/x-icon" href="/static/img/favicon.ico" />
 
@@ -92,6 +92,9 @@
 
 
     <script src="/static/js/config.js"></script>
+    <script>
+      if (window.SITE_CONFIG && window.SITE_CONFIG.siteName) document.title = window.SITE_CONFIG.siteName;
+    </script>
     <script src="/static/js/main.js?v=20260616c"></script>
     
     <script>

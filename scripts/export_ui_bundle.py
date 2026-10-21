@@ -17,6 +17,7 @@ see the nginx CUSTOM3 block in ECLLA_MIGRATION.md.
 """
 
 import argparse
+import html
 import re
 import shutil
 import sys
@@ -32,6 +33,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 ASSET_RE = re.compile(r'(?<![A-Za-z0-9_.:/-])/static/(?=[A-Za-z0-9_-]+/)')
 
 
+# only the main page has the generic title that the instance name replaces
+TITLE_RE = re.compile(r'<title>eCatalogus</title>')
+
+
 def api_root_from_registry(instance):
     import tomllib
 
@@ -42,18 +47,28 @@ def api_root_from_registry(instance):
         sys.exit(f'No public_url for instance {instance!r} in scripts/config/instance_registry.toml')
 
 
-def rewrite(text, api_root):
-    return ASSET_RE.sub(f'{api_root}/static/', text)
+def site_name_from_registry(instance):
+    import tomllib
+
+    registry = tomllib.loads((BASE_DIR / 'scripts' / 'config' / 'instance_registry.toml').read_text(encoding='utf8'))
+    return registry['instances'][instance].get('site_name', '')
 
 
-def build(static_dir, api_root, out_dir):
+def rewrite(text, api_root, site_name=''):
+    text = ASSET_RE.sub(f'{api_root}/static/', text)
+    if site_name and TITLE_RE.search(text):
+        text = TITLE_RE.sub(lambda m: f'<title>{html.escape(site_name)}</title>', text, count=1)
+    return text
+
+
+def build(static_dir, api_root, out_dir, site_name=''):
     pages = sorted(p for p in static_dir.glob('*.html') if p.is_file())
     if not pages:
         sys.exit(f'No *.html pages in {static_dir}; run collectstatic first.')
     rewritten = 0
     for page in pages:
         text = page.read_text(encoding='utf8')
-        new = rewrite(text, api_root)
+        new = rewrite(text, api_root, site_name)
         rewritten += text != new
         (out_dir / page.name).write_text(new, encoding='utf8')
     return len(pages), rewritten
@@ -64,6 +79,7 @@ def main():
     parser.add_argument('--static-dir', default=str(BASE_DIR / 'static_assets'), help='collectstatic output (default: static_assets)')
     parser.add_argument('--instance', help='read the API root (public_url) from the instance registry')
     parser.add_argument('--api-root', help='API origin, e.g. https://api.eclla.ecatalogus.ispan.pl')
+    parser.add_argument('--site-name', help='replaces the generic <title> of page.html (default: site_name of --instance)')
     parser.add_argument('--output', required=True, help='a .tgz/.tar.gz file, or a directory')
     args = parser.parse_args()
 
@@ -71,6 +87,7 @@ def main():
     if not api_root:
         sys.exit('Give --api-root or --instance.')
 
+    site_name = args.site_name or (site_name_from_registry(args.instance) if args.instance else '')
     static_dir = Path(args.static_dir)
     output = Path(args.output).expanduser()
     as_archive = output.name.endswith(('.tgz', '.tar.gz'))
@@ -78,7 +95,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp) / 'static' if as_archive else output
         out_dir.mkdir(parents=True, exist_ok=True)
-        count, changed = build(static_dir, api_root, out_dir)
+        count, changed = build(static_dir, api_root, out_dir, site_name)
         if as_archive:
             with tarfile.open(output, 'w:gz') as archive:
                 # members are relative to static/, i.e. `tar xzf x.tgz -C ~/site/static`
