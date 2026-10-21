@@ -51,6 +51,10 @@ const defaultUiVisibility = {
         decoration: true,
         bibliography: true,
     },
+    manuscriptSort: {
+        bindingDate: true,
+        rismId: true,
+    },
     manuscriptSections: {
         mainInfo: true,
         clla: true,
