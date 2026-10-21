@@ -1341,6 +1341,9 @@ manuscripts_init = function()
         },
         "processing": false,
         "serverSide": true,
+        // Sorting comes only from the "Sort by" control (order_column/order_direction);
+        // the hidden first column (main_script) is a filter field, never a sort key.
+        "ordering": false,
         "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
         "pagingType": "full_numbers",
         "pageLength": savedPageLength,
