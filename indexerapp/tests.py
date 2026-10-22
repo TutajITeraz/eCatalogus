@@ -26,7 +26,8 @@ from etlapp.model_categories import get_sync_model_names
 from etlapp.services import _serialize_instance
 from indexerapp.ai_tools import get_all_manuscript_names
 from indexerapp.models import AttributeDebate, Bibliography, Ceremony, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
-from indexerapp.models import AIQuery, DeletedRecord
+from indexerapp.models import AIQuery, DeletedRecord, ImproveOurDataEntry
+from indexerapp import ai_tools_common
 from indexerapp.signals import ensure_env_superuser
 from indexerapp.zotero_service import import_zotero_items, list_zotero_collection_items
 from indexerapp.views import get_obj_dictionary
@@ -2376,6 +2377,55 @@ class AnonymousAssistantTests(TestCase):
 		query = AIQuery.objects.get(id=data['query_id'])
 		self.assertEqual(query.user, user)
 		self.assertEqual(self.client.get(f"/assistant/status/{data['query_id']}/").status_code, 200)
+
+
+class AssistantPromptTests(TestCase):
+	"""The assistant's prompt describes only the tables that hold data."""
+
+	def setUp(self):
+		ai_tools_common._schema_cache = None
+		self.addCleanup(setattr, ai_tools_common, '_schema_cache', None)
+		Manuscripts.objects.create(name='Albi 4')
+
+	def _blocks(self):
+		schema = ai_tools_common.get_schema_description()
+		return {block.splitlines()[0]: block for block in schema.split('\n\n')}
+
+	def test_empty_tables_and_foreign_keys_into_them_are_left_out(self):
+		self.assertFalse(ScriptNames.objects.exists())
+
+		blocks = self._blocks()
+
+		self.assertIn('TABLE manuscripts', blocks)
+		self.assertNotIn('TABLE quires', blocks)
+		self.assertNotIn('main_script_uuid', blocks['TABLE manuscripts'])
+		self.assertIn('  name: varchar(255)', blocks['TABLE manuscripts'])
+
+	def test_a_table_that_gets_data_appears_after_the_cache_is_rebuilt(self):
+		self.assertNotIn('TABLE quires', self._blocks())
+		Quires.objects.create(manuscript_uuid=Manuscripts.objects.get(), sequence_of_the_quire=1)
+
+		ai_tools_common._schema_cache = None
+
+		self.assertIn('TABLE quires', self._blocks())
+
+	def test_visitor_emails_are_never_shown(self):
+		ImproveOurDataEntry.objects.create(name='x', ms_signature='y', email='a@b.c', message='z')
+
+		self.assertNotIn('improveourdataentry', ai_tools_common.get_schema_description())
+		with self.assertRaises(Exception):
+			ai_tools_common.check_sql_is_safe('SELECT `email` FROM `indexerapp_improveourdataentry`')
+
+	@override_settings(AI_ASSISTANT_PROMPT_NOTES='Gamber numbers are in `indexerapp_clla`.')
+	def test_instance_notes_are_added_and_notes_on_empty_tables_dropped(self):
+		prompt = ai_tools_common.build_instructions(0, 15, 5)
+
+		self.assertIn('About this catalogue:\n\nGamber numbers are in `indexerapp_clla`.', prompt)
+		self.assertNotIn('`hands` table', prompt)
+
+	@override_settings(AI_ASSISTANT_PROMPT_NOTES='')
+	def test_no_instance_section_without_notes(self):
+		self.assertNotIn('About this catalogue', ai_tools_common.build_instructions(0, 15, 5))
 
 
 class ImproveOurDataFormTests(TestCase):

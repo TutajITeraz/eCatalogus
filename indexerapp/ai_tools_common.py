@@ -19,13 +19,19 @@ import time
 from datetime import datetime, date, time as dt_time
 
 from django.apps import apps
+from django.conf import settings
 from django.db import connection
 
 from .models import Manuscripts
 
 # Never expose these to the assistant: Django internals plus our own
-# bookkeeping tables, which hold no historical data.
-FORBIDDEN_TABLE_PREFIXES = ('auth_', 'django_', 'etl_', 'indexerapp_aiquery')
+# bookkeeping tables, which hold no historical data. The "improve our data"
+# form stores visitors' e-mail addresses, and anonymous visitors may use the
+# assistant on some instances.
+FORBIDDEN_TABLE_PREFIXES = (
+    'auth_', 'django_', 'etl_', 'indexerapp_aiquery',
+    'indexerapp_improveourdataentry', 'indexerapp_profile',
+)
 FORBIDDEN_TABLES = ('user_openai_api_key',)
 
 # Hard cap on rows handed back to the browser (and to the model).
@@ -112,13 +118,41 @@ def _describe_field(field):
     return line
 
 
-def _describe_model(model):
+def _m2m_through_tables(model):
+    """Auto-created link tables of a model's many-to-many fields."""
+    return [
+        field.remote_field.through._meta.db_table
+        for field in model._meta.many_to_many
+        if field.remote_field.through._meta.auto_created
+    ]
+
+
+def _non_empty_tables(tables):
+    """The tables among `tables` that hold at least one row, in one query.
+
+    EXISTS stops at the first row, so each table costs one index probe rather
+    than a COUNT(*): all ~70 tables take a fraction of a second.
+    """
+    if not tables:
+        return set()
+    quote = connection.ops.quote_name
+    sql = ' UNION ALL '.join(
+        f'SELECT %s, EXISTS(SELECT 1 FROM {quote(table)})' for table in tables
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(sql, list(tables))
+        return {name for name, filled in cursor.fetchall() if filled}
+
+
+def _describe_model(model, shown_tables):
+    """Schema block of one table. Foreign keys and link tables leading to a
+    table outside `shown_tables` (forbidden or empty) are left out."""
     meta = model._meta
     lines = [f'TABLE {meta.db_table}']
 
     for field in meta.concrete_fields:
-        if field.remote_field is not None and _is_forbidden_table(
-            field.target_field.model._meta.db_table
+        if field.remote_field is not None and (
+            field.target_field.model._meta.db_table not in shown_tables
         ):
             continue
         lines.append(_describe_field(field))
@@ -127,7 +161,7 @@ def _describe_model(model):
     # "who wrote this down" style questions end up.
     for field in meta.many_to_many:
         through = field.remote_field.through
-        if through._meta.auto_created is False or _is_forbidden_table(through._meta.db_table):
+        if through._meta.auto_created is False or through._meta.db_table not in shown_tables:
             continue
         columns = [
             f'{f.column} -> {f.target_field.model._meta.db_table}.{f.target_field.column}'
@@ -139,20 +173,41 @@ def _describe_model(model):
     return '\n'.join(lines)
 
 
-_schema_cache = None
+# Empty tables are left out of the schema: an instance that uses few of them
+# (eCLLA fills 15 of ~70) would otherwise send the model looking in tables that
+# cannot answer anything. Rebuilt every few minutes, so a table that gets its
+# first rows shows up without a restart.
+SCHEMA_CACHE_SECONDS = 600
+_schema_cache = None  # (built at, shown tables, schema text)
+
+
+def _schema():
+    global _schema_cache
+    if _schema_cache is None or time.monotonic() - _schema_cache[0] > SCHEMA_CACHE_SECONDS:
+        models = _relational_models()
+        tables = [m._meta.db_table for m in models]
+        tables += [t for m in models for t in _m2m_through_tables(m) if not _is_forbidden_table(t)]
+        shown = _non_empty_tables(tables)
+        text = '\n\n'.join(
+            _describe_model(m, shown) for m in models if m._meta.db_table in shown
+        )
+        _schema_cache = (time.monotonic(), shown, text)
+    return _schema_cache
+
+
+def get_shown_tables():
+    """Tables (including link tables) that appear in the schema description."""
+    return _schema()[1]
 
 
 def get_schema_description():
-    """Full compact schema of the catalogue, generated from the models.
+    """Compact schema of the non-empty tables, generated from the models.
 
     Generating it (rather than hand-maintaining it in the prompt) is what keeps
     the assistant working after schema changes — the uuid foreign-key migration
     would otherwise have silently broken every generated join.
     """
-    global _schema_cache
-    if _schema_cache is None:
-        _schema_cache = '\n\n'.join(_describe_model(m) for m in _relational_models())
-    return _schema_cache
+    return _schema()[2]
 
 
 def get_table_list():
@@ -400,32 +455,49 @@ e.g. '15r', '22v'), NOT quire numbers. Tables that share a `manuscript_uuid`
 can also be joined on overlapping `where_in_ms_from`/`where_in_ms_to` ranges
 even when no foreign key connects them.
 
+Do not use `comments` columns as a data source. Prefer the dedicated column.
+"""
+
+# Notes about particular tables, sent only when every table they name is in
+# the schema: a note about an empty table would send the model there.
+TABLE_NOTES = (
+    (('quires', 'content'), """
 The quire number is `quires`.`sequence_of_the_quire` (an integer), never
 `type_of_the_quire` (a string such as "quaternion"). To find the content of a
 quire, prefer `content`.`quire_uuid`; that column is not always filled in, so
 if it yields nothing, take the quire's page range and join `content` of the
-same manuscript on overlapping page ranges instead.
-
+same manuscript on overlapping page ranges instead."""),
+    (('content', 'formulas'), """
 Formula text is stored either inline in `content`.`formula_text` or via
 `content`.`formula_uuid` referencing `formulas`.`text`. Always search both:
   WHERE `content`.`formula_text` LIKE '%x%'
-     OR `content`.`formula_uuid` IN (SELECT `uuid` FROM `formulas` WHERE `text` LIKE '%x%')
-
-Scribes / scribblers are the `hands` table. "Scribe" is another name for a hand.
-
+     OR `content`.`formula_uuid` IN (SELECT `uuid` FROM `formulas` WHERE `text` LIKE '%x%')"""),
+    (('hands',), """
+Scribes / scribblers are the `hands` table. "Scribe" is another name for a hand."""),
+    (('places',), """
 `places` holds all modern and historical places. If the user asks about a
 country, region, city or repository, look there first. Modern names are in the
 columns suffixed `_today_eng`, historical ones in `_historic_eng` /
-`_historic_latin`.
-
+`_historic_latin`."""),
+    (('time_reference',), """
 `time_reference` holds datings: `century_from` <= `century_to` and
 `year_from` <= `year_to` describe a range. Other tables link to it for their
 dates. Asking for centuries 5 to 15 means
 `century_from` >= 5 AND `century_to` <= 15.
-The date of a manuscript is the date of all of its content.
+The date of a manuscript is the date of all of its content."""),
+)
 
-Do not use `comments` columns as a data source. Prefer the dedicated column.
-"""
+
+def domain_notes():
+    shown = get_shown_tables()
+    notes = [text for tables, text in TABLE_NOTES if all(t in shown for t in tables)]
+    return DOMAIN_NOTES + '\n'.join(notes)
+
+
+def instance_notes():
+    """Notes for this instance only (registry key `assistant_prompt_notes`)."""
+    notes = (getattr(settings, 'AI_ASSISTANT_PROMPT_NOTES', '') or '').strip()
+    return f'About this catalogue:\n\n{notes}\n' if notes else ''
 
 
 def build_instructions(project_id, max_internal_queries, max_final_attempts):
@@ -475,8 +547,9 @@ Rules:
 - If you truly cannot answer, explain why in plain language inside
   <COMMENT></COMMENT> tags, in the user's language, without mentioning SQL.
 
-{DOMAIN_NOTES}
+{domain_notes()}
 
+{instance_notes()}
 {manuscript_list_prompt_section(project_id)}
 """
 

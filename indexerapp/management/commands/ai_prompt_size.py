@@ -48,11 +48,12 @@ class Command(BaseCommand):
         self.stdout.write(f"model={model} project={project}\n")
 
         schema = common.get_schema_description()
-        row("schema (all tables)", schema)
+        row("schema (non-empty tables)", schema)
         blocks = schema.split("\n\n")
         for block in sorted(blocks, key=len, reverse=True)[:8]:
             row(f"   {block.splitlines()[0][:40]}", block)
-        row("domain notes", common.DOMAIN_NOTES)
+        row("domain notes", common.domain_notes())
+        row("instance notes", common.instance_notes())
 
         full = common.build_instructions(project, 15, 5)
         section = common.manuscript_list_prompt_section(project)

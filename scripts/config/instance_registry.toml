@@ -73,6 +73,33 @@ database_user = "ecatalogus_user"
 api_integration_origins = ["https://eclla.henrybradshawsociety.org"]
 # Visitors may use the AI database assistant without an account (rate limited).
 assistant_anonymous = true
+# Added to the AI assistant's system prompt (indexerapp/ai_tools_common.py).
+assistant_prompt_notes = """
+This is eCLLA, the electronic edition of Klaus Gamber's Codices Liturgici Latini
+Antiquiores (CLLA). Users speak of the "CLLA no.", "CLLA number" or "Gamber
+number": that is `indexerapp_clla`.`clla_no`, a string such as '201' or '1115b'
+(always compare it as a string). Nearly every manuscript has one row in
+`indexerapp_clla`, joined on `indexerapp_clla`.`manuscript_uuid` =
+`manuscripts`.`uuid`; use LEFT JOIN so the few without one are not lost.
+Include `clla_no` whenever you list manuscripts.
+
+Dating and provenance are recorded twice: Gamber's in `indexerapp_clla` and the
+catalogue's own in `manuscripts`. Gamber's is usually more detailed, so use it
+first and fall back to the catalogue's own only where Gamber's is missing:
+- Dating: `indexerapp_clla`.`dating_uuid` -> `time_reference`, with Gamber's
+  wording in `indexerapp_clla`.`dating_comment` (show it next to the date).
+  Fall back with COALESCE(`indexerapp_clla`.`dating_uuid`, `manuscripts`.`dating_uuid`).
+  This replaces the rule that a manuscript is dated by its content.
+- Provenance (where a manuscript was written or used): `indexerapp_clla`.`provenance`
+  is free text such as 'North Italy' or 'Burgundy', not a link to `places`;
+  search it with LIKE. The catalogue's own is `manuscripts`.`place_of_origin_uuid`
+  -> `places`, often empty.
+
+The liturgical genre is `indexerapp_clla`.`liturgical_genre`, Gamber's Latin
+name such as 'Sacramentaria Gallicana'; search it with LIKE.
+Where a manuscript is kept today is `manuscripts`.`contemporary_repository_place_uuid`
+-> `places`.
+"""
 
 [instances.limbo]
 slug = "limbo"

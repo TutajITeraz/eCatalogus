@@ -510,6 +510,9 @@ AI_ASSISTANT_MAX_ITERATIONS = int(text_env('AI_ASSISTANT_MAX_ITERATIONS', defaul
 # one costs CPU on the local model (or money with the OpenAI backend).
 AI_ASSISTANT_ANONYMOUS_USERNAME = text_env('AI_ASSISTANT_ANONYMOUS_USERNAME', default='anonymous_assistant')
 AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR = int(text_env('AI_ASSISTANT_ANONYMOUS_MAX_PER_HOUR', default='30'))
+# Extra text for the assistant's system prompt about this instance's data (instance registry
+# key `assistant_prompt_notes`). Empty tables are left out of the prompt automatically.
+AI_ASSISTANT_PROMPT_NOTES = ''
 
 # Keep OLLAMA_MODEL identical to the OCR autofix tool on this server so Ollama
 # holds a single copy of the weights in memory for both applications.
