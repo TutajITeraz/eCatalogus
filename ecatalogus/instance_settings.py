@@ -188,6 +188,8 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         default_parent_peer=configured_default_parent_peer,
     )
 
+    cookie_secure = bool_env(f'{env_prefix}_COOKIE_SECURE', os.getenv('COOKIE_SECURE', '0'))
+
     database_config = {
         # Custom backend (ecatalogus/db_backends/mysql) forces
         # has_native_uuid_field off so UUID lookups behave the same on
@@ -248,8 +250,12 @@ def apply_instance_settings(settings_globals, *, instance_slug, defaults=None):
         'FOREIGN_ID_NAME': resolved_defaults.get('foreign_id_name', 'foreign id'),
         # Needed when the UI is served from another origin (SameSite=None cookies are only
         # accepted over HTTPS with the Secure flag). Set COOKIE_SECURE=1 in the instance .env.
-        'SESSION_COOKIE_SECURE': bool_env(f'{env_prefix}_COOKIE_SECURE', os.getenv('COOKIE_SECURE', '0')),
-        'CSRF_COOKIE_SECURE': bool_env(f'{env_prefix}_COOKIE_SECURE', os.getenv('COOKIE_SECURE', '0')),
+        'SESSION_COOKIE_SECURE': cookie_secure,
+        'CSRF_COOKIE_SECURE': cookie_secure,
+        # The string 'None' sends "SameSite=None"; Python None would omit the attribute and
+        # browsers then treat the cookie as Lax, dropping it on cross-site requests.
+        'SESSION_COOKIE_SAMESITE': 'None' if cookie_secure else 'Lax',
+        'CSRF_COOKIE_SAMESITE': 'None' if cookie_secure else 'Lax',
         'SESSION_COOKIE_NAME': os.getenv(
             f'{env_prefix}_SESSION_COOKIE_NAME',
             os.getenv('SESSION_COOKIE_NAME', defaults.get('session_cookie_name', f'{instance_slug}_sessionid')),
