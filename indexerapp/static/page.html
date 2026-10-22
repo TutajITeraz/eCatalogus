@@ -95,7 +95,7 @@
     <script>
       if (window.SITE_CONFIG && window.SITE_CONFIG.siteName) document.title = window.SITE_CONFIG.siteName;
     </script>
-    <script src="/static/js/main.js?v=20261021"></script>
+    <script src="/static/js/main.js?v=20261022"></script>
     
     <script>
 
@@ -140,7 +140,7 @@
               <!-- Display "login" link if user is an empty string -->
               <a x-show="user === ''"
                  class="text-[10pt] sm:text-[14pt] text-[#d20000] underline hover:text-[#b20000] caudex-bold"
-                 href="/static/login.html">
+                 href="/static/login.html" x-bind:href="pageRoot + '/static/login.html'">
                   Login
               </a>
             </div>

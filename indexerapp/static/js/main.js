@@ -359,7 +359,7 @@ async function getUsername()
 
     if( user == "" && page !='about' && window.isFeatureEnabled('requireLogin'))
 	    //alert('no user');
-        window.location.href = "/static/login.html";
+        window.location.href = pageRoot + "/static/login.html";
 
     return user;
 }
