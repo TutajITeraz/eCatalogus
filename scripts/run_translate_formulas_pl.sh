@@ -9,6 +9,8 @@ set -euo pipefail
 #   scripts/run_translate_formulas_pl.sh status
 #   scripts/run_translate_formulas_pl.sh log      # follow the output (Ctrl+C only stops following)
 #   scripts/run_translate_formulas_pl.sh stop     # finishes the current formula, then exits; start resumes
+# A jailed (DirectAdmin) shell kills background jobs on logout, so keep it alive from cron:
+#   */5 * * * * /path/to/ecatalogus/scripts/run_translate_formulas_pl.sh ensure /path/to/ecatalogus/scripts/config/ecatalogus.ispan.pl.env >/dev/null 2>&1
 # Model comparison (saves nothing; one model loaded at a time, unloaded afterwards):
 #   scripts/run_translate_formulas_pl.sh start scripts/config/ecatalogus.ispan.pl.env \
 #     --compare translategemma:4b,translategemma:12b,translategemma:27b --sample 15
@@ -61,8 +63,23 @@ PID_FILE="${LOG_DIR}/translate_formulas_pl.pid"
 PROGRESS_FILE="${LOG_DIR}/translate_formulas_pl.progress.json"
 mkdir -p "$LOG_DIR"
 
+ARGS_FILE="${LOG_DIR}/translate_formulas_pl.args"
+
 is_running() {
   [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+start_job() {
+  cd "$APPDIR"
+  export DJANGO_SETTINGS_MODULE="$SETTINGS_MODULE"
+  export PYTHONUNBUFFERED=1
+  {
+    echo
+    echo "=== $(date '+%Y-%m-%d %H:%M:%S') $ACTION: $* ==="
+  } >> "$LOG_FILE"
+  nohup "$PYTHON_CMD" manage.py translate_formulas_pl --progress-file "$PROGRESS_FILE" "$@" < /dev/null >> "$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  echo "Started (pid $!). Settings: $SETTINGS_MODULE"
 }
 
 case "$ACTION" in
@@ -71,18 +88,25 @@ case "$ACTION" in
       echo "Already running (pid $(cat "$PID_FILE")). Use status/log/stop." >&2
       exit 1
     fi
-    cd "$APPDIR"
-    export DJANGO_SETTINGS_MODULE="$SETTINGS_MODULE"
-    export PYTHONUNBUFFERED=1
-    {
-      echo
-      echo "=== $(date '+%Y-%m-%d %H:%M:%S') start: $* ==="
-    } >> "$LOG_FILE"
-    nohup "$PYTHON_CMD" manage.py translate_formulas_pl --progress-file "$PROGRESS_FILE" "$@" >> "$LOG_FILE" 2>&1 &
-    echo $! > "$PID_FILE"
-    echo "Started (pid $!). Settings: $SETTINGS_MODULE"
+    # Remember the arguments of a real run so `ensure` can resume it.
+    if [[ " $* " != *" --compare "* ]]; then
+      printf '%q ' "$@" > "$ARGS_FILE"
+    fi
+    start_job "$@"
     echo "Log: $LOG_FILE"
     echo "Progress: $0 status"
+    ;;
+  ensure)
+    # For cron: a jailed shell kills background jobs on logout, cron does not.
+    # Restarts the last `start` only if it died while running (not finished, not stopped).
+    if is_running || [[ ! -f "$PROGRESS_FILE" || ! -f "$ARGS_FILE" ]]; then
+      exit 0
+    fi
+    if ! grep -q '"status": "running"' "$PROGRESS_FILE"; then
+      exit 0
+    fi
+    eval "set -- $(cat "$ARGS_FILE")"
+    start_job "$@"
     ;;
   status)
     if is_running; then
@@ -125,7 +149,7 @@ PY
     fi
     ;;
   *)
-    echo "Usage: $0 <start|status|log|stop> [env-file] [translate_formulas_pl args...]" >&2
+    echo "Usage: $0 <start|status|log|stop|ensure> [env-file] [translate_formulas_pl args...]" >&2
     exit 1
     ;;
 esac
