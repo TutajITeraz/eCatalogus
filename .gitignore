@@ -191,3 +191,6 @@ ETL_plan_multiinstance.md
 UI_UUID_INVENTORY.md
 .DS_Store
 .DS_Store
+
+# translate_formulas_pl background run state
+logs/translate_formulas_pl.*
