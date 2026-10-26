@@ -821,6 +821,23 @@ function init_content_table(reinit = false) {
             }
             rendered_html = dots + rendered_html;
           }
+          if (row.translation_pl && row.translation_pl.length > 1) {
+            let translation_pl = ` <span 
+                                title="Automatyczne tłumaczenie AI:\n${row.translation_pl}" 
+                                style="
+                                    height: 12px;
+                                    width: 12px;
+                                    border-radius: 50%;
+                                    display: inline-block;
+                                    margin-right: 2px;
+                                    background-image: url('${pageRoot}/static/img/pl_flag.png');
+                                    background-size: cover;
+                                    background-position: center;
+                                ">
+                            </span>`;
+
+            rendered_html = translation_pl + rendered_html;
+          }
           if (row.translation_en && row.translation_en.length > 1) {
             let translation_en = ` <span 
                                 title="Automatic AI translation:\n${row.translation_en}" 

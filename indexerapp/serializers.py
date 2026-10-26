@@ -269,11 +269,12 @@ class ContentSerializer(serializers.ModelSerializer):
     traditions = serializers.SerializerMethodField()
 
     translation_en = serializers.SerializerMethodField()
+    translation_pl = serializers.SerializerMethodField()
 
     class Meta:
         model = Content
         fields = (
-            'uuid', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'comments'
+            'uuid', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'translation_pl', 'comments'
         )
 
     def to_representation(self, instance):
@@ -313,6 +314,11 @@ class ContentSerializer(serializers.ModelSerializer):
     def get_translation_en(self, content):
         if content.formula:
             return content.formula.translation_en
+        return ''
+
+    def get_translation_pl(self, content):
+        if content.formula:
+            return content.formula.translation_pl
         return ''
 
     def get_data_contributor(self, content):
