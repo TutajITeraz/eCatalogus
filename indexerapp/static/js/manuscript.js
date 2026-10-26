@@ -922,6 +922,7 @@ function init_content_table(reinit = false) {
       { data: "proper_texts", title: "proper texts", width: "5%" },
 
       { data: "translation_en", title: "Translation", visible: false },
+      { data: "translation_pl", title: "Translation PL", visible: false },
 
       { data: "authors", title: "authors", visible: false },
       { data: "data_contributor", title: "data contributor", visible: false },

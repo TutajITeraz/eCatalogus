@@ -465,6 +465,7 @@ content_comparator_init = function()
                 { "data": "proper_texts", "title": "Proper texts", "width": "5%"  },
 
                 { "data": "translation_en", "title": "Translation EN", "visible": false },
+                { "data": "translation_pl", "title": "Translation PL", "visible": false },
 
                 { "data": "authors", "title": "Authors", "visible": false },
                 { "data": "data_contributor", "title": "Data contributor", "visible": false },
