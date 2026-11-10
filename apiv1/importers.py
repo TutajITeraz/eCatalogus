@@ -91,7 +91,13 @@ class _RelationResolver:
                     break
 
         if instance is None:
-            hint = ' or '.join(spec.lookups) if spec.lookups else 'uuid'
+            for lookup in spec.code_lookups:
+                instance = self._resolve_code(model, lookup, text)
+                if instance is not None:
+                    break
+
+        if instance is None:
+            hint = ' or '.join(spec.lookups + spec.code_lookups) if spec.lookups else 'uuid'
             raise LookupError(
                 f'No {spec.model} entry matches "{text}" (matched against: {hint}). '
                 f'Dictionary entries must exist before content referencing them is imported.'
@@ -99,6 +105,27 @@ class _RelationResolver:
 
         self._cache[cache_key] = instance.uuid
         return instance.uuid
+
+    def _resolve_code(self, model, column, text):
+        """Find the row whose comma-separated ``column`` lists ``text`` verbatim.
+
+        Tried only after the name lookups, so a code can never shadow a name. The
+        match is case-sensitive because the codes are (Cantus "Gr" is not "GR").
+        """
+        if not text or ',' in text:
+            return None
+
+        candidates = model.objects.filter(**{f'{column}__contains': text}).only('uuid', column)
+        matches = [
+            candidate for candidate in candidates
+            if text in str(getattr(candidate, column) or '').split(',')
+        ]
+        if len(matches) > 1:
+            raise LookupError(
+                f'"{text}" is listed in {column} of {len(matches)} {model.__name__} entries; '
+                'give the name or UUID instead.'
+            )
+        return matches[0] if matches else None
 
     def _resolve_music_notation(self, model, text):
         """Accept a notation *name* and find this manuscript's block using it.
@@ -160,6 +187,9 @@ class _RelationResolver:
 def _coerce_plain(spec, raw_value):
     if raw_value is None or raw_value == '':
         return None
+
+    if spec.kind == 'trimmed':
+        return str(raw_value).strip() or None
 
     if spec.kind == 'int':
         try:

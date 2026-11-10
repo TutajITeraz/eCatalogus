@@ -1,3 +1,4 @@
+import os
 import base64
 import json
 
@@ -9,6 +10,8 @@ from django.urls import reverse
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from indexerapp.api_access import API_IMPORTER_GROUP
 from indexerapp.models import (
+    ChantDifferentia,
+    ChantMode,
     Content,
     ContentFunctions,
     Contributors,
@@ -16,6 +19,7 @@ from indexerapp.models import (
     LiturgicalGenres,
     ManuscriptMusicNotations,
     Manuscripts,
+    MassHour,
     MusicNotationNames,
     Places,
     RiteNames,
@@ -385,6 +389,36 @@ class ApiV1WriteTests(ApiTestCase):
         self.assertEqual(first.liturgical_genre_uuid, self.genre)
         self.assertEqual(first.section_uuid, self.section)
         self.assertEqual(first.function_uuid, self.function)
+
+    def test_function_falls_back_to_cantus_code_after_name(self):
+        gradual = ContentFunctions.objects.create(name='Gradual', cantus_codes='Gr')
+        kyrie = ContentFunctions.objects.create(name='Kyrie', cantus_codes='Ky')
+        # A function whose *name* reads like another one's code wins: names come first.
+        named_ky = ContentFunctions.objects.create(name='KY')
+        ContentFunctions.objects.filter(pk=self.function.pk).update(cantus_codes='Or')
+
+        response = self.post_bulk({'items': [
+            {'formula_text_from_ms': 'by code', 'function_id': 'Gr', 'subfunction_id': 'Or'},
+            {'formula_text_from_ms': 'by name', 'function_id': 'Ky'},
+        ]})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        by_code = Content.objects.get(formula_text='by code')
+        self.assertEqual(by_code.function_uuid, gradual)
+        self.assertEqual(by_code.subfunction_uuid, self.function)
+        self.assertEqual(Content.objects.get(formula_text='by name').function_uuid, named_ky)
+        self.assertNotEqual(named_ky, kyrie)
+
+    def test_cantus_code_match_is_case_sensitive(self):
+        ContentFunctions.objects.create(name='Gradual', cantus_codes='Gr')
+
+        response = self.post_bulk({'items': [{'formula_text_from_ms': 'x', 'function_id': 'GR'}]})
+
+        self.assertEqual(response.status_code, 400, response.content)
+        error = response.json()['errors'][0]
+        self.assertEqual(error['field'], 'function_id')
+        self.assertIn('matched against: name or cantus_codes', error['detail'])
+        self.assertEqual(Content.objects.count(), 0)
 
     def test_bare_list_body_is_accepted(self):
         response = self.post_bulk([{'formula_text_from_ms': 'bare list'}])
@@ -858,6 +892,42 @@ class DataLicensingTests(ApiTestCase):
             self.assertIn('rights', payload, url)
             self.assertEqual(payload['rights']['license'], 'CC-BY-NC-4.0', url)
 
+    def test_dictionary_licence_is_configured_apart_from_the_data_licence(self):
+        from django.conf import settings
+        from django.test import override_settings
+
+        vocabulary_licence = {
+            'id': 'CC-BY-4.0',
+            'name': 'Creative Commons Attribution 4.0 International',
+            'url': 'https://creativecommons.org/licenses/by/4.0/',
+            'required_statement': 'Vocabularies from eCatalogus.',
+        }
+        with override_settings(DICTIONARY_LICENSE=vocabulary_licence):
+            for url in [
+                reverse('apiv1:dictionary-detail', kwargs={'slug': 'rite-names'}),
+                reverse('apiv1:dictionary-list'),
+            ]:
+                response = self.client.get(url)
+                self.assertEqual(response.json()['rights']['license'], 'CC-BY-4.0', url)
+                self.assertIn('licenses/by/4.0', response['Link'], url)
+
+            listed = {
+                entry['slug']: entry['license']
+                for entry in self.client.get(reverse('apiv1:dictionary-list')).json()['results']
+            }
+            self.assertEqual(listed['rite-names'], 'CC-BY-4.0')
+            self.assertEqual(listed['chant-differentiae'], 'CC-BY-NC-SA-4.0')
+
+            root = self.client.get(reverse('apiv1:root')).json()
+            self.assertEqual(root['rights']['id'], settings.DATA_LICENSE['id'])
+            self.assertEqual(root['dictionary_rights']['id'], 'CC-BY-4.0')
+
+            package = self.client.get(
+                reverse('apiv1:manuscript-package', kwargs={'manuscript_uuid': self.manuscript.uuid})
+            )
+            self.assertEqual(package.json()['rights']['license'], 'CC-BY-NC-4.0')
+            self.assertIn('licenses/by-nc/4.0', package['Link'])
+
     def test_source_url_is_recorded_so_the_export_is_traceable(self):
         response = self.client.get(
             reverse('apiv1:manuscript-package', kwargs={'manuscript_uuid': self.manuscript.uuid})
@@ -1123,3 +1193,269 @@ class MusicNotationImportTests(ApiTestCase):
 
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(Content.objects.get().music_notation_uuid_id, self.block.uuid)
+
+
+class CantusChantFieldsTests(ApiTestCase):
+    """cantus_id, chant mode, differentia and melody on Content; their dictionaries and licence."""
+
+    def setUp(self):
+        self.password = 'Secret123!pass'
+        user = get_user_model().objects.create_user('ritus-bot', password=self.password)
+        group, _ = Group.objects.get_or_create(name=API_IMPORTER_GROUP)
+        user.groups.add(group)
+        self.manuscript = Manuscripts.objects.create(name='Cantus MS', display_as_main=True)
+
+    def post_bulk(self, items, dry_run=False):
+        return self.client.post(
+            reverse('apiv1:manuscript-content-bulk', kwargs={'manuscript_uuid': self.manuscript.uuid}),
+            data=json.dumps({'items': items, 'dry_run': dry_run}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=basic_auth('ritus-bot', self.password),
+        )
+
+    def dictionary(self, slug, **params):
+        return self.client.get(reverse('apiv1:dictionary-detail', kwargs={'slug': slug}), params)
+
+    # -- seed data ------------------------------------------------------------
+
+    def test_dictionaries_are_seeded_without_count_columns(self):
+        self.assertEqual(ChantMode.objects.count(), 68)
+        self.assertEqual(ChantDifferentia.objects.count(), 1279)
+        self.assertFalse(ChantMode.objects.filter(uuid__isnull=True).exists())
+        self.assertFalse(ChantDifferentia.objects.filter(uuid__isnull=True).exists())
+
+        field_names = {f.name for model in (ChantMode, ChantDifferentia) for f in model._meta.get_fields()}
+        for column in ('basis', 'count_in_cantus_pl', 'no_of_mss', 'chants_in_cantus_pl'):
+            self.assertNotIn(column, field_names)
+
+        mode = ChantMode.objects.get(short_name='6TS')
+        self.assertEqual(mode.uuid, build_deterministic_sync_uuid('indexerapp.ChantMode', '6TS'))
+
+        differentia = ChantDifferentia.objects.get(short_name='118a')
+        self.assertEqual(differentia.chant_mode_uuid.short_name, '8')
+        self.assertEqual(differentia.melodic_transcription, '1--k-k-j-k-h-g--4')
+        self.assertEqual(differentia.source_url, 'https://differentiaedatabase.ca/differentia/118a')
+
+        peregrinus = ChantDifferentia.objects.get(short_name='56b')
+        self.assertIsNone(peregrinus.chant_mode_uuid)
+        self.assertEqual(peregrinus.other_mode, 'Tonus peregrinus')
+
+    # -- bulk import ----------------------------------------------------------
+
+    def chant_row(self, **overrides):
+        row = {
+            'formula_text_from_ms': 'Ad te levavi',
+            'cantus_id': ' 001001 ',
+            'chant_mode_id': '1   ',
+            'chant_differentia_id': '118a',
+            'melody': '  1---fg--h--hjh--h---4  ',
+        }
+        row.update(overrides)
+        return row
+
+    def test_dry_run_validates_all_four_fields_and_writes_nothing(self):
+        response = self.post_bulk([self.chant_row()], dry_run=True)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()['dry_run'])
+        self.assertEqual(Content.objects.count(), 0)
+
+    def test_import_stores_all_four_fields(self):
+        response = self.post_bulk([self.chant_row()])
+
+        self.assertEqual(response.status_code, 200, response.content)
+        content = Content.objects.get()
+        self.assertEqual(content.cantus_id, '001001')
+        self.assertEqual(content.chant_mode_uuid.short_name, '1')
+        self.assertEqual(content.chant_differentia_uuid.short_name, '118a')
+        self.assertEqual(content.melody, '1---fg--h--hjh--h---4')
+
+    def test_blank_cantus_id_and_melody_are_stored_as_null(self):
+        self.post_bulk([self.chant_row(cantus_id='  ', melody='', chant_mode_id='', chant_differentia_id=None)])
+
+        content = Content.objects.get()
+        self.assertIsNone(content.cantus_id)
+        self.assertIsNone(content.melody)
+        self.assertIsNone(content.chant_mode_uuid)
+        self.assertIsNone(content.chant_differentia_uuid)
+
+    def test_special_mode_codes_are_recognised(self):
+        response = self.post_bulk([
+            self.chant_row(chant_mode_id='r', chant_differentia_id=''),
+            self.chant_row(chant_mode_id='M', chant_differentia_id=''),
+            self.chant_row(chant_mode_id='6TS', chant_differentia_id=''),
+            self.chant_row(chant_mode_id='7T?', chant_differentia_id=''),
+        ])
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            sorted(Content.objects.values_list('chant_mode_uuid__short_name', flat=True)),
+            sorted(['r', 'M', '6TS', '7T?']),
+        )
+
+    def test_mode_values_outside_the_dictionary_are_rejected(self):
+        # Decision: the API is unchanged, so "-" (and G, F, E, P, 0) are ordinary
+        # unknown values; Ritus+ blanks them before sending.
+        response = self.post_bulk([self.chant_row(chant_mode_id='-')], dry_run=True)
+
+        self.assertEqual(response.status_code, 400, response.content)
+        error = response.json()['errors'][0]
+        self.assertEqual((error['field'], error['error']), ('chant_mode_id', 'not_found'))
+
+    def test_unknown_differentia_is_rejected(self):
+        response = self.post_bulk([self.chant_row(chant_differentia_id='999zz')])
+
+        self.assertEqual(response.status_code, 400, response.content)
+        error = response.json()['errors'][0]
+        self.assertEqual((error['field'], error['error']), ('chant_differentia_id', 'not_found'))
+        self.assertEqual(Content.objects.count(), 0)
+
+    def test_differentia_is_not_checked_against_the_mode(self):
+        response = self.post_bulk([self.chant_row(chant_mode_id='3', chant_differentia_id='118a')])
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_content_read_returns_the_new_fields(self):
+        self.post_bulk([self.chant_row()])
+
+        response = self.client.get(
+            reverse('apiv1:manuscript-content', kwargs={'manuscript_uuid': self.manuscript.uuid})
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        row = response.json()['results'][0]
+        self.assertEqual(row['cantus_id'], '001001')
+        self.assertEqual(row['melody'], '1---fg--h--hjh--h---4')
+        self.assertEqual(row['chant_mode_label'], '1')
+        self.assertEqual(row['chant_differentia_label'], '118a')
+        self.assertEqual(row['chant_differentia_id'], str(ChantDifferentia.objects.get(short_name='118a').uuid))
+
+    # -- dictionaries and licence -------------------------------------------
+
+    def test_differentiae_dictionary_carries_its_own_licence(self):
+        response = self.dictionary('chant-differentiae', uuids=str(ChantDifferentia.objects.get(short_name='118a').uuid))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        rights = response.json()['rights']
+        self.assertEqual(rights['license'], 'CC-BY-NC-SA-4.0')
+        self.assertEqual(rights['license_url'], 'https://creativecommons.org/licenses/by-nc-sa/4.0/')
+        self.assertIn('Shaw, Rebecca. Differentiae Database. 2019.', rights['attribution'])
+        self.assertIn('by-nc-sa/4.0', response['Link'])
+        self.assertNotIn('CC-BY-4.0', json.dumps(rights))
+
+        record = response.json()['results'][0]
+        self.assertEqual(record['short_name'], '118a')
+        self.assertEqual(record['chant_mode'], '8')
+        self.assertEqual(record['source_url'], 'https://differentiaedatabase.ca/differentia/118a')
+
+    def test_modes_dictionary_keeps_the_instance_licence(self):
+        response = self.dictionary('chant-modes', search='6TS')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertNotEqual(response.json()['rights']['license'], 'CC-BY-NC-SA-4.0')
+        self.assertNotIn('by-nc-sa', response['Link'])
+        self.assertIn('6TS', [record['short_name'] for record in response.json()['results']])
+
+    def test_dictionary_list_names_each_licence(self):
+        response = self.client.get(reverse('apiv1:dictionary-list'))
+
+        licences = {entry['slug']: entry['license'] for entry in response.json()['results']}
+        self.assertEqual(licences['chant-differentiae'], 'CC-BY-NC-SA-4.0')
+        self.assertNotEqual(licences['chant-modes'], 'CC-BY-NC-SA-4.0')
+
+    def test_seed_migration_is_idempotent(self):
+        import importlib
+        from django.apps import apps as global_apps
+
+        seed = importlib.import_module('indexerapp.migrations.0027_seed_chant_dictionaries').seed
+        before = sorted(ChantDifferentia.objects.values_list('short_name', 'uuid', 'chant_mode_uuid'))
+
+        seed(global_apps, None)
+
+        self.assertEqual(ChantMode.objects.count(), 68)
+        self.assertEqual(sorted(ChantDifferentia.objects.values_list('short_name', 'uuid', 'chant_mode_uuid')), before)
+
+    # -- melodies and the long rite translation ----------------------------------
+
+    def test_melody_id_is_resolved_stored_and_read_back(self):
+        from indexerapp.models import Melody
+        Melody.objects.create(melody_id='a00820m1', volpiano='1--h--4', uuid=build_deterministic_sync_uuid('indexerapp.Melody', 'a00820m1'))
+
+        response = self.post_bulk([self.chant_row(melody_id='a00820m1')])
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(Content.objects.get().melody_uuid.melody_id, 'a00820m1')
+        row = self.client.get(
+            reverse('apiv1:manuscript-content', kwargs={'manuscript_uuid': self.manuscript.uuid})
+        ).json()['results'][0]
+        self.assertEqual(row['melody_label'], 'a00820m1')
+        self.assertEqual(row['melody'], '1---fg--h--hjh--h---4')  # the verbatim Volpiano field is separate
+
+    def test_unknown_melody_id_is_not_found(self):
+        response = self.post_bulk([self.chant_row(melody_id='zzz')], dry_run=True)
+
+        self.assertEqual(response.status_code, 400, response.content)
+        error = response.json()['errors'][0]
+        self.assertEqual((error['field'], error['error']), ('melody_id', 'not_found'))
+
+    def test_melodies_dictionary_and_import_command(self):
+        import tempfile
+        from io import StringIO
+        from django.core.management import call_command
+        from indexerapp.models import Melody
+
+        with tempfile.NamedTemporaryFile('w', suffix='.tsv', delete=False, encoding='utf-8') as handle:
+            handle.write('melody_id\tcantus_id\tvolpiano\tsource_url\n'
+                         'a00820m1\ta00820\t1--h--4\t\n'
+                         'a00893m1\ta00893\t1--fg--4\thttps://example.org/m\n')
+        self.addCleanup(os.unlink, handle.name)
+        call_command('import_melodies', handle.name, '--dry-run', stdout=StringIO())
+        self.assertEqual(Melody.objects.count(), 0)
+        call_command('import_melodies', handle.name, stdout=StringIO())
+        out = StringIO()
+        call_command('import_melodies', handle.name, stdout=out)
+        self.assertIn('Created: 0  Updated: 0  Unchanged: 2', out.getvalue())
+
+        response = self.dictionary('melodies', search='a00893')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        record = response.json()['results'][0]
+        self.assertEqual((record['melody_id'], record['volpiano'], record['cantus_id']), ('a00893m1', '1--fg--4', 'a00893'))
+        self.assertEqual(response.json()['rights']['license'], 'CC-BY-NC-SA-4.0')
+        self.assertIn('by-nc-sa/4.0', response['Link'])
+        self.assertIn('Cantus Index', response.json()['rights']['attribution'])
+        self.assertIn('melodies', [e['slug'] for e in self.client.get(reverse('apiv1:dictionary-list')).json()['results']])
+
+    def test_rite_name_translation_holds_512_characters(self):
+        from indexerapp.models import RiteNames
+        rite = RiteNames.objects.create(name='Long one', english_translation='x' * 512)
+
+        rite.refresh_from_db()
+        self.assertEqual(len(rite.english_translation), 512)
+        self.assertEqual(RiteNames._meta.get_field('english_translation').max_length, 512)
+
+    def test_unspecified_mass_hours_are_seeded(self):
+        for short_name in ('MASS', 'D'):
+            self.assertEqual(
+                MassHour.objects.get(short_name=short_name).uuid,
+                build_deterministic_sync_uuid('indexerapp.MassHour', short_name),
+            )
+
+        response = self.dictionary('mass-hours', limit=100)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        names = {record['short_name']: record['name'] for record in response.json()['results']}
+        self.assertEqual(names['MASS'], 'Mass (unspecified)')
+        self.assertEqual(names['D'], 'Day Hours (unspecified)')
+
+    def test_unspecified_mass_hours_are_accepted_by_short_name(self):
+        response = self.post_bulk([
+            self.chant_row(mass_hour='MASS'),
+            self.chant_row(mass_hour='D'),
+        ])
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            sorted(Content.objects.values_list('mass_hour_uuid__short_name', flat=True)),
+            ['D', 'MASS'],
+        )

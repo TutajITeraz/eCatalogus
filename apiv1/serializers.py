@@ -284,6 +284,11 @@ class DictionaryListItemSerializer(serializers.Serializer):
     verbose_name = serializers.CharField()
     count = serializers.IntegerField(help_text='Number of entries.')
     url = serializers.CharField(required=False, help_text='Absolute URL of the vocabulary.')
+    license = serializers.CharField(
+        help_text="SPDX id of this vocabulary's licence. Vocabularies have their own licence, "
+                  'separate from the manuscript descriptions; third-party ones '
+                  '(`chant-differentiae`, `melodies`: CC-BY-NC-SA-4.0) carry theirs.',
+    )
 
 
 class DictionaryListSerializer(serializers.Serializer):
@@ -334,3 +339,8 @@ class RootSerializer(serializers.Serializer):
     documentation = serializers.CharField(help_text='URL of the interactive Swagger UI.')
     endpoints = serializers.DictField(child=serializers.CharField(), help_text='Endpoint name → URL template.')
     rights = serializers.DictField(help_text='Licence summary (id, name, url, copyright, rights holder).')
+    dictionary_rights = serializers.DictField(
+        help_text='Licence of the controlled vocabularies, kept apart from `rights` (the '
+                  'manuscript descriptions). Third-party vocabularies carry their own; see '
+                  '`license` in `/api/v1/dictionaries/`.',
+    )

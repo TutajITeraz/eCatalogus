@@ -27,7 +27,14 @@ from etlapp.services import ETLImportConflictError, ETLRemoteRequestError, _seri
 from etlapp.tasks import get_database_stats
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 from ecatalogus.env_loader import resolve_runtime_instance_slug
-from indexerapp.models import Bibliography, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Places, RiteNames, Topic, Traditions, Type, Watermarks
+from indexerapp.models import Bibliography, ChantDifferentia, ChantMode, Colours, Content, ContentTopic, Contributors, Day, DeletedRecord, EditionContent, Formulas, LiturgicalGenres, ManuscriptBibliography, ManuscriptGenres, Manuscripts, MassHour, Places, RiteNames, Topic, Traditions, Type, Watermarks
+
+
+def _clear_seeded_main_dictionaries():
+    """Drop the rows migrations 0027 and 0028 load, for tests that count whole `main` exports."""
+    ChantDifferentia.objects.all().delete()
+    ChantMode.objects.all().delete()
+    MassHour.objects.all().delete()
 
 
 @contextmanager
@@ -611,6 +618,7 @@ class ETLUISynchronousModeTests(SimpleTestCase):
 )
 class ETLDeltaExportViewTests(TestCase):
     def test_main_export_returns_recent_records(self):
+        _clear_seeded_main_dictionaries()
         older = Type.objects.create(short_name='A', name='Alpha')
         recent = Type.objects.create(short_name='B', name='Beta')
         Type.objects.filter(pk=older.pk).update(entry_date=timezone.now() - timezone.timedelta(days=3))
@@ -1213,6 +1221,7 @@ class ExportModelCategoriesCommandTests(TestCase):
         self.assertEqual(authors_m2m['related_category'], 'shared')
 
     def test_export_etl_bundle_writes_main_json_bundle(self):
+        _clear_seeded_main_dictionaries()
         Type.objects.create(short_name='TP1', name='Type One')
 
         with tempfile.TemporaryDirectory() as temp_dir:

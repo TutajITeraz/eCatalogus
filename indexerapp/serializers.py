@@ -271,10 +271,16 @@ class ContentSerializer(serializers.ModelSerializer):
     translation_en = serializers.SerializerMethodField()
     translation_pl = serializers.SerializerMethodField()
 
+    # Only the identifiers: the differentia's own data is CC BY-NC-SA 4.0 and needs
+    # its attribution wherever it is displayed.
+    chant_mode = serializers.SlugRelatedField(source='chant_mode_uuid', slug_field='short_name', read_only=True)
+    chant_differentia = serializers.SlugRelatedField(source='chant_differentia_uuid', slug_field='short_name', read_only=True)
+    melody_id = serializers.SlugRelatedField(source='melody_uuid', slug_field='melody_id', read_only=True)
+
     class Meta:
         model = Content
         fields = (
-            'uuid', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'translation_pl', 'comments'
+            'uuid', 'manuscript', 'quire', 'manuscript_name', 'section', 'subsection', 'function', 'subfunction', 'biblical_reference', 'formula', 'traditions', 'formula_standarized', 'music_notation', 'rubric', 'rubric_name_from_ms', 'formula_text', 'sequence_in_ms', 'where_in_ms_from', 'where_in_ms_to', 'digital_page_number', 'similarity_by_user', 'similarity_levenshtein', 'similarity_levenshtein_percent', 'original_or_added', 'reference_to_other_items', 'subrubric_name_from_ms', 'edition_index', 'edition_subindex', 'data_contributor', 'authors', 'proper_texts', 'translation_en', 'translation_pl', 'comments', 'cantus_id', 'chant_mode', 'chant_differentia', 'melody', 'melody_id'
         )
 
     def to_representation(self, instance):

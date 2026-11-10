@@ -337,7 +337,7 @@ CONTENT_BULK_EXAMPLES = [
                 {
                     'row': 1, 'field': 'function_id', 'value': 'Colecta', 'error': 'not_found',
                     'detail': (
-                        'No ContentFunctions entry matches "Colecta" (matched against: name). '
+                        'No ContentFunctions entry matches "Colecta" (matched against: name or cantus_codes). '
                         'Dictionary entries must exist before content referencing them is imported.'
                     ),
                 },

@@ -1,0 +1,69 @@
+short_name	name
+?	Mode could not be identified
+*	No notation provided
+r	Simple formula for short responsories and versicles
+M	Simple polyphony
+1	Mode 1
+1?	Mode 1, uncertain
+1S	Mode 1, responsory verse with special melody
+1S?	Mode 1, responsory verse with special melody, uncertain
+1T	Mode 1, transposed
+1T?	Mode 1, transposed, uncertain
+1TS	Mode 1, transposed, responsory verse with special melody
+1TS?	Mode 1, transposed, responsory verse with special melody, uncertain
+2	Mode 2
+2?	Mode 2, uncertain
+2S	Mode 2, responsory verse with special melody
+2S?	Mode 2, responsory verse with special melody, uncertain
+2T	Mode 2, transposed
+2T?	Mode 2, transposed, uncertain
+2TS	Mode 2, transposed, responsory verse with special melody
+2TS?	Mode 2, transposed, responsory verse with special melody, uncertain
+3	Mode 3
+3?	Mode 3, uncertain
+3S	Mode 3, responsory verse with special melody
+3S?	Mode 3, responsory verse with special melody, uncertain
+3T	Mode 3, transposed
+3T?	Mode 3, transposed, uncertain
+3TS	Mode 3, transposed, responsory verse with special melody
+3TS?	Mode 3, transposed, responsory verse with special melody, uncertain
+4	Mode 4
+4?	Mode 4, uncertain
+4S	Mode 4, responsory verse with special melody
+4S?	Mode 4, responsory verse with special melody, uncertain
+4T	Mode 4, transposed
+4T?	Mode 4, transposed, uncertain
+4TS	Mode 4, transposed, responsory verse with special melody
+4TS?	Mode 4, transposed, responsory verse with special melody, uncertain
+5	Mode 5
+5?	Mode 5, uncertain
+5S	Mode 5, responsory verse with special melody
+5S?	Mode 5, responsory verse with special melody, uncertain
+5T	Mode 5, transposed
+5T?	Mode 5, transposed, uncertain
+5TS	Mode 5, transposed, responsory verse with special melody
+5TS?	Mode 5, transposed, responsory verse with special melody, uncertain
+6	Mode 6
+6?	Mode 6, uncertain
+6S	Mode 6, responsory verse with special melody
+6S?	Mode 6, responsory verse with special melody, uncertain
+6T	Mode 6, transposed
+6T?	Mode 6, transposed, uncertain
+6TS	Mode 6, transposed, responsory verse with special melody
+6TS?	Mode 6, transposed, responsory verse with special melody, uncertain
+7	Mode 7
+7?	Mode 7, uncertain
+7S	Mode 7, responsory verse with special melody
+7S?	Mode 7, responsory verse with special melody, uncertain
+7T	Mode 7, transposed
+7T?	Mode 7, transposed, uncertain
+7TS	Mode 7, transposed, responsory verse with special melody
+7TS?	Mode 7, transposed, responsory verse with special melody, uncertain
+8	Mode 8
+8?	Mode 8, uncertain
+8S	Mode 8, responsory verse with special melody
+8S?	Mode 8, responsory verse with special melody, uncertain
+8T	Mode 8, transposed
+8T?	Mode 8, transposed, uncertain
+8TS	Mode 8, transposed, responsory verse with special melody
+8TS?	Mode 8, transposed, responsory verse with special melody, uncertain

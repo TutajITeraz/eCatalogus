@@ -5,6 +5,7 @@ This module provides ModelResource classes for all models in main/shared/ms cate
 enabling bulk import/export operations via django-import-export.
 """
 
+from django.core.exceptions import ValidationError
 from import_export import resources, fields
 from import_export.widgets import ForeignKeyWidget, ManyToManyWidget
 from indexerapp.models import *
@@ -285,6 +286,16 @@ class ContentFunctionsResource(resources.ModelResource):
         model = ContentFunctions
         exclude = ()
 
+    def validate_instance(self, instance, import_validation_errors=None, validate_unique=True):
+        # The one-function-per-Cantus-code rule lives in the model's clean(), which
+        # import-export skips unless clean_model_instances is on.
+        errors = dict(import_validation_errors or {})
+        try:
+            instance.clean_cantus_codes()
+        except ValidationError as exc:
+            errors = exc.update_error_dict(errors)
+        super().validate_instance(instance, errors, validate_unique)
+
 
 class ContentResource(resources.ModelResource):
     manuscript = fields.Field(
@@ -381,6 +392,21 @@ class ContentResource(resources.ModelResource):
         column_name='day',
         attribute='day',
         widget=ForeignKeyWidget(Day, 'uuid')
+    )
+    chant_mode = fields.Field(
+        column_name='chant_mode',
+        attribute='chant_mode',
+        widget=ForeignKeyWidget(ChantMode, 'uuid')
+    )
+    chant_differentia = fields.Field(
+        column_name='chant_differentia',
+        attribute='chant_differentia',
+        widget=ForeignKeyWidget(ChantDifferentia, 'uuid')
+    )
+    melody_uuid = fields.Field(
+        column_name='melody_uuid',
+        attribute='melody_uuid',
+        widget=ForeignKeyWidget(Melody, 'uuid')
     )
 
     class Meta:
@@ -825,6 +851,19 @@ class RiteNamesResource(resources.ModelResource):
         exclude = ()
 
 
+# Melody has no resource on purpose: its data is CC BY-NC-SA 4.0 (like ChantDifferentia).
+
+
+class ChantModeResource(resources.ModelResource):
+    class Meta:
+        model = ChantMode
+        exclude = ()
+
+
+# ChantDifferentia has no resource on purpose: its data is CC BY-NC-SA 4.0 and must
+# not end up in a bulk export published under the instance's own licence.
+
+
 class MassHourResource(resources.ModelResource):
     type = fields.Field(
         column_name='type',
@@ -925,6 +964,7 @@ SHARED_RESOURCES = {
     'traditions': TraditionsResource,
     'ritenames': RiteNamesResource,
     'masshour': MassHourResource,
+    'chantmode': ChantModeResource,
     'topic': TopicResource,
     'contenttopic': ContentTopicResource,
     'textstandarization': TextStandarizationResource,

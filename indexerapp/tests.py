@@ -24,6 +24,7 @@ from dal import autocomplete
 
 from etlapp.model_categories import get_sync_model_names
 from etlapp.services import _serialize_instance
+from etlapp.uuid_utils import build_deterministic_sync_uuid
 from indexerapp.ai_tools import get_all_manuscript_names
 from indexerapp.models import AttributeDebate, Bibliography, Ceremony, Binding, BindingComponents, BindingDecorationTypes, BindingMaterials, BindingStyles, BindingTypes, Calendar, Characteristics, Clla, Codicology, Condition, Content, ContentFunctions, Contributors, Day, Decoration, DecorationCharacteristics, DecorationColours, DecorationSubjects, DecorationTechniques, DecorationTypes, EditionContent, FeastRanks, Formulas, Genre, Hands, Image, Layer, Layouts, LiturgicalGenres, MSProjects, ManuscriptBibliography, ManuscriptBindingComponents, ManuscriptBindingDecorations, ManuscriptBindingMaterials, ManuscriptGenres, ManuscriptHands, ManuscriptMusicNotations, ManuscriptWatermarks, Manuscripts, MassHour, MusicNotationNames, Origins, Places, Projects, Provenance, Quires, RiteNames, ScriptNames, SeasonMonth, Sections, Subjects, TextStandarization, TimeReference, Traditions, Type, Watermarks, Week, Colours
 from indexerapp.models import AIQuery, DeletedRecord, ImproveOurDataEntry
@@ -2460,3 +2461,492 @@ class ImproveOurDataFormTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 400)
+
+
+CANTUS_TSV_HEADER = 'function_name\taction\tparent_function\tcantus_codes\tn_codes\n'
+
+
+@override_settings(ETL_ALLOW_MAIN_EDITS=True)
+class CantusFunctionCodesTests(TestCase):
+	"""ContentFunctions.cantus_codes and the import_cantus_functions command."""
+
+	def setUp(self):
+		self.antiphon = ContentFunctions.objects.create(name='Antiphon')
+		self.introit = ContentFunctions.objects.create(name='Introit')
+
+	def write_tsv(self, *rows):
+		handle = tempfile.NamedTemporaryFile('w', suffix='.tsv', delete=False, encoding='utf-8')
+		handle.write(CANTUS_TSV_HEADER)
+		for row in rows:
+			handle.write('\t'.join(row) + '\n')
+		handle.close()
+		self.addCleanup(os.unlink, handle.name)
+		return handle.name
+
+	def run_import(self, path, *args):
+		out = StringIO()
+		call_command('import_cantus_functions', path, *args, stdout=out)
+		return out.getvalue()
+
+	# -- model validation ---------------------------------------------
+
+	def test_one_function_may_hold_two_codes(self):
+		self.antiphon.cantus_codes = ' A , ANT '
+		self.antiphon.full_clean()
+		self.antiphon.save()
+
+		self.antiphon.refresh_from_db()
+		self.assertEqual(self.antiphon.cantus_codes, 'A,ANT')
+		self.assertEqual(ContentFunctions.split_cantus_codes(self.antiphon.cantus_codes), ['A', 'ANT'])
+
+	def test_codes_differing_only_in_case_are_distinct(self):
+		gradual = ContentFunctions.objects.create(name='Gradual', cantus_codes='Gr')
+		other = ContentFunctions(name='Other', cantus_codes='GR')
+
+		other.full_clean()
+
+		self.assertEqual(gradual.cantus_codes, 'Gr')
+		self.assertEqual(other.cantus_codes, 'GR')
+
+	def test_code_already_held_by_another_function_is_rejected(self):
+		self.antiphon.cantus_codes = 'A,ANT'
+		self.antiphon.save()
+		self.introit.cantus_codes = 'In,ANT'
+
+		with self.assertRaises(ValidationError) as caught:
+			self.introit.full_clean()
+
+		self.assertIn('cantus_codes', caught.exception.message_dict)
+		self.assertIn('Antiphon', caught.exception.message_dict['cantus_codes'][0])
+
+	def test_admin_import_resource_applies_the_code_rule(self):
+		from indexerapp.resources import ContentFunctionsResource
+
+		self.antiphon.cantus_codes = 'A'
+		self.antiphon.save()
+		self.introit.cantus_codes = 'A'
+
+		with self.assertRaises(ValidationError):
+			ContentFunctionsResource().validate_instance(self.introit)
+
+	def test_cantus_codes_are_published_in_the_dictionary_and_etl_payload(self):
+		self.antiphon.cantus_codes = 'A,ANT'
+		self.antiphon.save()
+
+		self.assertEqual(_serialize_instance(self.antiphon)['cantus_codes'], 'A,ANT')
+		response = self.client.get('/api/v1/dictionaries/content-functions/', {'search': 'ANT'})
+		self.assertEqual(response.status_code, 200, response.content)
+		self.assertEqual(
+			[(row['name'], row['cantus_codes']) for row in response.json()['results']],
+			[('Antiphon', 'A,ANT')],
+		)
+
+	# -- import command -----------------------------------------------
+
+	def test_parents_are_created_before_children(self):
+		# Children listed first on purpose: the file order must not matter.
+		path = self.write_tsv(
+			('Canticle verse (Hispanic rite)', 'CREATE', 'Canticle verse', 'CaVH', '1'),
+			('Canticle verse', 'CREATE', 'Canticle', 'CaV', '1'),
+			('Canticle', 'CREATE', '', 'Ca', '1'),
+			('Invitatory antiphon', 'CREATE', 'Antiphon', 'I', '1'),
+		)
+
+		self.run_import(path)
+
+		canticle = ContentFunctions.objects.get(name='Canticle')
+		verse = ContentFunctions.objects.get(name='Canticle verse')
+		hispanic = ContentFunctions.objects.get(name='Canticle verse (Hispanic rite)')
+		self.assertIsNone(canticle.parent_function_uuid)
+		self.assertEqual(verse.parent_function_uuid, canticle)
+		self.assertEqual(hispanic.parent_function_uuid, verse)
+		self.assertEqual(hispanic.cantus_codes, 'CaVH')
+		self.assertIsNotNone(hispanic.uuid)
+		self.assertEqual(ContentFunctions.objects.get(name='Invitatory antiphon').parent_function_uuid, self.antiphon)
+
+	def test_update_fills_codes_only_and_matches_case_insensitively(self):
+		path = self.write_tsv(('antiphon', 'UPDATE (exists)', '', 'A,ANT', '2'))
+
+		output = self.run_import(path)
+
+		self.antiphon.refresh_from_db()
+		self.assertEqual(self.antiphon.name, 'Antiphon')
+		self.assertIsNone(self.antiphon.parent_function_uuid)
+		self.assertEqual(self.antiphon.cantus_codes, 'A,ANT')
+		self.assertIn('different case', output)
+
+	def test_unmatched_update_aborts_the_whole_import(self):
+		path = self.write_tsv(
+			('Canticle', 'CREATE', '', 'Ca', '1'),
+			('Prosula', 'UPDATE (exists)', '', 'Psl', '1'),
+		)
+
+		with self.assertRaises(CommandError):
+			self.run_import(path)
+
+		self.assertFalse(ContentFunctions.objects.filter(name='Canticle').exists())
+		self.assertFalse(ContentFunctions.objects.filter(name__iexact='Prosula').exists())
+
+	def test_code_given_to_two_functions_is_an_error(self):
+		path = self.write_tsv(
+			('Antiphon', 'UPDATE (exists)', '', 'A,ANT', '2'),
+			('Introit', 'UPDATE (exists)', '', 'In,ANT', '2'),
+		)
+
+		with self.assertRaises(CommandError):
+			self.run_import(path)
+
+		self.assertEqual(ContentFunctions.objects.exclude(cantus_codes__isnull=True).count(), 0)
+
+	def test_code_already_held_in_the_database_is_an_error(self):
+		ContentFunctions.objects.filter(pk=self.introit.pk).update(cantus_codes='A')
+		path = self.write_tsv(('Antiphon', 'UPDATE (exists)', '', 'A,ANT', '2'))
+
+		with self.assertRaises(CommandError):
+			self.run_import(path)
+
+		self.antiphon.refresh_from_db()
+		self.assertIsNone(self.antiphon.cantus_codes)
+
+	def test_create_colliding_with_an_existing_name_is_refused(self):
+		path = self.write_tsv(('INTROIT', 'CREATE', '', 'In', '1'))
+
+		with self.assertRaises(CommandError):
+			self.run_import(path)
+
+		self.assertEqual(ContentFunctions.objects.filter(name__iexact='introit').count(), 1)
+		self.introit.refresh_from_db()
+		self.assertIsNone(self.introit.cantus_codes)
+
+	def test_technical_cantus_codes_are_refused(self):
+		path = self.write_tsv(('Unknown', 'CREATE', '', '[?]', '1'))
+
+		with self.assertRaises(CommandError):
+			self.run_import(path)
+
+		self.assertFalse(ContentFunctions.objects.filter(name='Unknown').exists())
+
+	def test_dry_run_writes_nothing(self):
+		path = self.write_tsv(
+			('Canticle', 'CREATE', '', 'Ca', '1'),
+			('Antiphon', 'UPDATE (exists)', '', 'A,ANT', '2'),
+		)
+		before = list(ContentFunctions.objects.order_by('pk').values_list('name', 'cantus_codes', 'entry_date'))
+
+		output = self.run_import(path, '--dry-run')
+
+		self.assertEqual(
+			list(ContentFunctions.objects.order_by('pk').values_list('name', 'cantus_codes', 'entry_date')),
+			before,
+		)
+		self.assertIn('Would create: 1', output)
+		self.assertIn('Would update cantus_codes: 1', output)
+
+	def test_second_run_is_a_no_op(self):
+		path = self.write_tsv(
+			('Canticle', 'CREATE', '', 'Ca', '1'),
+			('Canticle verse', 'CREATE', 'Canticle', 'CaV', '1'),
+			('Antiphon', 'UPDATE (exists)', '', 'A,ANT', '2'),
+		)
+		self.run_import(path)
+		uuids = dict(ContentFunctions.objects.values_list('name', 'uuid'))
+
+		output = self.run_import(path)
+
+		self.assertIn('Unchanged (already imported): 3', output)
+		self.assertEqual(dict(ContentFunctions.objects.values_list('name', 'uuid')), uuids)
+
+	@override_settings(ETL_ALLOW_MAIN_EDITS=False)
+	def test_writing_is_refused_where_main_data_is_read_only(self):
+		path = self.write_tsv(('Canticle', 'CREATE', '', 'Ca', '1'))
+
+		with self.assertRaises(CommandError):
+			self.run_import(path)
+		self.run_import(path, '--dry-run')
+
+		self.assertFalse(ContentFunctions.objects.filter(name='Canticle').exists())
+
+
+RITE_PLAN_COLUMNS = (
+	'action', 'cantus_feast_code', 'target_name_cantus', 'ecatalogus_uuid', 'ecatalogus_legacy_id',
+	'ecatalogus_current_name', 'name_changes', 'similarity', 'description_en', 'feast_date', 'alt_names', 'note',
+)
+
+
+@override_settings(ETL_ALLOW_MAIN_EDITS=True)
+class CantusRiteNamesImportTests(TestCase):
+	"""RiteNames.cantus_feast_code and the import_cantus_rite_names command."""
+
+	def setUp(self):
+		self.alexius = RiteNames.objects.create(name='Alexius')
+		self.paganos = RiteNames.objects.create(name='contra paganos')
+
+	def write_plan(self, *rows):
+		handle = tempfile.NamedTemporaryFile('w', suffix='.tsv', delete=False, encoding='utf-8', newline='')
+		writer = csv.DictWriter(handle, fieldnames=RITE_PLAN_COLUMNS, delimiter='\t')
+		writer.writeheader()
+		for row in rows:
+			writer.writerow({column: row.get(column, '') for column in RITE_PLAN_COLUMNS})
+		handle.close()
+		self.addCleanup(os.unlink, handle.name)
+		return handle.name
+
+	def update_row(self, rite, code, target, action='UPDATE_RENAME', current=None, **extra):
+		return {
+			'action': action, 'cantus_feast_code': code, 'target_name_cantus': target,
+			'ecatalogus_uuid': str(rite.uuid), 'ecatalogus_legacy_id': str(rite.pk),
+			'ecatalogus_current_name': rite.name if current is None else current, **extra,
+		}
+
+	def run_import(self, path, *args):
+		out = StringIO()
+		call_command('import_cantus_rite_names', path, *args, stdout=out)
+		return out.getvalue()
+
+	def test_dry_run_is_the_default_and_writes_nothing(self):
+		path = self.write_plan(
+			{'action': 'CREATE', 'cantus_feast_code': '14073000', 'target_name_cantus': 'Abdonis, Sennis'},
+			self.update_row(self.paganos, '16059000', 'Contra paganos'),
+		)
+		before = list(RiteNames.objects.order_by('pk').values_list('name', 'cantus_feast_code', 'entry_date'))
+
+		output = self.run_import(path)
+
+		self.assertEqual(list(RiteNames.objects.order_by('pk').values_list('name', 'cantus_feast_code', 'entry_date')), before)
+		self.assertIn('Created:                     1', output)
+		self.assertIn('Renamed:                     1', output)
+
+	def test_create_cleans_description_and_keeps_name_verbatim(self):
+		path = self.write_plan({
+			'action': 'CREATE', 'cantus_feast_code': '14070830', 'target_name_cantus': 'LOCAL:Annae,Zutfania',
+			'description_en': '<p class="x">\n    Anne &amp; Joachim,&nbsp;parents\n</p>',
+		})
+
+		self.run_import(path, '--apply')
+
+		rite = RiteNames.objects.get(cantus_feast_code='14070830')
+		self.assertEqual(rite.name, 'LOCAL:Annae,Zutfania')
+		self.assertEqual(rite.english_translation, 'Anne & Joachim, parents')
+		self.assertIsNotNone(rite.uuid)
+		self.assertIsNone(rite.section_uuid)
+		self.assertIsNone(rite.votive)
+
+	def test_long_description_is_shortened_to_the_column(self):
+		path = self.write_plan({
+			'action': 'CREATE', 'cantus_feast_code': '14053140', 'target_name_cantus': 'Mechthildis Diessensis',
+			'description_en': 'word ' * 200,
+		})
+
+		output = self.run_import(path, '--apply')
+
+		translation = RiteNames.objects.get(cantus_feast_code='14053140').english_translation
+		self.assertLessEqual(len(translation), 512)
+		self.assertTrue(translation.endswith('…'))
+		self.assertIn('english_translation shortened (1)', output)
+
+	def test_update_renames_and_does_not_overwrite_translation(self):
+		RiteNames.objects.filter(pk=self.paganos.pk).update(english_translation='Against pagans')
+		path = self.write_plan(self.update_row(self.paganos, '16059000', 'Contra paganos', description_en='Other text'))
+
+		self.run_import(path, '--apply')
+
+		self.paganos.refresh_from_db()
+		self.assertEqual(self.paganos.name, 'Contra paganos')
+		self.assertEqual(self.paganos.cantus_feast_code, '16059000')
+		self.assertEqual(self.paganos.english_translation, 'Against pagans')
+
+	def test_update_with_a_different_current_name_is_skipped(self):
+		path = self.write_plan(self.update_row(self.paganos, '16059000', 'Contra paganos', current='contra persecutores'))
+
+		output = self.run_import(path, '--apply')
+
+		self.paganos.refresh_from_db()
+		self.assertEqual(self.paganos.name, 'contra paganos')
+		self.assertIsNone(self.paganos.cantus_feast_code)
+		self.assertIn('Current name does not match the plan (1)', output)
+
+	def test_update_with_unknown_uuid_is_skipped(self):
+		row = self.update_row(self.paganos, '16059000', 'Contra paganos')
+		row['ecatalogus_uuid'] = str(uuid4())
+
+		output = self.run_import(self.write_plan(row), '--apply')
+
+		self.assertIn('No rite with the given uuid (1)', output)
+		self.assertFalse(RiteNames.objects.filter(cantus_feast_code='16059000').exists())
+
+	def test_create_colliding_with_existing_name_is_skipped(self):
+		path = self.write_plan({'action': 'CREATE', 'cantus_feast_code': '14071700', 'target_name_cantus': 'ALEXIUS'})
+
+		output = self.run_import(path, '--apply')
+
+		self.assertEqual(RiteNames.objects.filter(name__iexact='alexius').count(), 1)
+		self.assertIn('Name collision (1)', output)
+
+	def test_rename_onto_another_rites_name_is_skipped(self):
+		path = self.write_plan(self.update_row(self.paganos, '16059000', 'alexius'))
+
+		self.run_import(path, '--apply')
+
+		self.paganos.refresh_from_db()
+		self.assertEqual(self.paganos.name, 'contra paganos')
+
+	def test_code_held_by_another_rite_is_a_conflict(self):
+		RiteNames.objects.filter(pk=self.alexius.pk).update(cantus_feast_code='16059000')
+		path = self.write_plan(self.update_row(self.paganos, '16059000', 'Contra paganos'))
+
+		output = self.run_import(path, '--apply')
+
+		self.assertIn('Cantus code conflict (1)', output)
+		self.paganos.refresh_from_db()
+		self.assertEqual(self.paganos.name, 'contra paganos')
+
+	def test_review_update_needs_confirmation(self):
+		path = self.write_plan(self.update_row(
+			self.alexius, '14071700', 'Alexis', action='REVIEW_UPDATE',
+			note='similar to an existing rite name - check manually',
+		))
+
+		output = self.run_import(path, '--apply', '--output-dir', tempfile.mkdtemp())
+		self.alexius.refresh_from_db()
+		self.assertEqual(self.alexius.name, 'Alexius')
+		self.assertIn('Skipped REVIEW_UPDATE:       1', output)
+
+		confirmed = tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, encoding='utf-8')
+		confirmed.write('# approved\n14071700\n')
+		confirmed.close()
+		self.addCleanup(os.unlink, confirmed.name)
+		self.run_import(path, '--apply', '--confirmed', confirmed.name)
+
+		self.alexius.refresh_from_db()
+		self.assertEqual(self.alexius.name, 'Alexis')
+		self.assertEqual(self.alexius.cantus_feast_code, '14071700')
+
+	def test_review_update_without_similarity_note_is_applied(self):
+		path = self.write_plan(self.update_row(self.alexius, '14071700', 'Alexis', action='REVIEW_UPDATE'))
+
+		self.run_import(path, '--apply', '--output-dir', tempfile.mkdtemp())
+
+		self.alexius.refresh_from_db()
+		self.assertEqual((self.alexius.name, self.alexius.cantus_feast_code), ('Alexis', '14071700'))
+
+	def test_result_and_review_files_and_temp_codes_and_duplicates(self):
+		directory = tempfile.mkdtemp()
+		dup = 'duplicate inside Cantus after normalisation: '
+		path = self.write_plan(
+			{'action': 'CREATE', 'cantus_feast_code': 'temp0027', 'target_name_cantus': 'Fugae in Aegyptum',
+			 'note': dup + '15041004', 'description_en': 'Flight'},
+			{'action': 'CREATE', 'cantus_feast_code': '15041004', 'target_name_cantus': 'Fugae in Aegyptum',
+			 'note': dup + 'temp0027'},
+			{'action': 'CREATE', 'cantus_feast_code': 'temp0100', 'target_name_cantus': 'Nova'},
+			self.update_row(self.paganos, '16059000', 'Contra paganos', action='REVIEW_UPDATE',
+							note='similar to an existing rite name - check manually'),
+			{'action': 'SKIP_TECHNICAL', 'cantus_feast_code': '00000000', 'target_name_cantus': '[Lacuna]'},
+		)
+
+		self.run_import(path, '--apply', '--output-dir', directory)
+		self.run_import(path, '--apply', '--output-dir', directory)  # idempotent
+
+		self.assertEqual(RiteNames.objects.filter(name='Fugae in Aegyptum').count(), 1)
+		fugae = RiteNames.objects.get(name='Fugae in Aegyptum')
+		self.assertEqual(fugae.cantus_feast_code, '15041004')
+		self.assertFalse(RiteNames.objects.filter(cantus_feast_code__startswith='temp').exists())
+		self.assertEqual(RiteNames.objects.filter(name='Nova').count(), 1)
+		with open(os.path.join(directory, 'rite_names_import_result.tsv'), newline='', encoding='utf-8') as handle:
+			result = {r['cantus_feast_code']: r for r in csv.DictReader(handle, delimiter='\t')}
+		self.assertEqual(set(result), {'temp0027', '15041004', 'temp0100', '16059000'})
+		self.assertEqual(result['temp0027']['ecatalogus_uuid'], str(fugae.uuid))
+		self.assertEqual(result['15041004']['ecatalogus_uuid'], str(fugae.uuid))
+		self.assertEqual(result['temp0027']['status'], 'duplicate_of_15041004')
+		self.assertEqual(result['temp0100']['status'], 'unchanged')
+		self.assertEqual(result['16059000']['ecatalogus_uuid'], '')
+		with open(os.path.join(directory, 'rite_names_skipped_review.tsv'), newline='', encoding='utf-8') as handle:
+			skipped = list(csv.DictReader(handle, delimiter='\t'))
+		self.assertEqual([r['cantus_feast_code'] for r in skipped], ['16059000'])
+
+	def test_truncated_translation_is_replaced_but_hand_edit_is_kept(self):
+		RiteNames.objects.filter(pk=self.alexius.pk).update(english_translation='Alexius of Ro…')
+		RiteNames.objects.filter(pk=self.paganos.pk).update(english_translation='My own text')
+		path = self.write_plan(
+			self.update_row(self.alexius, '14071700', 'Alexius', description_en='Alexius of Rome, confessor'),
+			self.update_row(self.paganos, '16059000', 'contra paganos', description_en='Against pagans'),
+		)
+
+		self.run_import(path, '--apply', '--output-dir', tempfile.mkdtemp())
+
+		self.alexius.refresh_from_db()
+		self.paganos.refresh_from_db()
+		self.assertEqual(self.alexius.english_translation, 'Alexius of Rome, confessor')
+		self.assertEqual(self.paganos.english_translation, 'My own text')
+
+	def test_second_run_changes_nothing(self):
+		path = self.write_plan(
+			{'action': 'CREATE', 'cantus_feast_code': '14073000', 'target_name_cantus': 'Abdonis, Sennis'},
+			self.update_row(self.paganos, '16059000', 'Contra paganos'),
+			{'action': 'SKIP_TECHNICAL', 'cantus_feast_code': '00000000', 'target_name_cantus': '[Lacuna]'},
+		)
+		self.run_import(path, '--apply')
+		snapshot = list(RiteNames.objects.order_by('pk').values_list('pk', 'name', 'cantus_feast_code'))
+
+		output = self.run_import(path, '--apply')
+
+		self.assertEqual(list(RiteNames.objects.order_by('pk').values_list('pk', 'name', 'cantus_feast_code')), snapshot)
+		self.assertIn('Unchanged (already applied): 2', output)
+		self.assertFalse(RiteNames.objects.filter(name='[Lacuna]').exists())
+
+	def test_same_name_twice_in_the_file_creates_one_rite(self):
+		path = self.write_plan(
+			{'action': 'CREATE', 'cantus_feast_code': 'temp0027', 'target_name_cantus': 'Fugae D. N. J. C. in Aegyptum'},
+			{'action': 'CREATE', 'cantus_feast_code': '15041004', 'target_name_cantus': 'Fugae D. N. J. C. in Aegyptum'},
+		)
+
+		output = self.run_import(path, '--apply')
+
+		self.assertEqual(RiteNames.objects.filter(name='Fugae D. N. J. C. in Aegyptum').count(), 1)
+		self.assertIn('Name collision (1)', output)
+
+	def test_accent_only_difference_is_reported_not_fatal(self):
+		RiteNames.objects.create(name='Cecília')
+		path = self.write_plan(
+			{'action': 'CREATE', 'cantus_feast_code': '1', 'target_name_cantus': 'Cecilia'},
+			{'action': 'CREATE', 'cantus_feast_code': '2', 'target_name_cantus': 'Agatha nova'},
+		)
+
+		self.run_import(path, '--apply')
+
+		self.assertTrue(RiteNames.objects.filter(cantus_feast_code='2').exists())
+		# Whether "Cecilia" clashes depends on the column collation; either way the rest is written.
+		self.assertLessEqual(RiteNames.objects.filter(name__iexact='Cecilia').count(), 2)
+
+	def test_verified_pair_merged_by_an_earlier_plan_is_undone(self):
+		benedicta = RiteNames.objects.create(
+			name='Benedicti', cantus_feast_code='14032100',
+			uuid=build_deterministic_sync_uuid('indexerapp.RiteNames', 688),
+		)
+		path = self.write_plan({'action': 'CREATE', 'cantus_feast_code': '14032100', 'target_name_cantus': 'Benedicti'})
+
+		output = self.run_import(path, '--apply')
+
+		benedicta.refresh_from_db()
+		self.assertEqual(benedicta.name, 'Benedicta')
+		self.assertIsNone(benedicta.cantus_feast_code)
+		created = RiteNames.objects.get(cantus_feast_code='14032100')
+		self.assertNotEqual(created.pk, benedicta.pk)
+		self.assertIn('name restored from "Benedicti"', output)
+
+	@override_settings(ETL_ALLOW_MAIN_EDITS=False)
+	def test_apply_is_refused_where_main_data_is_read_only(self):
+		path = self.write_plan({'action': 'CREATE', 'cantus_feast_code': '14073000', 'target_name_cantus': 'Abdonis, Sennis'})
+
+		with self.assertRaises(CommandError):
+			self.run_import(path, '--apply')
+		self.run_import(path)
+
+		self.assertFalse(RiteNames.objects.filter(cantus_feast_code='14073000').exists())
+
+	def test_dictionary_publishes_cantus_feast_code(self):
+		RiteNames.objects.filter(pk=self.paganos.pk).update(cantus_feast_code='16059000')
+
+		response = self.client.get('/api/v1/dictionaries/rite-names/', {'search': '16059000'})
+
+		self.assertEqual(response.status_code, 200, response.content)
+		self.assertEqual([row['cantus_feast_code'] for row in response.json()['results']], ['16059000'])

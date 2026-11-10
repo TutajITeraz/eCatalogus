@@ -25,13 +25,22 @@ from indexerapp.models import Contributors
 
 LICENSE_LINK_REL = 'license'
 
-
 def get_license():
     return getattr(settings, 'DATA_LICENSE', {}) or {}
 
 
 def license_url():
     return get_license().get('url', '')
+
+
+def get_dictionary_license(slug=None):
+    """The licence of the controlled vocabularies, or of one of them.
+
+    Kept apart from the data licence of the manuscript descriptions; a
+    third-party vocabulary listed in ``DICTIONARY_LICENSES`` carries its own.
+    """
+    own = (getattr(settings, 'DICTIONARY_LICENSES', {}) or {}).get(slug) if slug else None
+    return own or getattr(settings, 'DICTIONARY_LICENSE', {}) or get_license()
 
 
 def _format_person(contributor):
@@ -82,9 +91,12 @@ def collect_contributors(payload):
     ]
 
 
-def build_rights(*, source_url=None, title=None, contributors=None):
-    """The ``rights`` block attached to every public API response."""
-    licence = get_license()
+def build_rights(*, source_url=None, title=None, contributors=None, licence=None):
+    """The ``rights`` block attached to every public API response.
+
+    ``licence`` replaces the instance's data licence, e.g. for the vocabularies.
+    """
+    licence = licence or get_license()
     accessed = timezone.now()
 
     credited = [person['name'] for person in (contributors or [])]
@@ -115,6 +127,7 @@ def build_rights(*, source_url=None, title=None, contributors=None):
             contributors=credited,
             source_url=source_url,
             accessed=accessed,
+            licence=licence,
         ),
     }
 
@@ -124,9 +137,11 @@ def build_rights(*, source_url=None, title=None, contributors=None):
     return rights
 
 
-def build_citation(*, title, contributors, source_url, accessed):
+def build_citation(*, title, contributors, source_url, accessed, licence=None):
     """A ready-to-paste citation, so we are cited the way we want to be."""
-    licence = get_license()
+    licence = licence or get_license()
+    if licence.get('citation'):
+        return licence['citation']
     site_name = getattr(settings, 'SITE_NAME', 'eCatalogus')
 
     parts = []
@@ -146,11 +161,12 @@ def build_citation(*, title, contributors, source_url, accessed):
     return '. '.join(part for part in parts if part) + '.'
 
 
-def attach_rights(payload, request=None, title=None, contributors=None):
+def attach_rights(payload, request=None, title=None, contributors=None, licence=None):
     """Add the ``rights`` block to a payload about to be returned."""
     payload['rights'] = build_rights(
         source_url=request.build_absolute_uri() if request is not None else None,
         title=title,
         contributors=contributors,
+        licence=licence,
     )
     return payload

@@ -493,6 +493,10 @@ class Sections(models.Model):
 class ContentFunctions(models.Model):
     name = models.CharField(max_length=128)
     parent_function_uuid = models.ForeignKey('self', models.CASCADE, to_field='uuid', db_column='parent_function_uuid', blank=True, null=True)
+    # Cantus Index genre codes (field_genre) mapped to this function, comma-separated
+    # without spaces, e.g. "A,ANT". Case-sensitive: "Gr" and "GR" are different codes.
+    # A code may belong to one function only — enforced in clean(), not by the DB.
+    cantus_codes = models.CharField(max_length=128, null=True, blank=True)
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
@@ -506,6 +510,51 @@ class ContentFunctions(models.Model):
 
     def __str__(self):
         return self.name
+
+    @staticmethod
+    def split_cantus_codes(value):
+        return [code for code in (value or '').split(',') if code]
+
+    @classmethod
+    def cantus_code_owners(cls, exclude_pk=None):
+        """Map every assigned Cantus code to the name of the function holding it."""
+        queryset = cls.objects.exclude(cantus_codes__isnull=True).exclude(cantus_codes='')
+        if exclude_pk is not None:
+            queryset = queryset.exclude(pk=exclude_pk)
+        owners = {}
+        for name, codes in queryset.values_list('name', 'cantus_codes'):
+            for code in cls.split_cantus_codes(codes):
+                owners.setdefault(code, name)
+        return owners
+
+    def clean_cantus_codes(self):
+        """Normalise ``cantus_codes`` and refuse a code already held by another function."""
+        from django.core.exceptions import ValidationError
+
+        if not self.cantus_codes or not self.cantus_codes.strip():
+            self.cantus_codes = None
+            return
+
+        codes = [code.strip() for code in self.cantus_codes.split(',') if code.strip()]
+        errors = []
+        if any(any(char.isspace() for char in code) for code in codes):
+            errors.append('Cantus codes must be separated by commas and contain no spaces.')
+        duplicates = sorted({code for code in codes if codes.count(code) > 1})
+        if duplicates:
+            errors.append(f'Repeated Cantus code(s): {", ".join(duplicates)}.')
+
+        owners = self.cantus_code_owners(exclude_pk=self.pk)
+        for code in codes:
+            if code in owners:
+                errors.append(f'Cantus code "{code}" is already assigned to "{owners[code]}".')
+
+        if errors:
+            raise ValidationError({'cantus_codes': errors})
+        self.cantus_codes = ','.join(codes)
+
+    def clean(self):
+        super().clean()
+        self.clean_cantus_codes()
 
 class Contributors(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
@@ -623,6 +672,13 @@ class Content(models.Model):
     season_month_uuid = models.ForeignKey('SeasonMonth', models.PROTECT, to_field='uuid', db_column='season_month_uuid', related_name='%(class)s_season_month', blank=True, null=True)
     week_uuid = models.ForeignKey('Week', models.PROTECT, to_field='uuid', db_column='week_uuid', related_name='%(class)s_week', blank=True, null=True)
     day_uuid = models.ForeignKey('Day', models.PROTECT, to_field='uuid', db_column='day_uuid', related_name='%(class)s_day', blank=True, null=True)
+
+    #Cantus Index fields (https://cantusdatabase.org/description/):
+    cantus_id = models.CharField(max_length=32, null=True, blank=True, db_index=True)
+    chant_mode_uuid = models.ForeignKey('ChantMode', models.PROTECT, to_field='uuid', db_column='chant_mode_uuid', related_name='%(class)s_chant_mode', blank=True, null=True)
+    chant_differentia_uuid = models.ForeignKey('ChantDifferentia', models.PROTECT, to_field='uuid', db_column='chant_differentia_uuid', related_name='%(class)s_chant_differentia', blank=True, null=True)
+    melody = models.TextField(null=True, blank=True)  # Volpiano, stored verbatim
+    melody_uuid = models.ForeignKey('Melody', models.SET_NULL, to_field='uuid', db_column='melody_uuid', related_name='%(class)s_melody', blank=True, null=True)
 
 
     def calculate_and_save_similarity(self):
@@ -1731,10 +1787,13 @@ class RiteNames(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
 
     name = models.CharField(max_length=128, unique=True)
-    english_translation = models.CharField(max_length=128,  blank=True, null=True)
+    english_translation = models.CharField(max_length=512, blank=True, null=True)
     section_uuid = models.ForeignKey('Sections', models.PROTECT, to_field='uuid', db_column='section_uuid', blank=True, null=True)
     votive = models.BooleanField(null=True)
     ceremony_uuid = models.ForeignKey('Ceremony', models.PROTECT, to_field='uuid', db_column='ceremony_uuid', blank=True, null=True)
+    # Cantus Index feast code, e.g. "14032100" or a temporary "temp0004". Unique when set;
+    # blank is stored as NULL so any number of rites can be without one.
+    cantus_feast_code = models.CharField(max_length=32, unique=True, null=True, blank=True)
     entry_date = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1747,6 +1806,11 @@ class RiteNames(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.cantus_feast_code is not None:
+            self.cantus_feast_code = self.cantus_feast_code.strip() or None
+        super().save(*args, **kwargs)
 
 
 
@@ -1878,6 +1942,64 @@ class Day(models.Model):
 
 
 # Column H
+class ChantMode(models.Model):
+    """Cantus mode codes: 1-8, ? (undetermined), * (no notation), r, M, with T/S/? suffixes."""
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
+    short_name = models.CharField(max_length=8, unique=True)
+    name = models.CharField(max_length=128)
+    entry_date = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.short_name
+
+    class Meta:
+        db_table = 'chant_mode'
+        verbose_name_plural = 'Chant modes'
+
+
+class Melody(models.Model):
+    """A copy of one Cantus Index melody (Volpiano), identified by its Cantus melody id.
+
+    CC BY-NC-SA 4.0, Cantus Index; Volpiano font (c) fawe, courtesy of D. Hiley and the University of Regensburg.
+    """
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
+    melody_id = models.CharField(max_length=32, unique=True)  # Cantus melody id, e.g. "a00820m1"
+    volpiano = models.TextField(blank=True, default='')
+    cantus_id = models.CharField(max_length=32, null=True, blank=True, db_index=True)
+    genre = models.CharField(max_length=32, null=True, blank=True)
+    mode = models.CharField(max_length=32, null=True, blank=True)  # Cantus value, not checked against ChantMode
+    source = models.TextField(null=True, blank=True)  # manuscript siglum or description of the source
+    source_url = models.URLField(null=True, blank=True)
+    entry_date = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.melody_id
+
+    class Meta:
+        db_table = 'melody'
+        verbose_name_plural = 'Melodies'
+
+
+class ChantDifferentia(models.Model):
+    """An entry of the Differentiae Database (Rebecca Shaw), CC BY-NC-SA 4.0 — not our licence."""
+    uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
+    short_name = models.CharField(max_length=16, unique=True)  # Differentia ID, e.g. "118a"
+    chant_mode_uuid = models.ForeignKey('ChantMode', models.PROTECT, to_field='uuid', db_column='chant_mode_uuid', related_name='differentiae', blank=True, null=True)
+    other_mode = models.CharField(max_length=32, blank=True, default='')
+    melodic_transcription = models.CharField(max_length=128, blank=True, default='')  # Volpiano
+    saeculorum = models.CharField(max_length=64, blank=True, default='')
+    amen = models.CharField(max_length=64, blank=True, default='')
+    source_url = models.URLField(blank=True, default='')
+    entry_date = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.short_name
+
+    class Meta:
+        db_table = 'chant_differentia'
+        verbose_name_plural = 'Chant differentiae'
+
+
 class MassHour(models.Model):
     uuid = models.UUIDField(db_index=True, unique=True, null=True, blank=True)
     short_name = models.CharField(max_length=4, unique=True)#max 28
@@ -2092,6 +2214,8 @@ UUID_RELATION_COMPAT_ALIASES = {
         'season_month': 'season_month_uuid',
         'week': 'week_uuid',
         'day': 'day_uuid',
+        'chant_mode': 'chant_mode_uuid',
+        'chant_differentia': 'chant_differentia_uuid',
     },
     LiturgicalGenresNames: {
         'genre': 'genre_uuid',
@@ -2194,6 +2318,9 @@ UUID_RELATION_COMPAT_ALIASES = {
     },
     MassHour: {
         'type': 'type_uuid',
+    },
+    ChantDifferentia: {
+        'chant_mode': 'chant_mode_uuid',
     },
     Topic: {
         'section': 'section_uuid',

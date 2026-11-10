@@ -30,6 +30,7 @@ from .licensing import (
     LICENSE_LINK_REL,
     attach_rights,
     collect_contributors,
+    get_dictionary_license,
     get_license,
     license_url,
 )
@@ -134,7 +135,7 @@ class V1View(APIView):
         """
         response = super().finalize_response(request, response, *args, **kwargs)
 
-        url = license_url()
+        url = getattr(response, 'data_license_url', None) or license_url()
         if url:
             response['Link'] = f'<{url}>; rel="{LICENSE_LINK_REL}"'
 
@@ -189,6 +190,7 @@ class RootView(V1View):
                 'dictionaries': url('/api/v1/dictionaries/'),
             },
             'rights': get_license(),
+            'dictionary_rights': get_dictionary_license(),
         })
 
 
@@ -505,16 +507,23 @@ class ManuscriptContentBulkView(WriteView):
             '`rubric_name_from_ms`, `subrubric_name_from_ms`, `formula_text_from_ms`, '
             '`where_in_ms_from`, `where_in_ms_to`, `original_or_added` (`ORIGINAL` / '
             '`ADDED`), `biblical_reference`, `reference_to_other_items`, '
-            '`similarity_by_user`, `edition_subindex`, `comments` (text).\n\n'
+            '`similarity_by_user`, `edition_subindex`, `comments` (text); `cantus_id` (Cantus ID, '
+            'text, e.g. `001001`) and `melody` (Volpiano), both stored verbatim apart from '
+            'surrounding whitespace.\n\n'
             '**Relations** — a UUID, or a name matched case-insensitively against:\n\n'
             '| Key | Dictionary | Name column |\n'
             '|---|---|---|\n'
             '| `rubric_id` | rite-names | `name` |\n'
             '| `liturgical_genre_id` | liturgical-genres | `title` |\n'
             '| `section_id`, `subsection_id` | sections | `name` |\n'
-            '| `function_id`, `subfunction_id` | content-functions | `name` |\n'
+            '| `function_id`, `subfunction_id` | content-functions | `name`, then a Cantus '
+            'genre code listed in `cantus_codes` (exact case, e.g. `Gr`) |\n'
             '| `layer`, `mass_hour`, `genre`, `season_month`, `week`, `day` | same-named | '
             '`short_name`, then `name` |\n'
+            '| `chant_mode_id` | chant-modes | `short_name` (Cantus mode code, e.g. `6TS`) |\n'
+            '| `melody_id` | melodies | `melody_id` (Cantus melody id, e.g. `a00820m1`) |\n'
+            '| `chant_differentia_id` | chant-differentiae | `short_name` (Differentiae Database '
+            'ID, e.g. `118a`) |\n'
             '| `text_standarization` | text-standarization | `standard_incipit` |\n'
             '| `contributor_id` | contributors | `initials` |\n'
             '| `formula_id` | formulas | UUID only — look it up by `co_no` first |\n'
@@ -584,8 +593,11 @@ class DictionaryListView(V1View):
     )
     def get(self, request):
         payload = dictionaries_module.list_dictionaries(request.build_absolute_uri)
-        attach_rights(payload, request=request)
-        return Response(payload)
+        licence = get_dictionary_license()
+        attach_rights(payload, request=request, licence=licence)
+        response = Response(payload)
+        response.data_license_url = licence.get('url')
+        return response
 
 
 class DictionaryDetailView(V1View):
@@ -712,5 +724,8 @@ class DictionaryDetailView(V1View):
         except LookupError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
 
-        attach_rights(payload, request=request)
-        return Response(payload)
+        licence = dictionaries_module.dictionary_license(slug)
+        attach_rights(payload, request=request, licence=licence)
+        response = Response(payload)
+        response.data_license_url = licence.get('url')
+        return response

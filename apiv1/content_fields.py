@@ -17,7 +17,7 @@ class PlainField:
 
     key: str
     attr: str
-    kind: str = 'text'  # text | int | bool
+    kind: str = 'text'  # text | trimmed (text, edges stripped, blank -> null) | int | bool
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,9 @@ class RelationField:
     model: str  # indexerapp model name
     lookups: tuple = field(default=())  # name columns tried, in order
     label_fields: tuple = field(default=())  # columns used to render the export label
+    # Comma-separated code-list columns tried after every name lookup has failed;
+    # the value must equal one listed code exactly (case-sensitive).
+    code_lookups: tuple = field(default=())
 
     @property
     def label_key(self):
@@ -52,6 +55,8 @@ PLAIN_FIELDS = (
     PlainField('edition_subindex', 'edition_subindex'),
     PlainField('comments', 'comments'),
     PlainField('proper_texts', 'proper_texts', 'bool'),
+    PlainField('cantus_id', 'cantus_id', 'trimmed'),
+    PlainField('melody', 'melody', 'trimmed'),
 )
 
 RELATION_FIELDS = (
@@ -68,9 +73,9 @@ RELATION_FIELDS = (
     RelationField('subsection_id', 'subsection_uuid', 'Sections',
                   lookups=('name',), label_fields=('name',)),
     RelationField('function_id', 'function_uuid', 'ContentFunctions',
-                  lookups=('name',), label_fields=('name',)),
+                  lookups=('name',), label_fields=('name',), code_lookups=('cantus_codes',)),
     RelationField('subfunction_id', 'subfunction_uuid', 'ContentFunctions',
-                  lookups=('name',), label_fields=('name',)),
+                  lookups=('name',), label_fields=('name',), code_lookups=('cantus_codes',)),
     # Manuscript-scoped, like quires: one notated stretch of one manuscript. A
     # MusicNotationNames name is accepted too and resolved against the target
     # manuscript's own notation records — see _resolve_music_notation.
@@ -88,6 +93,12 @@ RELATION_FIELDS = (
                   lookups=('short_name', 'name'), label_fields=('short_name',)),
     RelationField('day', 'day_uuid', 'Day',
                   lookups=('short_name', 'name'), label_fields=('short_name',)),
+    RelationField('chant_mode_id', 'chant_mode_uuid', 'ChantMode',
+                  lookups=('short_name',), label_fields=('short_name',)),
+    RelationField('chant_differentia_id', 'chant_differentia_uuid', 'ChantDifferentia',
+                  lookups=('short_name',), label_fields=('short_name',)),
+    RelationField('melody_id', 'melody_uuid', 'Melody',
+                  lookups=('melody_id',), label_fields=('melody_id',)),
     RelationField('text_standarization', 'text_standarization_uuid', 'TextStandarization',
                   lookups=('standard_incipit',), label_fields=('standard_incipit',)),
     RelationField('contributor_id', 'data_contributor_uuid', 'Contributors',

@@ -17,6 +17,7 @@ from etlapp.services import _serialize_instance
 from etlapp.uuid_utils import build_deterministic_sync_uuid
 
 from .export import add_labels, strip_local_ids
+from .licensing import get_dictionary_license
 
 
 DEFAULT_PAGE_SIZE = 200
@@ -36,10 +37,10 @@ EXPOSE_LOCAL_ID_SLUGS = {'rite-names', 'formulas'}
 
 #: slug -> (model name, columns searched by ?search=)
 DICTIONARIES = {
-    'rite-names': ('RiteNames', ('name', 'english_translation')),
+    'rite-names': ('RiteNames', ('name', 'english_translation', 'cantus_feast_code')),
     'liturgical-genres': ('LiturgicalGenres', ('title',)),
     'sections': ('Sections', ('name',)),
-    'content-functions': ('ContentFunctions', ('name',)),
+    'content-functions': ('ContentFunctions', ('name', 'cantus_codes')),
     'layers': ('Layer', ('short_name', 'name')),
     'mass-hours': ('MassHour', ('short_name', 'name')),
     'genres': ('Genre', ('short_name', 'name')),
@@ -68,7 +69,21 @@ DICTIONARIES = {
     'contributors': ('Contributors', ('initials', 'last_name', 'first_name')),
     'formulas': ('Formulas', ('co_no', 'text')),
     'text-standarization': ('TextStandarization', ('standard_incipit', 'cantus_id', 'usu_id')),
+    'chant-modes': ('ChantMode', ('short_name', 'name')),
+    'chant-differentiae': ('ChantDifferentia', ('short_name', 'other_mode')),
+    'melodies': ('Melody', ('melody_id', 'cantus_id', 'genre', 'mode')),
 }
+
+#: Extra columns carrying a related row's short_name, so a consumer does not
+#: have to resolve the UUID first: slug -> {column: foreign key field}.
+RELATED_SHORT_NAME_COLUMNS = {
+    'chant-differentiae': {'chant_mode': 'chant_mode_uuid'},
+}
+
+
+def dictionary_license(slug):
+    """The licence of one dictionary (settings.DICTIONARY_LICENSE[S])."""
+    return get_dictionary_license(slug)
 
 
 def get_dictionary_model(slug):
@@ -88,6 +103,7 @@ def list_dictionaries(request_build_uri=None):
             'model': model._meta.label,
             'verbose_name': str(model._meta.verbose_name_plural),
             'count': model.objects.count(),
+            'license': dictionary_license(slug).get('id'),
         }
         if request_build_uri is not None:
             entry['url'] = request_build_uri(f'/api/v1/dictionaries/{slug}/')
@@ -222,8 +238,13 @@ def build_dictionary_page(
     limit = DEFAULT_PAGE_SIZE if limit is None else min(max(int(limit), 1), MAX_PAGE_SIZE)
     offset = max(int(offset or 0), 0)
 
-    page = queryset.order_by('pk')[offset:offset + limit]
+    short_name_columns = RELATED_SHORT_NAME_COLUMNS.get(slug, {})
+    page = list(queryset.select_related(*short_name_columns.values()).order_by('pk')[offset:offset + limit])
     records = [_serialize_instance(instance) for instance in page]
+    for record, instance in zip(records, page):
+        for column, fk_name in short_name_columns.items():
+            related = getattr(instance, fk_name)
+            record[column] = related.short_name if related else None
 
     payload = {
         'api_version': 'v1',

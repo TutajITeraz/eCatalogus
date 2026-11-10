@@ -1,0 +1,20 @@
+07_differentiae_database.tsv - source and licence
+
+Source: Differentiae Database, https://differentiaedatabase.ca/index
+        (1279 differentiae; downloaded 2026-10-27 from the public index pages).
+Author: Rebecca Shaw.
+Licence: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+         (CC BY-NC-SA 4.0), https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+Required citation (from https://differentiaedatabase.ca/cite):
+  Shaw, Rebecca. Differentiae Database. 2019. http://differentiae.ca. Accessed 27 October 2026.
+Individual differentiae are referred to by their Differentia ID (e.g. 7a).
+
+Changes made: columns renamed; "Mode N" split into `mode` (1-8, P = tonus peregrinus)
+and `other_mode` (any other value, unchanged); column `url` added; column
+`chants_in_cantus_pl` added (number of chants in Cantus Planus in Poloniae that use
+the differentia, from the Cantus database dump).
+
+Conditions: any copy or derivative of this table (including an eCatalogus dictionary
+built from it) must keep this attribution, must not be used commercially, and must be
+shared under CC BY-NC-SA 4.0. It may not be relicensed under CC BY 4.0.

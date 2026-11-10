@@ -480,6 +480,64 @@ DATA_LICENSE = {
     ),
 }
 
+# Licence of the controlled vocabularies (/api/v1/dictionaries/), kept apart from
+# DATA_LICENSE, which covers the manuscript descriptions. Each key falls back to
+# DATA_LICENSE; set DICTIONARY_LICENSE_* environment variables to override.
+DICTIONARY_LICENSE = {
+    'id': os.getenv('DICTIONARY_LICENSE_ID', DATA_LICENSE['id']),
+    'name': os.getenv('DICTIONARY_LICENSE_NAME', DATA_LICENSE['name']),
+    'url': os.getenv('DICTIONARY_LICENSE_URL', DATA_LICENSE['url']),
+    'copyright': os.getenv('DICTIONARY_LICENSE_COPYRIGHT', DATA_LICENSE['copyright']),
+    'rights_holder': os.getenv('DICTIONARY_LICENSE_RIGHTS_HOLDER', DATA_LICENSE['rights_holder']),
+    'rights_holder_url': os.getenv(
+        'DICTIONARY_LICENSE_RIGHTS_HOLDER_URL', DATA_LICENSE['rights_holder_url'],
+    ),
+    'required_statement': os.getenv(
+        'DICTIONARY_LICENSE_REQUIRED_STATEMENT',
+        'Controlled vocabularies from eCatalogus, Instytut Sztuki Polskiej Akademii Nauk (PAN). '
+        'Used under CC BY-NC 4.0; not for commercial use.',
+    ),
+}
+
+# Vocabularies that are not ours to license: slug -> licence replacing
+# DICTIONARY_LICENSE in the payload and in the Link header. A 'citation' key
+# replaces the generated recommended_citation.
+DICTIONARY_LICENSES = {
+    'melodies': {
+        'id': 'CC-BY-NC-SA-4.0',
+        'name': 'Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International',
+        'url': 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
+        'copyright': 'Cantus Index. Volpiano font (c) fawe, courtesy of D. Hiley and the University of Regensburg.',
+        'rights_holder': 'Cantus Index',
+        'rights_holder_url': 'https://cantusindex.org',
+        'required_statement': (
+            'Melodies: Cantus Index, https://cantusindex.org/melodies-list. Licensed under CC BY-NC-SA 4.0. '
+            'Volpiano font (c) fawe, courtesy of D. Hiley and the University of Regensburg.'
+        ),
+        'citation': (
+            'Cantus Index. Melodies. https://cantusindex.org/melodies-list. Licensed under CC BY-NC-SA 4.0. '
+            'Volpiano font (c) fawe, courtesy of D. Hiley and the University of Regensburg.'
+        ),
+    },
+    # CC BY-NC-SA 4.0 may not be relicensed under our own terms.
+    'chant-differentiae': {
+        'id': 'CC-BY-NC-SA-4.0',
+        'name': 'Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International',
+        'url': 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
+        'copyright': 'Copyright (c) 2019 Rebecca Shaw.',
+        'rights_holder': 'Rebecca Shaw',
+        'rights_holder_url': 'https://differentiaedatabase.ca',
+        'required_statement': (
+            'Shaw, Rebecca. Differentiae Database. 2019. https://differentiaedatabase.ca. '
+            'Licensed under CC BY-NC-SA 4.0.'
+        ),
+        'citation': (
+            'Shaw, Rebecca. Differentiae Database. 2019. https://differentiaedatabase.ca. '
+            'Licensed under CC BY-NC-SA 4.0.'
+        ),
+    },
+}
+
 # Site identity — override per instance
 SITE_NAME = 'eCatalogus'
 ETL_ROLE = 'undefined'

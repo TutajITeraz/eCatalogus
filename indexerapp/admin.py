@@ -720,6 +720,9 @@ class ContentAdmin(ImportExportDebateableAdmin):
         'day_uuid',
         'mass_hour_uuid',
         'layer_uuid',
+        'chant_mode_uuid',
+        'chant_differentia_uuid',
+        'melody_uuid',
     ]
 
 
@@ -986,9 +989,9 @@ class HandsAdmin(ImportExportDebateableAdmin):
 
 class ContentFunctionsAdmin(ImportExportDebateableAdmin):
     resource_class = ContentFunctionsResource
-    list_display=  ['id','name','parent_function']
+    list_display=  ['id','name','parent_function','cantus_codes']
 
-    search_fields = ['name__icontains']
+    search_fields = ['name__icontains', 'cantus_codes__icontains']
 
 
 class SectionsAdmin(ImportExportDebateableAdmin):
@@ -1088,7 +1091,7 @@ class RiteNamesAdmin(ImportExportDebateableAdmin):
                              #if not isinstance(field, models.ForeignKey)
                              ]
 
-    search_fields = ['name__icontains', 'english_translation__icontains']
+    search_fields = ['name__icontains', 'english_translation__icontains', 'cantus_feast_code']
 
 
 class ConditionAdmin(ImportExportDebateableAdmin):
@@ -1500,6 +1503,57 @@ class MassHourAdmin(admin.ModelAdmin):
 
     search_fields = ['short_name__icontains', 'name__icontains']
 
+class MelodyAdmin(admin.ModelAdmin):
+    list_display = ['melody_id', 'cantus_id', 'genre', 'mode', 'source_url', 'entry_date']
+    search_fields = ['melody_id', 'cantus_id']
+    readonly_fields = ['attribution']
+
+    @admin.display(description='Licence')
+    def attribution(self, obj):
+        return format_html(
+            'Data: <a href="https://cantusindex.org/melodies-list" target="_blank" rel="noopener">Cantus Index</a>, '
+            '<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>. '
+            'Volpiano font (c) fawe, courtesy of D. Hiley and the University of Regensburg.'
+        )
+
+
+class ChantModeAdmin(admin.ModelAdmin):
+    list_display = ['short_name', 'name', 'uuid', 'entry_date']
+    search_fields = ['short_name', 'name__icontains']
+
+
+def differentiae_attribution(source_url=None):
+    """Credit line required by CC BY-NC-SA 4.0 wherever differentia data is shown."""
+    return format_html(
+        'Data: <a href="{}" target="_blank" rel="noopener">Differentiae Database</a> '
+        '(Rebecca Shaw, 2019), licensed under '
+        '<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">'
+        'CC BY-NC-SA 4.0</a>.',
+        source_url or 'https://differentiaedatabase.ca',
+    )
+
+
+class ChantDifferentiaAdmin(admin.ModelAdmin):
+    list_display = ['short_name', 'chant_mode_uuid', 'other_mode', 'melodic_transcription',
+                    'saeculorum', 'amen', 'source']
+    search_fields = ['short_name', 'other_mode']
+    readonly_fields = ['attribution']
+
+    @admin.display(description='Source')
+    def source(self, obj):
+        if not obj.source_url:
+            return ''
+        return format_html('<a href="{}" target="_blank" rel="noopener">{}</a>', obj.source_url, obj.short_name)
+
+    @admin.display(description='Licence')
+    def attribution(self, obj):
+        return differentiae_attribution(obj.source_url if obj else None)
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = {**(extra_context or {}), 'subtitle': differentiae_attribution()}
+        return super().changelist_view(request, extra_context=extra_context)
+
+
 class TypeAdmin(admin.ModelAdmin):
     list_display=  [field.name for field in Type._meta.fields
                              #if not isinstance(field, models.ForeignKey)
@@ -1628,6 +1682,9 @@ admin.site.register(ImproveOurDataEntry,ImproveOurDataEntryAdmin)
 admin.site.register(Traditions,TraditionsAdmin)
 
 admin.site.register(MassHour,MassHourAdmin)
+admin.site.register(ChantMode,ChantModeAdmin)
+admin.site.register(Melody,MelodyAdmin)
+admin.site.register(ChantDifferentia,ChantDifferentiaAdmin)
 admin.site.register(Type,TypeAdmin)
 admin.site.register(Layer,LayerAdmin)
 admin.site.register(Genre,GenreAdmin)
