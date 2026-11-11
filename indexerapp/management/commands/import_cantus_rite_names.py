@@ -159,7 +159,8 @@ class Planner:
     ``operations`` is what --apply executes, in order.
     """
 
-    def __init__(self, existing, confirmed_codes, aliases=None):
+    def __init__(self, existing, confirmed_codes, aliases=None, names_only=False):
+        self.names_only = names_only
         self.records = {record['pk']: record for record in existing}
         self.by_uuid = {str(record['uuid']): record['pk'] for record in existing if record['uuid']}
         self.name_owner = {record['name'].casefold(): record['pk'] for record in existing}
@@ -268,6 +269,10 @@ class Planner:
         if action not in ACTIONS:
             self.report.invalid.append(f'{tag}: unknown action "{action}"')
             return
+        if self.names_only and action != ACTION_UPDATE:
+            self.report.invalid.append(f'{tag}: --names-only accepts only {ACTION_UPDATE} rows, got {action}')
+            self._outcome(code, None, 'error_invalid', name)
+            return
         if not name.strip() or (not code and action != ACTION_UPDATE):
             self.report.invalid.append(f'{tag}: empty code or name')
             return
@@ -344,17 +349,19 @@ class Planner:
             self._outcome(code, None, 'error_name_collision', name)
             return
 
-        if not code:  # rename only: the rite keeps whatever Cantus code it has
-            target_code = record['cantus_feast_code']
+        if not code or self.names_only:  # the rite keeps whatever Cantus code it has
+            if record['cantus_feast_code'] or not code:
+                target_code = record['cantus_feast_code']
         changes = {}
         if record['name'] != name:
             changes['name'] = name
         if record['cantus_feast_code'] != target_code:
             changes['cantus_feast_code'] = target_code
-        current = (record['english_translation'] or '').strip()
-        translation = self._translation(row, line)
-        if translation and translation != current and (not current or current.endswith('\u2026')):
-            changes['english_translation'] = translation
+        if not self.names_only:
+            current = (record['english_translation'] or '').strip()
+            translation = self._translation(row, line)
+            if translation and translation != current and (not current or current.endswith('\u2026')):
+                changes['english_translation'] = translation
 
         if not changes:
             self.report.unchanged.append(tag)
@@ -423,6 +430,11 @@ class Command(BaseCommand):
             help='Where --apply writes rite_names_import_result.tsv and rite_names_skipped_review.tsv.',
         )
         parser.add_argument(
+            '--names-only', action='store_true',
+            help='Only rename existing rites (UPDATE_RENAME rows): no creates, no english_translation, '
+                 'no verified-pairs repair; a Cantus code is stored only where the rite has none.',
+        )
+        parser.add_argument(
             '--confirmed',
             help='File with REVIEW_UPDATE Cantus codes approved for update (whitespace/comma separated, # comments).',
         )
@@ -441,8 +453,12 @@ class Command(BaseCommand):
         except OSError as exc:
             raise CommandError(str(exc))
 
-        planner = Planner(load_existing(), confirmed, find_duplicate_aliases(rows))
-        planner.check_verified_pairs()
+        existing = load_existing()
+        old_names = {str(record['uuid']): record['name'] for record in existing}
+        names_only = options['names_only']
+        planner = Planner(existing, confirmed, find_duplicate_aliases(rows), names_only=names_only)
+        if not names_only:
+            planner.check_verified_pairs()
         for line, row in rows:
             planner.plan_row(row, line)
         planner.finish([row for _line, row in rows])
@@ -454,13 +470,22 @@ class Command(BaseCommand):
             with transaction.atomic():
                 self._execute(planner.operations, planner.report)
                 results = self._results(planner)
+                names_rows = self._names_only_rows(rows, results, old_names) if names_only else None
                 if not apply:
                     raise _DryRunRollback
         except _DryRunRollback:
             pass
 
         self._report(options['tsv_file'], len(rows), planner.report, apply, options['verbosity'])
-        if apply:
+        if names_only:
+            write = self.stdout.write
+            write('\nold name -> new name:')
+            for line in names_rows:
+                write(f'  {line[3]!r} -> {line[4]!r}  [{line[5]}]')
+        if apply and names_only:
+            self._write_names_only_file(Path(options['output_dir']), names_rows)
+            self.stdout.write(self.style.SUCCESS('Changes written.'))
+        elif apply:
             self._write_files(Path(options['output_dir']), results, planner.review_rows)
             self.stdout.write(self.style.SUCCESS('Changes written.'))
         else:
@@ -498,6 +523,31 @@ class Command(BaseCommand):
                 else:
                     row[4] = 'error_alias_target_missing'
         return [tuple(row[:5]) for row in rows]
+
+    def _names_only_rows(self, rows, results, old_names):
+        """[(code, uuid, legacy_id, old_name, new_name, status)] per plan row, read inside the transaction."""
+        status_by_code = {code: (status, name) for code, _uuid, _pk, name, status in results}
+        stored = dict(RiteNames.objects.values_list('uuid', 'name'))
+        out = []
+        for _line, row in rows:
+            code = (row['cantus_feast_code'] or '').strip()
+            uuid = (row['ecatalogus_uuid'] or '').strip()
+            status = status_by_code.get(code, ('error_invalid', ''))[0]
+            old = old_names.get(uuid, '')
+            new = next((name for key, name in stored.items() if str(key) == uuid), '') if uuid else ''
+            if status == 'renamed' and new != row['target_name_cantus']:
+                status = 'error_db_rejected'
+            out.append((code, uuid, row['ecatalogus_legacy_id'], old, new if new else row['target_name_cantus'], status))
+        return out
+
+    def _write_names_only_file(self, directory, rows):
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / 'rite_names_02d_result.tsv'
+        with open(path, 'w', newline='', encoding='utf-8') as handle:
+            writer = csv.writer(handle, delimiter='\t')
+            writer.writerow(['cantus_feast_code', 'ecatalogus_uuid', 'ecatalogus_legacy_id', 'old_name', 'new_name', 'status'])
+            writer.writerows(rows)
+        self.stdout.write(f'Wrote {path} ({len(rows)} rows).')
 
     def _write_files(self, directory, results, review_rows):
         directory.mkdir(parents=True, exist_ok=True)

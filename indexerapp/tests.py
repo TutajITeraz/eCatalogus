@@ -2933,6 +2933,83 @@ class CantusRiteNamesImportTests(TestCase):
 		self.assertNotEqual(created.pk, benedicta.pk)
 		self.assertIn('name restored from "Benedicti"', output)
 
+	def test_names_only_renames_without_touching_anything_else(self):
+		RiteNames.objects.filter(pk=self.alexius.pk).update(english_translation='Alexis of Rome')
+		other = RiteNames.objects.create(name='Silvester', cantus_feast_code='14123100')
+		path = self.write_plan(
+			self.update_row(self.alexius, '14071700', 'Alexis', description_en='Other text'),
+			self.update_row(other, '14123100', 'Silvestri'),
+			{'action': 'CREATE', 'cantus_feast_code': '14073000', 'target_name_cantus': 'Abdonis, Sennis'},
+		)
+		count = RiteNames.objects.count()
+
+		output = self.run_import(path, '--names-only', '--apply', '--output-dir', tempfile.mkdtemp())
+
+		self.alexius.refresh_from_db()
+		other.refresh_from_db()
+		self.assertEqual(self.alexius.name, 'Alexis')
+		self.assertEqual(self.alexius.cantus_feast_code, '14071700')
+		self.assertEqual(self.alexius.english_translation, 'Alexis of Rome')
+		self.assertEqual(other.name, 'Silvestri')
+		self.assertEqual(RiteNames.objects.count(), count)  # the CREATE row is refused, not created
+		self.assertIn("'Alexius' -> 'Alexis'", output)
+		self.assertIn('Skipped with error:          1', output)
+
+	def test_names_only_keeps_existing_code_and_never_stores_temp_codes(self):
+		coded = RiteNames.objects.create(name='Ludger', cantus_feast_code='14032600')
+		path = self.write_plan(
+			self.update_row(coded, '99999999', 'Ludgeri'),  # different code: the stored one stays
+			self.update_row(self.paganos, 'temp0091', 'Missa contra paganos'),
+		)
+
+		self.run_import(path, '--names-only', '--apply', '--output-dir', tempfile.mkdtemp())
+
+		coded.refresh_from_db()
+		self.paganos.refresh_from_db()
+		self.assertEqual((coded.name, coded.cantus_feast_code), ('Ludgeri', '14032600'))
+		self.assertEqual((self.paganos.name, self.paganos.cantus_feast_code), ('Missa contra paganos', None))
+
+	def test_names_only_is_idempotent_and_writes_the_result_file(self):
+		path = self.write_plan(self.update_row(self.alexius, '14071700', 'Alexis'))
+		out_dir = tempfile.mkdtemp()
+
+		self.run_import(path, '--names-only', '--apply', '--output-dir', out_dir)
+		second = self.run_import(path, '--names-only', '--apply', '--output-dir', out_dir)
+
+		self.assertIn('Renamed:                     0', second)
+		self.assertIn('Unchanged (already applied): 1', second)
+		with open(os.path.join(out_dir, 'rite_names_02d_result.tsv'), encoding='utf-8', newline='') as handle:
+			rows = list(csv.DictReader(handle, delimiter='\t'))
+		self.assertEqual(rows[0]['old_name'], 'Alexis')  # second run: already renamed
+		self.assertEqual(rows[0]['new_name'], 'Alexis')
+		self.assertEqual(rows[0]['status'], 'unchanged')
+
+	def test_names_only_reports_collision_and_manual_change(self):
+		RiteNames.objects.create(name='Adversus paganos')
+		path = self.write_plan(
+			self.update_row(self.paganos, '16059000', 'Adversus paganos'),
+			self.update_row(self.alexius, '14071700', 'Alexis', current='Alexius (old)'),
+		)
+
+		output = self.run_import(path, '--names-only', '--apply', '--output-dir', tempfile.mkdtemp())
+
+		self.paganos.refresh_from_db()
+		self.alexius.refresh_from_db()
+		self.assertEqual(self.paganos.name, 'contra paganos')
+		self.assertEqual(self.alexius.name, 'Alexius')
+		self.assertIn('Skipped with error:          2', output)
+
+	def test_names_only_dry_run_writes_nothing(self):
+		path = self.write_plan(self.update_row(self.alexius, '14071700', 'Alexis'))
+		out_dir = tempfile.mkdtemp()
+
+		output = self.run_import(path, '--names-only', '--output-dir', out_dir)
+
+		self.alexius.refresh_from_db()
+		self.assertEqual((self.alexius.name, self.alexius.cantus_feast_code), ('Alexius', None))
+		self.assertIn("'Alexius' -> 'Alexis'", output)
+		self.assertEqual(os.listdir(out_dir), [])
+
 	@override_settings(ETL_ALLOW_MAIN_EDITS=False)
 	def test_apply_is_refused_where_main_data_is_read_only(self):
 		path = self.write_plan({'action': 'CREATE', 'cantus_feast_code': '14073000', 'target_name_cantus': 'Abdonis, Sennis'})
